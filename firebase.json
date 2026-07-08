@@ -1,0 +1,47 @@
+{
+  "hosting": {
+    "public": "public",
+    "trailingSlash": true,
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**",
+      "routes.cjs"
+    ],
+    "redirects": [
+      { "source": "/index.html", "destination": "/", "type": 301 },
+      { "source": "/admin.html", "destination": "/admin/", "type": 301 },
+      { "source": "/teacher.html", "destination": "/teacher/", "type": 301 },
+      { "source": "/student.html", "destination": "/student/", "type": 301 }
+    ],
+    "headers": [
+      {
+        "source": "/sw.js",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      }
+    ],
+    "rewrites": [
+      { "source": "/public/js/**", "destination": "/js/**" },
+      { "source": "/public/assets/**", "destination": "/assets/**" },
+      { "source": "/public/shared/**", "destination": "/shared/**" },
+      { "source": "/admin", "destination": "/admin.html" },
+      { "source": "/teacher", "destination": "/teacher.html" },
+      { "source": "/student", "destination": "/student.html" },
+      { "source": "/admin/", "destination": "/admin.html" },
+      { "source": "/teacher/", "destination": "/teacher.html" },
+      { "source": "/student/", "destination": "/student.html" },
+      { "source": "/admin/dashboard", "destination": "/admin/dashboard/index.html" },
+      { "source": "/admin/teachers", "destination": "/admin/teachers/index.html" },
+      { "source": "/admin/students", "destination": "/admin/students/index.html" },
+      { "source": "/admin/approvals", "destination": "/admin/approvals/index.html" },
+      { "source": "/teacher/dashboard", "destination": "/teacher/dashboard/index.html" },
+      { "source": "/teacher/gradebook", "destination": "/teacher/gradebook/index.html" },
+      { "source": "/teacher/score-entry", "destination": "/teacher/score-entry/index.html" },
+      { "source": "/student/dashboard", "destination": "/student/dashboard/index.html" },
+      {
+        "source": "**",
+        "destination": "/404.html"
+      }
+    ]
+  }
+}

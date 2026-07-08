@@ -1,0 +1,12 @@
+{
+  "name": "gracemark",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Gracemark school portal with extensionless routes",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.1"
+  }
+}

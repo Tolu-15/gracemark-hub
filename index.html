@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gracemark Academy</title>
+  <script>
+    // Login lives in public/index.html — served at http://127.0.0.1:5502/ by `npm start`.
+    // This file at the repo root is only a pointer (Live Server / opening index.html directly).
+    var loginUrl = "http://127.0.0.1:5502/";
+    if (location.origin + location.pathname !== loginUrl && !location.href.startsWith(loginUrl)) {
+      location.replace(loginUrl);
+    }
+  </script>
+</head>
+<body>
+  <p>Redirecting to <a href="http://127.0.0.1:5502/">Gracemark login</a>…</p>
+  <p>Run <code>npm start</code> in this folder first, then open <strong>http://127.0.0.1:5502/</strong>.</p>
+  <p style="color:#64748b;font-size:0.875rem;">
+    Login page: <code>public/index.html</code> · Sign-in script: <code>public/js/student/login.js</code>
+  </p>
+</body>
+</html>

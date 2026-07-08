@@ -1,0 +1,250 @@
+/* Portal shell — mobile sidebar, hamburger, responsive layout */
+
+.portal-app {
+  min-height: 100dvh;
+  min-height: 100vh;
+}
+
+.portal-nav-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.portal-app.portal-nav-open .portal-nav-backdrop {
+  display: block;
+}
+
+.portal-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 40;
+  width: min(16rem, 88vw);
+  max-width: 16rem;
+  transform: translateX(-105%);
+  transition: transform 0.25s ease;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.portal-app.portal-nav-open .portal-sidebar {
+  transform: translateX(0);
+}
+
+.portal-sidebar-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.5rem;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.portal-sidebar-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.portal-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.5rem;
+  color: #334155;
+  background: #f1f5f9;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 30;
+  cursor: pointer;
+}
+
+.portal-menu-btn:hover {
+  background: #e2e8f0;
+}
+
+.portal-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+.portal-header-start {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.portal-header-title {
+  min-width: 0;
+  flex: 1;
+}
+
+.portal-header-title h1 {
+  font-size: clamp(1.125rem, 4vw, 1.5rem);
+  line-height: 1.25;
+}
+
+.portal-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.portal-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.portal-content {
+  flex: 1;
+}
+
+.portal-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.portal-table-wrap table {
+  min-width: 640px;
+}
+
+.portal-app.portal-nav-open {
+  overflow: hidden;
+}
+
+@media (min-width: 768px) {
+  .portal-nav-backdrop {
+    display: none !important;
+  }
+
+  .portal-sidebar {
+    position: static;
+    transform: none;
+    flex-shrink: 0;
+  }
+
+  .portal-app.portal-nav-open {
+    overflow: hidden;
+  }
+
+  .portal-menu-btn,
+  .portal-sidebar-close {
+    display: none !important;
+  }
+
+  .portal-header-actions {
+    width: auto;
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 767px) {
+  .portal-header {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .portal-menu-btn {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .portal-header > div:first-of-type {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  .portal-header > div:last-of-type:not(:first-of-type),
+  .portal-header > button:not(.portal-menu-btn) {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .portal-header-actions {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .portal-header-actions .portal-btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Modals */
+.portal-modal-backdrop {
+  padding: 0.75rem;
+  align-items: flex-end;
+}
+
+@media (min-width: 640px) {
+  .portal-modal-backdrop {
+    align-items: center;
+  }
+}
+
+.portal-modal-panel {
+  width: 100%;
+  max-width: 32rem;
+  max-height: min(92dvh, 100%);
+  overflow-y: auto;
+  margin: 0 auto;
+}
+
+/* Login page */
+body.login-page {
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-height: 100dvh;
+}
+
+body.login-page main {
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+body.login-page .card {
+  max-width: 100%;
+}
+
+@media (max-width: 480px) {
+  body.login-page .card {
+    padding: 2rem 1.25rem 1.75rem;
+    margin: 0;
+    border-radius: 1rem;
+  }
+}
+
+/* Score entry / gradebook headers */
+.portal-page-header {
+  padding: 0.75rem 1rem;
+  flex-shrink: 0;
+}
+
+@media (min-width: 768px) {
+  .portal-page-header {
+    padding: 1rem 1.5rem;
+  }
+}
