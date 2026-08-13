@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Gracemark
 
 ## Run
@@ -83,3 +84,6 @@ All pages live under **`public/`** (Firebase hosting root). Routes are defined i
 | `/student/dashboard/` | Student results |
 
 Edit HTML in **`public/`** only (copies at repo root are legacy). Assets: `/js/…`, `/assets/…`, `/shared/…` (site root is the `public/` folder on Firebase).
+=======
+# gracemark-hub
+>>>>>>> 9d8e9903cefc529b9c45631c9ec3df6a9f97cb7d
