@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Application Form — Gracemark Academy</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/style.css" />
+  <script src="https://js.paystack.co/v1/inline.js"></script>
+
+  <style>
+    :root {
+      --ink: #f1f5f9;
+      --slate: #94a3b8;
+      --gold: #c9a84c;
+      --gold-lt: #e8c97a;
+      --cream: #020617;
+      --muted: #64748b;
+      --error: #ef4444;
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background-color: #020617;
+      color: var(--ink);
+      min-height: 100vh;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 15% 10%, rgba(148, 163, 184, .05) 0%, transparent 65%),
+        radial-gradient(ellipse 60% 50% at 88% 85%, rgba(201, 168, 76, .08) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .form-card {
+      background: #0f172a;
+      border: 1px solid rgba(148, 163, 184, 0.15);
+      border-radius: 24px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+
+    .gold-accent-line {
+      height: 3px;
+      background: linear-gradient(90deg, #c9a84c, #e8c97a);
+      border-radius: 2px;
+    }
+
+    .form-input {
+      width: 100%;
+      background: #1e293b;
+      border: 1.5px solid #334155;
+      border-radius: 12px;
+      padding: 12px 16px;
+      color: #f8fafc;
+      font-size: 0.95rem;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .form-input:focus {
+      border-color: var(--gold);
+      background: #0f172a;
+      box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.15);
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #94a3b8;
+      margin-bottom: 6px;
+    }
+
+    .badge-fee {
+      background: rgba(201, 168, 76, 0.12);
+      border: 1px solid rgba(201, 168, 76, 0.3);
+      color: var(--gold-lt);
+    }
+  </style>
+</head>
+
+<body class="p-4 md:p-8 flex items-center justify-center">
+
+  <main class="w-full max-w-3xl">
+    <!-- Header Logo -->
+    <div class="text-center mb-8">
+      <div class="w-14 h-14 mx-auto mb-3 bg-slate-900 border border-slate-700/60 rounded-2xl flex items-center justify-center shadow-lg">
+        <svg class="w-7 h-7 text-amber-400" viewBox="0 0 30 30" fill="none">
+          <path d="M15 3L4 8.5V15C4 20.25 8.88 25.17 15 27C21.12 25.17 26 20.25 26 15V8.5L15 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+          <path d="M11 15.5l2.5 2.5L19 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      <h1 class="text-2xl md:text-3xl font-serif font-bold text-slate-100" id="formHeaderTitle">Loading Form...</h1>
+      <p class="text-sm text-slate-400 mt-1" id="formHeaderSubtitle">Gracemark Academy Portal</p>
+    </div>
+
+    <!-- Main Card -->
+    <div class="form-card p-6 md:p-10 relative">
+      <div class="gold-accent-line mb-6"></div>
+
+      <!-- Loading State -->
+      <div id="loadingState" class="text-center py-12">
+        <div class="inline-block w-8 h-8 border-4 border-amber-400/30 border-t-amber-400 rounded-full animate-spin"></div>
+        <p class="text-slate-400 text-sm mt-3">Fetching application details...</p>
+      </div>
+
+      <!-- Error State -->
+      <div id="errorState" class="hidden text-center py-8">
+        <div class="w-12 h-12 bg-red-950/60 border border-red-800 text-red-400 rounded-full flex items-center justify-center mx-auto mb-3">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+        </div>
+        <h3 class="text-lg font-bold text-red-300">Form Not Available</h3>
+        <p class="text-xs text-slate-400 mt-1" id="errorStateMsg">This form link may be invalid or expired.</p>
+        <a href="/" class="inline-block mt-5 px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition">Back to Main Login</a>
+      </div>
+
+      <!-- Form Container -->
+      <form id="publicDynamicForm" class="hidden space-y-6">
+        
+        <!-- Form Fee Alert Banner -->
+        <div id="feeBanner" class="p-4 rounded-xl badge-fee flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <svg class="w-5 h-5 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <div>
+              <p class="text-xs font-bold uppercase tracking-wider text-amber-300">Application Fee</p>
+              <p class="text-xs text-slate-300" id="feeBannerText">Required payment via Paystack checkout</p>
+            </div>
+          </div>
+          <span class="text-lg font-bold text-amber-400" id="feeAmountDisplay">₦0.00</span>
+        </div>
+
+        <!-- Section: Student Account Info -->
+        <div>
+          <h3 class="text-sm font-semibold text-slate-200 uppercase tracking-wider mb-3 pb-2 border-b border-slate-800">1. Student Account & Class Selection</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="form-label" for="applicantName">Full Name *</label>
+              <input type="text" id="applicantName" required placeholder="e.g. Samuel Adebayo" class="form-input" />
+            </div>
+
+            <div>
+              <label class="form-label" for="applicantEmail">Email Address *</label>
+              <input type="email" id="applicantEmail" required placeholder="e.g. samuel@example.com" class="form-input" />
+            </div>
+
+            <div>
+              <label class="form-label" for="applicantPassword">Account Password *</label>
+              <input type="password" id="applicantPassword" required minlength="6" placeholder="At least 6 characters" class="form-input" />
+            </div>
+
+            <div>
+              <label class="form-label" for="targetClassSelect">Select Admission Class *</label>
+              <select id="targetClassSelect" required class="form-input bg-slate-900 text-amber-300 font-semibold cursor-pointer">
+                <option value="">-- Choose Target Class --</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="form-label" for="applicantGender">Gender *</label>
+              <select id="applicantGender" required class="form-input bg-slate-900">
+                <option value="">-- Select Gender --</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="form-label" for="applicantDob">Date of Birth</label>
+              <input type="date" id="applicantDob" class="form-input" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Parent / Guardian Info -->
+        <div>
+          <h3 class="text-sm font-semibold text-slate-200 uppercase tracking-wider mb-3 pb-2 border-b border-slate-800">2. Parent / Guardian Details</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="form-label" for="guardianName">Parent/Guardian Full Name</label>
+              <input type="text" id="guardianName" placeholder="e.g. Mr. John Adebayo" class="form-input" />
+            </div>
+
+            <div>
+              <label class="form-label" for="guardianPhone">Parent Phone Number</label>
+              <input type="tel" id="guardianPhone" placeholder="08012345678" class="form-input" />
+            </div>
+
+            <div>
+              <label class="form-label" for="guardianOccupation">Occupation</label>
+              <input type="text" id="guardianOccupation" placeholder="e.g. Engineer, Business" class="form-input" />
+            </div>
+
+            <div>
+              <label class="form-label" for="stateOfOrigin">State of Origin</label>
+              <input type="text" id="stateOfOrigin" placeholder="e.g. Oyo State" class="form-input" />
+            </div>
+
+            <div class="md:col-span-2">
+              <label class="form-label" for="homeAddress">Residential Home Address</label>
+              <input type="text" id="homeAddress" placeholder="Street name, City, State" class="form-input" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Custom Dynamic Fields -->
+        <div id="dynamicFieldsSection">
+          <h3 class="text-sm font-semibold text-slate-200 uppercase tracking-wider mb-3 pb-2 border-b border-slate-800">3. Additional Application Details</h3>
+          <div id="dynamicFieldsContainer" class="space-y-4">
+            <!-- Rendered via JS -->
+          </div>
+        </div>
+
+        <!-- Error Feedback -->
+        <div id="formErrorMsg" class="hidden p-3 bg-red-950/80 border border-red-800/80 rounded-xl text-xs text-red-300 font-medium"></div>
+
+        <!-- Submit Button -->
+        <button type="submit" id="submitFormBtn" class="w-full py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-500/20 text-center transition flex items-center justify-center gap-2 text-base cursor-pointer">
+          <span id="btnSpinner" class="hidden w-5 h-5 border-2 border-slate-950/40 border-t-slate-950 rounded-full animate-spin"></span>
+          <span id="btnText">Proceed to Complete Registration</span>
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+        </button>
+
+      </form>
+    </div>
+  </main>
+
+  <script type="module" src="/js/form-submission.js"></script>
+</body>
+
+</html>

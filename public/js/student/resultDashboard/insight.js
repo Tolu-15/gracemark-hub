@@ -1,11 +1,9 @@
-/** Generate academic insight paragraph from report metrics. */
 export function generateAiInsight(report) {
   const {
     studentName,
     className,
     termLabel,
     session,
-    gpa,
     percentage,
     position,
     classSize,
@@ -20,7 +18,7 @@ export function generateAiInsight(report) {
   const sessionText = session ? ` (${session})` : "";
 
   let intro = `${name} is enrolled in ${className || "their class"} for ${term}${sessionText}. `;
-  intro += `With an overall average of ${percentage}% and GPA ${gpa.toFixed(2)}, `;
+  intro += `With an overall average of ${percentage}%, `;
   intro += position && classSize
     ? `they currently rank ${position} out of ${classSize} learners in cumulative performance. `
     : `their cumulative performance reflects steady engagement across approved subjects. `;
@@ -46,16 +44,16 @@ export function generateAiInsight(report) {
   }
 
   const consistency =
-    subjects.length >= 4 && gpa >= 3
+    subjects.length >= 4 && percentage >= 70
       ? "Performance shows good consistency across multiple subjects."
       : subjects.length >= 2
         ? "Results show mixed consistency; targeted revision will help stabilise grades."
         : "Limited approved results are available; more published scores will refine this analysis.";
 
   const suggestion =
-    gpa >= 3.5
+    percentage >= 75
       ? "Continue excellent study habits, practice past questions weekly, and mentor peers where possible."
-      : gpa >= 2.5
+      : percentage >= 50
         ? "Increase weekly revision time, complete all assignments on schedule, and seek teacher feedback after tests."
         : "Adopt a structured study plan, attend remedial sessions, and prioritise weak topics with daily practice.";
 
@@ -81,15 +79,34 @@ export function gradeToGpaPoint(grade) {
 }
 
 export function buildPrincipalRemark(report) {
-  const { percentage, gpa, studentName } = report;
-  const name = studentName?.split(" ")[0] || "This student";
-  if (gpa >= 3.5) {
-    return `${name} has demonstrated exceptional discipline and academic excellence this term. Keep up the commendable effort and leadership in class.`;
+  const score = report.gpa !== undefined && report.gpa !== null ? report.gpa : (report.percentage / 20);
+  if (score >= 4.5) return "THIS IS AN OUTSTANDING RESULT. KEEP IT UP!";
+  if (score >= 3.5) return "THIS IS A VERY GOOD RESULT. KEEP IT UP!";
+  if (score >= 3.0) return "THIS IS A GOOD RESULT. THERE IS STILL ROOM FOR IMPROVEMENT.";
+  if (score >= 2.5) return "THIS IS AN AVERAGE RESULT. THERE IS A PRESSING NEED FOR IMPROVEMENT.";
+  return "THIS IS A POOR RESULT. THERE IS A PRESSING NEED FOR IMPROVEMENT.";
+}
+
+export function getPromotionStatus(report) {
+  const { className, percentage, gpa } = report;
+  const cName = String(className || "").trim().toUpperCase();
+  const isSenior = (cName.includes("SSS") || cName.includes("SS ")) && !cName.includes("JSS");
+
+  if (isSenior) {
+    const nextClass = cName.includes("1") ? "SSS 2" : cName.includes("2") ? "SSS 3" : "GRADUATED";
+    const currentClass = cName.includes("1") ? "SSS 1" : cName.includes("2") ? "SSS 2" : "SSS 3";
+    const g = Number(gpa) || 0;
+    if (g >= 2.5) return { status: "PROMOTED", text: `PROMOTED TO ${nextClass}`, code: "success" };
+    if (g >= 2.0) return { status: "TRIAL", text: `PROMOTED TO ${nextClass} ON TRIAL`, code: "warning" };
+    return { status: "REPEAT", text: `TO REPEAT ${currentClass}`, code: "danger" };
+  } else {
+    const nextClass = cName.includes("1") ? "JSS 2" : cName.includes("2") ? "JSS 3" : "SSS 1";
+    const currentClass = cName.includes("1") ? "JSS 1" : cName.includes("2") ? "JSS 2" : "JSS 3";
+    const pct = Number(percentage) || 0;
+    if (pct >= 50) return { status: "PROMOTED", text: `PROMOTED TO ${nextClass}`, code: "success" };
+    if (pct >= 40) return { status: "TRIAL", text: `PROMOTED TO ${nextClass} ON TRIAL, BUT MUST ATTEND INTERVENTION CLASS.`, code: "warning" };
+    return { status: "REPEAT", text: `TO REPEAT ${currentClass}`, code: "danger" };
   }
-  if (gpa >= 2.5) {
-    return `${name} has shown satisfactory progress with room for greater consistency. I encourage more focus on weaker subjects next term.`;
-  }
-  return `${name} is encouraged to improve study habits and class participation. With dedicated effort and parental support, better results are achievable.`;
 }
 
 const TRAIT_NAMES = [

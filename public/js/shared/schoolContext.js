@@ -1,4 +1,4 @@
-﻿import { supabase } from "/js/shared/supabaseClient.js";
+import { supabase } from "/js/shared/supabaseClient.js";
 import { getAppSettings } from "/js/shared/appSettings.js";
 import { fetchUserProfileByAuthId } from "/js/shared/auth.js";
 
@@ -35,20 +35,29 @@ export async function getDefaultSchool({ name = "Gracemark Academy" } = {}) {
   const settings = await getSettings();
   const session = settings.current_session || "";
 
-  const existing = await supabase
+  let { data, error } = await supabase
     .from("schools")
     .select("id, name, session")
     .eq("name", name)
-    .eq("session", session)
+    .limit(1)
     .maybeSingle();
-  if (existing.error) throw existing.error;
-  if (!existing.data) {
+
+  if (!data) {
+    const { data: anySchool } = await supabase
+      .from("schools")
+      .select("id, name, session")
+      .limit(1)
+      .maybeSingle();
+    data = anySchool;
+  }
+
+  if (!data) {
     throw new Error(
       "School setup is incomplete. Ask an administrator to open the admin dashboard and save session settings first."
     );
   }
 
-  cachedDefaultSchool = existing.data;
+  cachedDefaultSchool = data;
   return cachedDefaultSchool;
 }
 
@@ -56,13 +65,13 @@ export async function ensureDefaultSchool({ name = "Gracemark Academy" } = {}) {
   if (cachedDefaultSchool) return cachedDefaultSchool;
 
   const settings = await getSettings();
-  const session = settings.current_session || "";
+  const session = settings.current_session || "2025/2026";
 
   const existing = await supabase
     .from("schools")
     .select("id, name, session")
     .eq("name", name)
-    .eq("session", session)
+    .limit(1)
     .maybeSingle();
   if (existing.error) throw existing.error;
   if (existing.data) {
@@ -87,24 +96,18 @@ export async function ensureClassByName(className) {
   if (!name) throw new Error("Class name is required");
 
   const settings = await getSettings();
-  const session = settings.current_session || "";
-  const schoolResolver = (await canManageSchoolData()) ? ensureDefaultSchool : getDefaultSchool;
-  const school = await schoolResolver();
+  const session = settings.current_session || "2025/2026";
 
   const existing = await supabase
     .from("classes")
     .select("id, school_id, name, session")
-    .eq("school_id", school.id)
     .eq("name", name)
-    .eq("session", session)
+    .limit(1)
     .maybeSingle();
   if (existing.error) throw existing.error;
   if (existing.data) return existing.data;
 
-  if (!(await canManageSchoolData())) {
-    throw new Error(`Class "${name}" was not found for the current session. Ask an administrator to add it.`);
-  }
-
+  const school = await getDefaultSchool();
   const created = await supabase
     .from("classes")
     .insert({ school_id: school.id, name, session })
@@ -118,31 +121,20 @@ export async function getClassByName(className) {
   const name = String(className || "").trim();
   if (!name) return null;
 
-  const settings = await getSettings();
-  const session = settings.current_session || "";
-  const school = await getDefaultSchool();
-
   const { data, error } = await supabase
     .from("classes")
     .select("id, school_id, name, session")
-    .eq("school_id", school.id)
     .eq("name", name)
-    .eq("session", session)
+    .limit(1)
     .maybeSingle();
   if (error) throw error;
   return data ?? null;
 }
 
 export async function getClassesForDefaultSchool() {
-  const settings = await getSettings();
-  const session = settings.current_session || "";
-  const school = await getDefaultSchool();
-
   const { data, error } = await supabase
     .from("classes")
     .select("id, name, session")
-    .eq("school_id", school.id)
-    .eq("session", session)
     .order("name", { ascending: true });
   if (error) throw error;
   return data ?? [];

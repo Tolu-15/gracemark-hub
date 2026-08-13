@@ -63,7 +63,7 @@ function SelectField({ label, value, onChange, options, disabled = false }) {
   ]);
 }
 
-function ResultsTable({ subjects }) {
+function ResultsTable({ subjects, term }) {
   if (!subjects.length) {
     return h(
       "p",
@@ -72,19 +72,31 @@ function ResultsTable({ subjects }) {
     );
   }
 
-  const cols = [
-    "Subject",
-    "HW",
-    "Test",
-    "Project",
-    "Exam",
-    "Total",
-    "Class Avg",
-    "High/Low",
-    "Unit",
-    "Grade",
-    "Remark",
-  ];
+  const isTerm3 = term === "term3";
+  const cols = isTerm3
+    ? [
+        "Subject",
+        "1st Term (30%)",
+        "2nd Term (30%)",
+        "3rd Term (40%)",
+        "Annual Total",
+        "Class Avg",
+        "High/Low",
+        "Grade",
+        "Remark",
+      ]
+    : [
+        "Subject",
+        "HW",
+        "Test",
+        "Project",
+        "Exam",
+        "Total",
+        "Class Avg",
+        "High/Low",
+        "Grade",
+        "Remark",
+      ];
 
   return h("div", { className: "rd-table-section" }, [
     h(
@@ -110,31 +122,83 @@ function ResultsTable({ subjects }) {
         h(
           "tbody",
           null,
-          subjects.map((row) =>
-            h("tr", { key: row.subject }, [
-              h("td", { className: "font-semibold text-white" }, row.subject),
-              h("td", null, row.hw),
-              h("td", null, row.test),
-              h("td", null, row.project),
-              h("td", null, row.exam),
-              h("td", { className: "font-bold text-violet-300" }, row.total),
-              h("td", null, row.classAverage),
-              h("td", { className: "text-xs text-slate-400" }, `${row.high} / ${row.low}`),
-              h("td", null, row.unit),
-              h("td", null, h(GradeBadge, { grade: row.grade })),
+          subjects.map((row) => {
+            const cells = [
+              h("td", { className: "font-semibold text-white", key: "subj" }, row.subject)
+            ];
+
+            if (isTerm3) {
+              cells.push(
+                h("td", { key: "t1" }, row.term1_total !== null ? row.term1_total : "—"),
+                h("td", { key: "t2" }, row.term2_total !== null ? row.term2_total : "—"),
+                h("td", { key: "t3" }, row.term3_total !== null ? row.term3_total : "—"),
+                h("td", { className: "font-bold text-violet-300", key: "annual" }, row.annualTotal !== null ? row.annualTotal : "—")
+              );
+            } else {
+              cells.push(
+                h("td", { key: "hw" }, row.hw),
+                h("td", { key: "test" }, row.test),
+                h("td", { key: "project" }, row.project),
+                h("td", { key: "exam" }, row.exam),
+                h("td", { className: "font-bold text-violet-300", key: "total" }, row.total)
+              );
+            }
+
+            cells.push(
+              h("td", { key: "avg" }, row.classAverage),
+              h("td", { className: "text-xs text-slate-400", key: "hilow" }, `${row.high} / ${row.low}`),
+              h("td", { key: "grade" }, h(GradeBadge, { grade: row.grade })),
               h(
                 "td",
                 {
                   className: row.remark === "EXCELLENT" ? "rd-remark-excellent" : "text-slate-300",
+                  key: "rem"
                 },
                 row.remark
-              ),
-            ])
-          )
+              )
+            );
+
+            return h("tr", { key: row.subject }, cells);
+          })
         )
       )
     ),
   ]);
+}
+
+function PromotionBanner({ statusInfo }) {
+  if (!statusInfo) return null;
+  const isSuccess = statusInfo.code === "success";
+  const isWarning = statusInfo.code === "warning";
+  const bgCls = isSuccess
+    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+    : isWarning
+      ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
+      : "bg-rose-500/10 border-rose-500/30 text-rose-300";
+
+  return h(
+    "div",
+    { className: `rd-glass rounded-2xl p-5 mb-6 border flex items-center justify-between gap-4 ${bgCls}` },
+    [
+      h("div", { className: "space-y-1" }, [
+        h("p", { className: "text-xs font-bold uppercase tracking-wider opacity-80" }, "Session Promotion Decision"),
+        h("h2", { className: "text-xl font-extrabold tracking-tight" }, statusInfo.text),
+      ]),
+      h(
+        "span",
+        {
+          className: `px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest ${
+            isSuccess
+              ? "bg-emerald-500/20 text-emerald-200 border border-emerald-400/30"
+              : isWarning
+                ? "bg-amber-500/20 text-amber-200 border border-amber-400/30"
+                : "bg-rose-500/20 text-rose-200 border border-rose-400/30"
+          }`,
+        },
+        statusInfo.status
+      ),
+    ]
+  );
 }
 
 export function ResultDashboardApp({ student, initialTerm, initialSession, onClose }) {
@@ -266,9 +330,10 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
       report &&
         !loading &&
         h(React.Fragment, null, [
+          term === "term3" && h(PromotionBanner, { statusInfo: report.promotionStatus }),
           h(
             "section",
-            { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 mb-6" },
+            { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6" },
             [
               h(StatCard, {
                 label: "Position",
@@ -279,15 +344,15 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
                 }),
               }),
               h(StatCard, {
-                label: "GPA",
-                value: report.gpa.toFixed(2),
-                accent: "blue",
-                icon: h(Icon, { d: "M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" }),
-              }),
-              h(StatCard, {
                 label: "Total Score",
                 value: `${report.totalScore}%`,
                 icon: h(Icon, { d: "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" }),
+              }),
+              h(StatCard, {
+                label: "GPA",
+                value: String(report.gpa ?? "0.0"),
+                accent: "purple",
+                icon: h(Icon, { d: "M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" }),
               }),
               h(StatCard, {
                 label: "Attendance",
@@ -299,12 +364,6 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
                 label: "In Class",
                 value: String(report.classSize),
                 icon: h(Icon, { d: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" }),
-              }),
-              h(StatCard, {
-                label: "Percentage",
-                value: `${report.percentage}%`,
-                accent: "purple",
-                icon: h(Icon, { d: "M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" }),
               }),
               h(StatCard, {
                 label: "Days Opened",
@@ -334,7 +393,7 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
 
           h("section", { className: "mb-6" }, [
             h("h2", { className: "text-lg font-bold text-white mb-3" }, "Subject Results"),
-            h(ResultsTable, { subjects: report.subjects }),
+            h(ResultsTable, { subjects: report.subjects, term: term }),
           ]),
 
           h("section", { className: "mb-6" }, [
@@ -359,13 +418,31 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
 
           h(
             "section",
-            { className: "rd-glass rounded-2xl p-5 sm:p-6 mb-6 border border-violet-500/20" },
+            { className: "grid grid-cols-1 md:grid-cols-2 gap-6 mb-6" },
             [
-              h("h2", { className: "text-lg font-bold text-white mb-2" }, "Principal's Remark"),
               h(
-                "p",
-                { className: "text-slate-300 italic leading-relaxed text-sm sm:text-base" },
-                `"${report.principalRemark}"`
+                "div",
+                { className: "rd-glass rounded-2xl p-5 sm:p-6 border border-violet-500/10" },
+                [
+                  h("h2", { className: "text-lg font-bold text-white mb-2" }, "Form Teacher's Remark"),
+                  h(
+                    "p",
+                    { className: "text-slate-300 italic leading-relaxed text-sm sm:text-base" },
+                    `"${report.teacherRemark}"`
+                  ),
+                ]
+              ),
+              h(
+                "div",
+                { className: "rd-glass rounded-2xl p-5 sm:p-6 border border-violet-500/10" },
+                [
+                  h("h2", { className: "text-lg font-bold text-white mb-2" }, "Principal's Remark"),
+                  h(
+                    "p",
+                    { className: "text-slate-300 italic leading-relaxed text-sm sm:text-base" },
+                    `"${report.principalRemark}"`
+                  ),
+                ]
               ),
             ]
           ),

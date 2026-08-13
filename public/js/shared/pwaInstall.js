@@ -33,6 +33,13 @@ function ensurePwaHead() {
     document.head.appendChild(cap);
   }
 
+  if (!document.querySelector('meta[name="mobile-web-app-capable"]')) {
+    const cap2 = document.createElement("meta");
+    cap2.name = "mobile-web-app-capable";
+    cap2.content = "yes";
+    document.head.appendChild(cap2);
+  }
+
   if (!document.querySelector('meta[name="apple-mobile-web-app-title"]')) {
     const title = document.createElement("meta");
     title.name = "apple-mobile-web-app-title";

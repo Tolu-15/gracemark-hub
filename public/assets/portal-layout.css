@@ -1,8 +1,16 @@
 /* Portal shell — mobile sidebar, hamburger, responsive layout */
 
+html, body.portal-app {
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
 .portal-app {
-  min-height: 100dvh;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
 }
 
 .portal-nav-backdrop {
@@ -110,6 +118,8 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .portal-content {
@@ -138,6 +148,8 @@
     position: static;
     transform: none;
     flex-shrink: 0;
+    height: 100%;
+    overflow-y: auto;
   }
 
   .portal-app.portal-nav-open {

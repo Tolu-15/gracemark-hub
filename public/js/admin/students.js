@@ -1,4 +1,4 @@
-﻿import { requireRole } from "/js/shared/guard.js";
+import { requireRole } from "/js/shared/guard.js";
 import { supabase } from "/js/shared/supabaseClient.js";
 import { ensureClassByName } from "/js/shared/schoolContext.js";
 import { createStudent } from "/js/admin/crud.js";
@@ -19,10 +19,40 @@ const editStudentId = document.getElementById("editStudentId");
 const sName = document.getElementById("sName");
 const sAdmNo = document.getElementById("sAdmNo");
 const sClass = document.getElementById("sClass");
+const classFilter = document.getElementById("classFilter");
 const saveStudentBtn = document.getElementById("saveStudentBtn");
 
 const bulkUploadBtn = document.getElementById("bulkUploadBtn");
 const bulkUploadInput = document.getElementById("bulkUploadInput");
+
+let allStudentsList = [];
+
+async function populateClassDropdowns() {
+  const { data, error } = await supabase
+    .from("classes")
+    .select("id, name")
+    .order("name", { ascending: true });
+
+  if (error) {
+    console.error("Error fetching classes:", error);
+    return;
+  }
+
+  if (!data?.length) {
+    sClass.innerHTML = `<option value="">No classes configured</option>`;
+    if (classFilter) classFilter.innerHTML = `<option value="">No classes</option>`;
+    return;
+  }
+
+  const optionsHtml = data
+    .map((c) => `<option value="${c.name}">${c.name}</option>`)
+    .join("");
+
+  sClass.innerHTML = `<option value="">Select a Class...</option>${optionsHtml}`;
+  if (classFilter) {
+    classFilter.innerHTML = `<option value="">All Classes</option>${optionsHtml}`;
+  }
+}
 
 // Initialize the page, check auth, and load initial data
 async function init() {
@@ -31,6 +61,7 @@ async function init() {
     if (!ok) return;
 
     if (authLoader) authLoader.style.display = "none";
+    await populateClassDropdowns();
     await loadStudents();
   } catch (error) {
     console.error("Students init error:", error);
@@ -160,8 +191,21 @@ async function loadStudents() {
     .from("students")
     .select("id, user_id, admission_no, name, class_id, classes(name)");
   if (error) throw error;
-  renderStudents(sortStudents(data ?? []));
+  allStudentsList = sortStudents(data ?? []);
+  applyClassFilter();
 }
+
+function applyClassFilter() {
+  const selectedClass = classFilter ? classFilter.value : "";
+  if (!selectedClass) {
+    renderStudents(allStudentsList);
+  } else {
+    const filtered = allStudentsList.filter((s) => s.classes?.name === selectedClass);
+    renderStudents(filtered);
+  }
+}
+
+classFilter?.addEventListener("change", applyClassFilter);
 
 function openAddModal() {
   studentForm.reset();
@@ -215,7 +259,16 @@ studentForm.addEventListener("submit", async (e) => {
       return;
     }
 
-    const cls = await ensureClassByName(className);
+    let { data: cls } = await supabase
+      .from("classes")
+      .select("id")
+      .eq("name", className)
+      .limit(1)
+      .maybeSingle();
+
+    if (!cls?.id) {
+      cls = await ensureClassByName(className);
+    }
 
     if (!id) {
       const email = normalizeAdmissionToEmail(admissionNo);

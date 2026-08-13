@@ -1,4 +1,4 @@
-﻿import { requireRole } from "/js/shared/guard.js";
+import { requireRole } from "/js/shared/guard.js";
 import { supabase } from "/js/shared/supabaseClient.js";
 import { getAppSettings } from "/js/shared/appSettings.js";
 import { getClassByName } from "/js/shared/schoolContext.js";
@@ -447,35 +447,45 @@ async function saveAll({ teacherAuthId, status }) {
       throw new Error("Some scores exceed the maximum. Fix red cells before saving.");
     }
 
-    const result = calculateStudentResult(raw);
-    const stored = toStoredScores(result);
+    const settings = await getAppSettings();
+    const currentSession = settings?.current_session || "2025/2026";
+    const cls = await getClassByName(className);
 
-    return {
-      student_id: panel.dataset.studentId,
-      subject_id: subjectId,
-      term,
-      submitted_by: teacherAuthId,
-      status,
-      score_breakdown: raw,
-      cw: stored.cw,
-      hw: stored.hw,
-      test: stored.test,
-      project: stored.project,
-      exam: stored.exam,
-      total: stored.total,
-      grade: stored.grade,
-    };
-  });
+    const payload = items.map((panel) => {
+      const raw = getRawScoresFromInputs(panel);
+      const validation = validateRawScores(raw);
+      if (!validation.valid) {
+        throw new Error("Some scores exceed the maximum. Fix red cells before saving.");
+      }
 
-  let { error } = await supabase.from("results").upsert(payload, { onConflict: "student_id,subject_id,term" });
-  if (error && /score_breakdown/i.test(error.message || "")) {
-    const fallbackPayload = payload.map(({ score_breakdown, ...rest }) => rest);
-    ({ error } = await supabase.from("results").upsert(fallbackPayload, { onConflict: "student_id,subject_id,term" }));
-    if (!error) {
-      console.warn("Saved without score_breakdown — run supabase/patch_existing.sql to store raw scores.");
+      const result = calculateStudentResult(raw);
+      const stored = toStoredScores(result);
+
+      return {
+        student_id: panel.dataset.studentId,
+        subject_id: subjectId,
+        class_id: cls?.id || null,
+        session: currentSession,
+        term,
+        submitted_by: teacherAuthId,
+        status,
+        score_breakdown: raw,
+        cw: stored.cw,
+        hw: stored.hw,
+        test: stored.test,
+        project: stored.project,
+        exam: stored.exam,
+        total: stored.total,
+        grade: stored.grade,
+      };
+    });
+
+    let { error } = await supabase.from("results").upsert(payload, { onConflict: "student_id,subject_id,term,session" });
+    if (error && /session|score_breakdown/i.test(error.message || "")) {
+      const fallbackPayload = payload.map(({ session, class_id, score_breakdown, ...rest }) => rest);
+      ({ error } = await supabase.from("results").upsert(fallbackPayload, { onConflict: "student_id,subject_id,term" }));
     }
-  }
-  if (error) throw error;
+    if (error) throw error;
 
   const publishedMsg =
     status === "published"

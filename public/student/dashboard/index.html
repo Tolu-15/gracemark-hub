@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="/assets/result-dashboard.css" />
 </head>
 
-<body class="bg-slate-50 text-slate-800 portal-app flex min-h-[100dvh] overflow-hidden">
+<body class="bg-slate-50 text-slate-800 portal-app flex h-screen h-[100dvh] overflow-hidden">
 
     <div id="portalNavBackdrop" class="portal-nav-backdrop" hidden></div>
 
@@ -40,7 +40,7 @@
                         class="text-xs text-emerald-400 align-top">Portal</span></h2>
             </div>
         </div>
-        <nav class="flex-1 p-4 space-y-1">
+        <nav class="flex-1 p-4 space-y-1 overflow-y-auto text-sm font-medium">
             <a href="/student/dashboard/"
                 class="flex items-center gap-3 px-3 py-2.5 bg-slate-800 text-white rounded-lg">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -50,6 +50,21 @@
                 </svg>
                 My Overview
             </a>
+            <a href="/student/assessments/"
+                class="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01">
+                    </path>
+                </svg>
+                My Assessments
+            </a>
+
+            <div class="pt-4 pb-1 text-[10px] font-bold uppercase text-slate-500 px-3 tracking-wider">Fees & Financials</div>
+            <a href="/student/school-fees/" class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors">School Fees</a>
+            <a href="/student/payment-history/" class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors">Payment History</a>
+            <a href="/student/receipts/" class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors">Payment Receipts</a>
+            <a href="/student/financial-report/" class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors">Financial Report</a>
         </nav>
         <div class="p-4 border-t border-slate-800">
             <button id="logoutBtn" type="button"
@@ -83,7 +98,7 @@
         </header>
 
         <div class="portal-content p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full flex-1">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-start gap-4">
                     <div class="p-3 bg-emerald-50 rounded-lg text-emerald-600">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -94,7 +109,7 @@
                     </div>
                     <div>
                         <div class="text-sm font-medium text-slate-500 mb-1">Admission Number</div>
-                        <div class="text-xl sm:text-2xl font-bold text-slate-900" id="displayAdmNo">Loading...</div>
+                        <div class="text-xl font-bold text-slate-900" id="displayAdmNo">Loading...</div>
                     </div>
                 </div>
                 <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-start gap-4">
@@ -105,9 +120,23 @@
                         </svg>
                     </div>
                     <div>
-                        <div class="text-sm font-medium text-slate-500 mb-1">Current Class</div>
-                        <div class="text-xl sm:text-2xl font-bold text-slate-900" id="displayClass">Loading...</div>
+                        <div class="text-sm font-medium text-slate-500 mb-1">Enrolled Class</div>
+                        <div class="text-xl font-bold text-slate-900" id="displayClass">Loading...</div>
                     </div>
+                </div>
+                <div class="bg-slate-900 text-white p-6 rounded-xl border border-slate-800 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs font-semibold uppercase text-yellow-400">School Fee Status</span>
+                            <span id="dashFeeStatusBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300">LOADING</span>
+                        </div>
+                        <div id="dashFeeBalance" class="text-2xl font-extrabold text-white mt-1">₦0.00</div>
+                        <span class="text-[11px] text-slate-400 block mt-0.5">Outstanding Balance</span>
+                    </div>
+                    <a href="/student/school-fees/" class="mt-4 inline-flex items-center justify-between text-xs font-bold text-yellow-400 hover:text-yellow-300 transition-colors">
+                        <span>Pay School Fees</span>
+                        <span>→</span>
+                    </a>
                 </div>
             </div>
 
@@ -124,7 +153,7 @@
                     <select id="sessionSelect" class="px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-slate-50 text-slate-700"
                         aria-label="Session" disabled title="Set by school administration"></select>
                     <button id="viewResultsBtn" type="button"
-                        class="px-5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-semibold rounded-lg shadow-lg shadow-violet-500/30 hover:from-violet-500 hover:to-indigo-500 transition-all">
+                        class="px-5 py-2 bg-violet-600 text-white text-sm font-semibold rounded-lg shadow-md hover:bg-violet-700 transition-all">
                         View Results
                     </button>
                 </div>
@@ -137,6 +166,25 @@
                     Loading your approved results…
                 </div>
             </div>
+
+            <!-- CBT Assessments Summary -->
+            <section class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Upcoming CBT Exams -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Upcoming CBT Assessments</h3>
+                    <div id="upcomingCbtContainer" class="space-y-3 flex-1">
+                        <p class="text-sm text-slate-500 py-4 text-center">Loading upcoming assessments...</p>
+                    </div>
+                </div>
+
+                <!-- Recent CBT Attempts -->
+                <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Recent CBT Attempts</h3>
+                    <div id="recentAttemptsContainer" class="space-y-3 flex-1">
+                        <p class="text-sm text-slate-500 py-4 text-center">Loading recent attempts...</p>
+                    </div>
+                </div>
+            </section>
         </div>
     </main>
 

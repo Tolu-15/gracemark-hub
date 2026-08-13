@@ -1,4 +1,4 @@
-﻿import { supabase } from "/js/shared/supabaseClient.js";
+import { supabase } from "/js/shared/supabaseClient.js";
 import { fetchUserProfileByAuthId, destinationForRole } from "/js/shared/auth.js";
 
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -69,6 +69,33 @@ export async function requireRole(
   if (role !== requiredRole) {
     window.location.replace(destinationForRole(role));
     return null;
+  }
+
+  // Check portal lock status for student role
+  if (role === "student") {
+    try {
+      const path = window.location.pathname;
+      const isAllowedFinancialPage = path.includes("/student/school-fees") ||
+        path.includes("/student/payment-history") ||
+        path.includes("/student/receipts") ||
+        path.includes("/student/financial-report") ||
+        path.includes("/student/locked");
+
+      if (!isAllowedFinancialPage) {
+        const { data: student } = await supabase
+          .from("students")
+          .select("portal_access_status")
+          .eq("user_id", auth.user.id)
+          .maybeSingle();
+
+        if (student?.portal_access_status === "LOCKED") {
+          window.location.replace("/student/locked/");
+          return null;
+        }
+      }
+    } catch (lockErr) {
+      console.warn("Guard lock status check:", lockErr);
+    }
   }
 
   return { session: auth.session, user: auth.user, profile };

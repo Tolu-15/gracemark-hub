@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -33,7 +33,7 @@
     <link rel="stylesheet" href="/assets/portal-layout.css" />
 </head>
 
-<body class="bg-slate-50 text-slate-800 portal-app flex min-h-[100dvh] overflow-hidden">
+<body class="bg-slate-50 text-slate-800 portal-app flex h-screen h-[100dvh] overflow-hidden">
 
     <div id="portalNavBackdrop" class="portal-nav-backdrop" hidden></div>
 
@@ -58,32 +58,55 @@
         </div>
         <nav class="flex-1 p-4 space-y-1">
             <a href="/admin/dashboard/"
-                class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors"><svg
-                    class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z">
                     </path>
-                </svg> Dashboard</a>
+                </svg>
+                Dashboard
+            </a>
             <a href="/admin/teachers/"
-                class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors"><svg
-                    class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z">
                     </path>
-                </svg> Manage Teachers</a>
+                </svg>
+                Manage Teachers
+            </a>
             <a href="/admin/students/"
-                class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors"><svg
-                    class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
                     </path>
-                </svg> Manage Students</a>
-            <a href="/admin/approvals/"
-                class="flex items-center gap-3 px-3 py-2.5 bg-slate-800 text-white rounded-lg"><svg class="w-5 h-5"
-                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                </svg>
+                Manage Students
+            </a>
+            <a href="/admin/approvals/" class="flex items-center gap-3 px-3 py-2.5 bg-slate-800 text-white rounded-lg">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg> Result Approvals</a>
+                </svg>
+                Result Approvals
+            </a>
+            <a href="/admin/exams/"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                </svg>
+                Exam Analytics
+            </a>
+            <a href="/admin/promotions/"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                </svg>
+                Class Promotions
+            </a>
         </nav>
         <div class="p-4 border-t border-slate-800 mt-auto shrink-0">
             <button id="logoutBtn" type="button"

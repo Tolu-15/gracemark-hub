@@ -1,4 +1,4 @@
-﻿import { requireRole } from "/js/shared/guard.js";
+import { requireRole } from "/js/shared/guard.js";
 import { supabase } from "/js/shared/supabaseClient.js";
 import { ensureClassByName } from "/js/shared/schoolContext.js";
 import { createAuthUserAsAdmin } from "/js/shared/createAuthUser.js";
@@ -124,6 +124,50 @@ function hideFormError() {
   formError.textContent = "";
 }
 
+const classFilter = document.getElementById("classFilter");
+
+let availableClasses = [];
+let allTeachersList = [];
+let allAssignmentsMap = new Map();
+
+async function loadClassOptions() {
+  const { data, error } = await supabase
+    .from("classes")
+    .select("id, name")
+    .order("name", { ascending: true });
+
+  if (error) {
+    console.error("Error loading classes:", error);
+    return;
+  }
+
+  availableClasses = data ?? [];
+
+  if (classFilter) {
+    if (!availableClasses.length) {
+      classFilter.innerHTML = `<option value="">No classes</option>`;
+    } else {
+      classFilter.innerHTML = [
+        '<option value="">All Classes</option>',
+        ...availableClasses.map((c) => `<option value="${c.name}">${c.name}</option>`),
+      ].join("");
+    }
+  }
+}
+
+function renderClassSelectOptions(selectedClassName) {
+  if (!availableClasses.length) {
+    return `<option value="">No classes configured</option>`;
+  }
+  return [
+    '<option value="">Select Class...</option>',
+    ...availableClasses.map((c) => {
+      const selected = c.name === selectedClassName ? "selected" : "";
+      return `<option value="${c.name}" ${selected}>${c.name}</option>`;
+    }),
+  ].join("");
+}
+
 function clearAssignmentRows() {
   assignmentRows.innerHTML = "";
 }
@@ -139,15 +183,19 @@ function createAssignmentRow({ subject = "", className = "" } = {}) {
     </div>
     <div>
       <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1 md:hidden">Class</label>
-      <input class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
-        placeholder="Class (e.g. JSS 1)" data-field="class" />
+      <select class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 bg-white font-medium text-slate-800"
+        data-field="class">
+        ${renderClassSelectOptions(className)}
+      </select>
     </div>
     <div class="flex md:justify-end">
       <button type="button" class="px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 rounded-lg" data-action="remove">Remove</button>
     </div>
   `;
   row.querySelector('[data-field="subject"]').value = subject;
-  row.querySelector('[data-field="class"]').value = className;
+  if (className) {
+    row.querySelector('[data-field="class"]').value = className;
+  }
   row.querySelector('[data-action="remove"]').addEventListener("click", () => row.remove());
   assignmentRows.appendChild(row);
 }
@@ -229,8 +277,9 @@ async function loadTeachers() {
     .order("display_name", { ascending: true });
   if (error) throw error;
 
-  const teacherIds = (teachers ?? []).map((t) => t.auth_id).filter(Boolean);
-  const assignmentsByTeacher = new Map();
+  allTeachersList = teachers ?? [];
+  const teacherIds = allTeachersList.map((t) => t.auth_id).filter(Boolean);
+  allAssignmentsMap.clear();
 
   if (teacherIds.length) {
     const a = await supabase
@@ -256,12 +305,27 @@ async function loadTeachers() {
         const classesList = Array.from(classesSet).sort((x, y) => x.localeCompare(y));
         parts.push(`${subjectName} (${classesList.join(", ")})`);
       });
-      assignmentsByTeacher.set(teacherId, parts.join("; "));
+      allAssignmentsMap.set(teacherId, parts.join("; "));
     });
   }
 
-  renderTeachers(teachers ?? [], assignmentsByTeacher);
+  applyClassFilter();
 }
+
+function applyClassFilter() {
+  const selectedClass = classFilter ? classFilter.value : "";
+  if (!selectedClass) {
+    renderTeachers(allTeachersList, allAssignmentsMap);
+  } else {
+    const filtered = allTeachersList.filter((t) => {
+      const summary = allAssignmentsMap.get(t.auth_id) || "";
+      return summary.includes(selectedClass);
+    });
+    renderTeachers(filtered, allAssignmentsMap);
+  }
+}
+
+classFilter?.addEventListener("change", applyClassFilter);
 
 function openAddModal() {
   teacherForm.reset();
@@ -377,7 +441,21 @@ teacherForm.addEventListener("submit", async (e) => {
     await supabase.from("teacher_assignments").delete().eq("teacher_user_id", authId);
 
     for (const item of assignments) {
-      const cls = await ensureClassByName(item.className);
+      let { data: cls } = await supabase
+        .from("classes")
+        .select("id")
+        .eq("name", item.className)
+        .limit(1)
+        .maybeSingle();
+
+      if (!cls?.id) {
+        cls = await getClassByName(item.className);
+      }
+
+      if (!cls?.id) {
+        throw new Error(`Class "${item.className}" was not found. Please select a valid class.`);
+      }
+
       const subject = await ensureSubjectByName(item.subject);
 
       const ins = await supabase.from("teacher_assignments").insert({
@@ -410,6 +488,7 @@ async function init() {
     if (!ok) return;
 
     if (authLoader) authLoader.style.display = "none";
+    await loadClassOptions();
     await loadTeachers();
   } catch (error) {
     console.error("Teachers init error:", error);

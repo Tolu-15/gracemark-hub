@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Financial Report — Gracemark Student Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/assets/portal-layout.css" />
+    <style>
+        body { font-family: 'DM Sans', sans-serif; }
+        @media print {
+            body * { visibility: hidden; }
+            #printableReport, #printableReport * { visibility: visible; }
+            #printableReport { position: absolute; left: 0; top: 0; width: 100%; }
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-800 portal-app flex h-screen h-[100dvh] overflow-hidden">
+
+    <!-- Auth Loader -->
+    <div id="authLoader" class="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center">
+        <div class="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin mb-3"></div>
+        <p class="text-sm font-medium text-slate-500">Loading Financial Report...</p>
+    </div>
+
+    <!-- Sidebar -->
+    <aside id="portalSidebar" class="portal-sidebar w-64 bg-slate-950 text-slate-300 flex flex-col">
+        <div class="p-6 border-b border-slate-800 flex items-center justify-between gap-2">
+            <div class="portal-sidebar-brand flex items-center gap-3 min-w-0">
+                <div class="w-8 h-8 rounded bg-yellow-500 flex items-center justify-center font-bold text-slate-950">G</div>
+                <h2 class="text-lg font-bold text-white tracking-tight">Student Portal</h2>
+            </div>
+        </div>
+
+        <nav class="flex-1 p-4 space-y-1 overflow-y-auto text-sm font-medium">
+            <a href="/student/dashboard/" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">Dashboard</a>
+            <a href="/student/assessments/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">CBT Assessments</a>
+
+            <div class="pt-4 pb-1 text-[10px] font-bold uppercase text-slate-500 px-3 tracking-wider">Fees & Financials</div>
+            <a href="/student/school-fees/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">School Fees</a>
+            <a href="/student/payment-history/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">Payment History</a>
+            <a href="/student/receipts/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">Payment Receipts</a>
+            <a href="/student/financial-report/" class="flex items-center gap-3 px-3 py-2 bg-slate-800 text-white rounded-lg">Financial Report</a>
+        </nav>
+    </aside>
+
+    <!-- Main Container -->
+    <main class="portal-main flex-1 flex flex-col min-h-0 overflow-y-auto">
+        <!-- Top Bar -->
+        <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-20 shrink-0">
+            <div>
+                <h1 class="text-xl font-bold text-slate-900">Student Financial Report</h1>
+                <p class="text-xs text-slate-500">Comprehensive statement of account and fee payment summary.</p>
+            </div>
+            <button onclick="window.print()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm">
+                Print Statement
+            </button>
+        </header>
+
+        <!-- Content Area -->
+        <div class="p-6 max-w-4xl mx-auto w-full space-y-6 flex-1">
+            <div id="printableReport" class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
+                <!-- Header -->
+                <div class="flex flex-wrap items-center justify-between border-b border-slate-100 pb-5 gap-4">
+                    <div>
+                        <h2 class="text-xl font-extrabold text-slate-900">GRACEMARK ACADEMY</h2>
+                        <p class="text-xs font-bold text-indigo-600 uppercase tracking-wider">OFFICIAL STATEMENT OF ACCOUNT</p>
+                    </div>
+                    <div id="reportStatusBadge">
+                        <!-- Dynamic Status -->
+                    </div>
+                </div>
+
+                <!-- Student Info Card -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs">
+                    <div>
+                        <span class="text-slate-400 font-semibold block">Student Name</span>
+                        <span id="repStudentName" class="font-extrabold text-slate-900">John Doe</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 font-semibold block">Admission No.</span>
+                        <span id="repAdmNo" class="font-bold text-slate-800 font-mono">ADM-2026-001</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 font-semibold block">Class</span>
+                        <span id="repClass" class="font-bold text-slate-800">JSS 1</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 font-semibold block">Active Session / Term</span>
+                        <span id="repSessionTerm" class="font-bold text-slate-800">2026/2027 • First Term</span>
+                    </div>
+                </div>
+
+                <!-- Financial Totals -->
+                <div class="border border-slate-200 rounded-xl overflow-hidden text-xs">
+                    <table class="w-full text-left">
+                        <thead class="bg-slate-50 text-slate-500 font-semibold uppercase border-b border-slate-200">
+                            <tr>
+                                <th class="px-5 py-3">Financial Overview Item</th>
+                                <th class="px-5 py-3 text-right">Amount (₦)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 font-medium text-slate-700">
+                            <tr>
+                                <td class="px-5 py-3">Total Expected School Fee</td>
+                                <td id="repTotalFee" class="px-5 py-3 text-right font-bold text-slate-900">₦0.00</td>
+                            </tr>
+                            <tr>
+                                <td class="px-5 py-3">Total Verified Payments Received</td>
+                                <td id="repPaid" class="px-5 py-3 text-right font-bold text-emerald-700">₦0.00</td>
+                            </tr>
+                            <tr class="bg-slate-50/50">
+                                <td class="px-5 py-3 font-bold text-slate-900">Net Outstanding Balance</td>
+                                <td id="repBalance" class="px-5 py-3 text-right font-extrabold text-rose-700 text-sm">₦0.00</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Detailed Payment History -->
+                <div class="space-y-3">
+                    <h3 class="font-bold text-sm text-slate-900 border-b border-slate-100 pb-2">Verified Payment Ledger</h3>
+                    <div class="border border-slate-200 rounded-xl overflow-hidden">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-50 text-slate-500 font-semibold uppercase border-b border-slate-200">
+                                <tr>
+                                    <th class="px-4 py-2.5">Date</th>
+                                    <th class="px-4 py-2.5">Transaction Ref</th>
+                                    <th class="px-4 py-2.5">Receipt No</th>
+                                    <th class="px-4 py-2.5 text-right">Amount Paid (₦)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="repLedgerBody" class="divide-y divide-slate-100">
+                                <tr><td colspan="4" class="p-6 text-center text-slate-500">Loading ledger...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="/js/student/studentFinancialReport.js"></script>
+</body>
+
+</html>

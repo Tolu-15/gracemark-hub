@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Payment Receipts — Gracemark Student Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/assets/portal-layout.css" />
+    <style>
+        body { font-family: 'DM Sans', sans-serif; }
+        @media print {
+            body * { visibility: hidden; }
+            #printableReceiptArea, #printableReceiptArea * { visibility: visible; }
+            #printableReceiptArea { position: absolute; left: 0; top: 0; width: 100%; }
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-800 portal-app flex h-screen h-[100dvh] overflow-hidden">
+
+    <!-- Auth Loader -->
+    <div id="authLoader" class="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center">
+        <div class="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin mb-3"></div>
+        <p class="text-sm font-medium text-slate-500">Loading Payment Receipts...</p>
+    </div>
+
+    <!-- Sidebar -->
+    <aside id="portalSidebar" class="portal-sidebar w-64 bg-slate-950 text-slate-300 flex flex-col">
+        <div class="p-6 border-b border-slate-800 flex items-center justify-between gap-2">
+            <div class="portal-sidebar-brand flex items-center gap-3 min-w-0">
+                <div class="w-8 h-8 rounded bg-yellow-500 flex items-center justify-center font-bold text-slate-950">G</div>
+                <h2 class="text-lg font-bold text-white tracking-tight">Student Portal</h2>
+            </div>
+        </div>
+
+        <nav class="flex-1 p-4 space-y-1 overflow-y-auto text-sm font-medium">
+            <a href="/student/dashboard/" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">Dashboard</a>
+            <a href="/student/assessments/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">CBT Assessments</a>
+
+            <div class="pt-4 pb-1 text-[10px] font-bold uppercase text-slate-500 px-3 tracking-wider">Fees & Financials</div>
+            <a href="/student/school-fees/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">School Fees</a>
+            <a href="/student/payment-history/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">Payment History</a>
+            <a href="/student/receipts/" class="flex items-center gap-3 px-3 py-2 bg-slate-800 text-white rounded-lg">Payment Receipts</a>
+            <a href="/student/financial-report/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">Financial Report</a>
+        </nav>
+    </aside>
+
+    <!-- Main Container -->
+    <main class="portal-main flex-1 flex flex-col min-h-0 overflow-y-auto">
+        <!-- Top Bar -->
+        <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-20 shrink-0">
+            <div>
+                <h1 class="text-xl font-bold text-slate-900">Payment Receipts</h1>
+                <p class="text-xs text-slate-500">Official receipt documents for verified successful payments.</p>
+            </div>
+        </header>
+
+        <!-- Content Area -->
+        <div class="p-6 max-w-5xl mx-auto w-full space-y-6 flex-1">
+            <div id="receiptsList" class="space-y-4">
+                <!-- Receipts list items rendered here -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Receipt Preview & Print Modal -->
+    <div id="receiptModal" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-2xl max-w-xl w-full p-6 border border-slate-200 shadow-2xl space-y-6">
+            
+            <div id="printableReceiptArea" class="bg-white p-6 rounded-xl border border-slate-200 space-y-6">
+                <!-- Header -->
+                <div class="text-center border-b border-slate-200 pb-4">
+                    <div class="w-10 h-10 rounded bg-yellow-500 flex items-center justify-center font-bold text-slate-950 mx-auto mb-2 text-xl">G</div>
+                    <h2 class="text-lg font-extrabold text-slate-900">GRACEMARK ACADEMY</h2>
+                    <p class="text-xs text-slate-500 uppercase tracking-widest font-bold">Official Payment Receipt</p>
+                </div>
+
+                <!-- Metadata Grid -->
+                <div class="grid grid-cols-2 gap-4 text-xs">
+                    <div>
+                        <span class="text-slate-400 font-semibold block">Receipt Number</span>
+                        <span id="recNo" class="font-extrabold text-slate-900 font-mono text-sm">REC-2026-000000</span>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-slate-400 font-semibold block">Payment Reference</span>
+                        <span id="recRef" class="font-bold text-slate-700 font-mono">PAY-000000</span>
+                    </div>
+                </div>
+
+                <div class="border-t border-b border-slate-100 py-3 space-y-1 text-xs">
+                    <div class="flex justify-between"><span class="text-slate-500">Student Name:</span><span id="recStudentName" class="font-bold text-slate-900">John Doe</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Admission No:</span><span id="recAdmNo" class="font-semibold text-slate-800">ADM-2026-001</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Class:</span><span id="recClass" class="font-semibold text-slate-800">JSS 1</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Academic Session / Term:</span><span id="recSessionTerm" class="font-semibold text-slate-800">2026/2027 • First Term</span></div>
+                </div>
+
+                <!-- Financials breakdown -->
+                <div class="space-y-2 text-xs">
+                    <div class="flex justify-between font-medium text-slate-600"><span>Total Expected Fee:</span><span id="recTotalFee">₦150,000.00</span></div>
+                    <div class="flex justify-between font-bold text-emerald-700 text-sm py-1 border-t border-b border-emerald-100 bg-emerald-50/50 px-2 rounded">
+                        <span>Amount Paid in this Receipt:</span><span id="recPaid">₦50,000.00</span>
+                    </div>
+                    <div class="flex justify-between font-medium text-slate-600"><span>Remaining Balance:</span><span id="recBalance">₦100,000.00</span></div>
+                    <div class="flex justify-between font-medium text-slate-600"><span>Payment Date:</span><span id="recDate">August 7, 2026</span></div>
+                </div>
+
+                <div class="pt-4 border-t border-slate-200 text-center text-[10px] text-slate-400 uppercase tracking-widest font-bold">
+                    Verified & Authorized by Gracemark Academy
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button id="btnCloseReceiptModal" class="px-4 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700">Close</button>
+                <button id="btnPrintReceipt" class="px-5 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800">Print Receipt</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/js/student/studentReceipts.js"></script>
+</body>
+
+</html>

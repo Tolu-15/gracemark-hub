@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Online Admission Portal — Gracemark Academy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script src="https://js.paystack.co/v1/inline.js"></script>
+    <style>
+        body {
+            font-family: 'DM Sans', sans-serif;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col justify-between selection:bg-slate-900 selection:text-white">
+
+    <!-- Header -->
+    <header class="border-b border-slate-200 bg-white sticky top-0 z-30">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center font-black text-white text-xl shadow-sm">
+                    G
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-lg text-slate-900 leading-none">Gracemark Academy</h1>
+                    <p class="text-xs text-slate-500 font-medium tracking-wide uppercase mt-0.5">Online Admission & Registration</p>
+                </div>
+            </div>
+            <a href="/" class="text-xs font-semibold text-slate-700 hover:text-slate-900 transition-colors bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-lg border border-slate-200">
+                Portal Login →
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="max-w-4xl mx-auto px-4 py-8 w-full flex-1">
+        
+        <!-- Progress Steps Header -->
+        <div class="mb-6 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between text-xs font-bold text-slate-500 mb-3" id="stepIndicatorLabel">
+                <span>STEP 1 OF 5</span>
+                <span class="text-slate-900">Student Personal Details</span>
+            </div>
+            <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                <div id="progressBar" class="bg-slate-900 h-full rounded-full transition-all duration-500" style="width: 20%;"></div>
+            </div>
+            <div class="grid grid-cols-5 gap-2 text-[10px] sm:text-xs text-center font-medium mt-3 text-slate-400">
+                <span class="text-slate-900 font-bold" id="tabStep1">1. Personal</span>
+                <span id="tabStep2">2. Education</span>
+                <span id="tabStep3">3. Guardian</span>
+                <span id="tabStep4">4. Accommodation</span>
+                <span id="tabStep5">5. Payment</span>
+            </div>
+        </div>
+
+        <!-- Form Card Container -->
+        <form id="admissionForm" class="bg-white border border-slate-200 rounded-2xl p-6 sm:p-10 shadow-sm space-y-6">
+            
+            <!-- STEP 1: Student Personal Details -->
+            <div id="step1" class="step-content space-y-5">
+                <div class="border-b border-slate-100 pb-3">
+                    <h2 class="text-xl font-bold text-slate-900">Student Personal Information</h2>
+                    <p class="text-xs text-slate-500">Enter candidate's legal details as shown on official birth records.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Surname *</label>
+                        <input type="text" id="surname" required class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none" placeholder="e.g. Adebayo" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">First & Middle Names *</label>
+                        <input type="text" id="first_names" required class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none" placeholder="e.g. Oluwaseun Emmanuel" />
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Date of Birth *</label>
+                        <input type="date" id="date_of_birth" required class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Gender *</label>
+                        <select id="gender" required class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none">
+                            <option value="">Select gender</option>
+                            <option value="M">Male</option>
+                            <option value="F">Female</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Desired Class *</label>
+                        <select id="desired_class" required class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none">
+                            <option value="">Select Class</option>
+                            <option value="JSS 1">JSS 1</option>
+                            <option value="JSS 2">JSS 2</option>
+                            <option value="JSS 3">JSS 3</option>
+                            <option value="SSS 1 Science">SSS 1 Science</option>
+                            <option value="SSS 1 Arts">SSS 1 Arts</option>
+                            <option value="SSS 1 Commercial">SSS 1 Commercial</option>
+                            <option value="SSS 2 Science">SSS 2 Science</option>
+                            <option value="SSS 2 Arts">SSS 2 Arts</option>
+                            <option value="SSS 2 Commercial">SSS 2 Commercial</option>
+                            <option value="SSS 3 Science">SSS 3 Science</option>
+                            <option value="SSS 3 Arts">SSS 3 Arts</option>
+                            <option value="SSS 3 Commercial">SSS 3 Commercial</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">State of Origin *</label>
+                        <input type="text" id="state_of_origin" required class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none" placeholder="e.g. Lagos State" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Home Address *</label>
+                        <input type="text" id="home_address" required class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none" placeholder="Street Address, City, State" />
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Student Account Password (Optional)</label>
+                        <input type="password" id="student_password" class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none" placeholder="Default is: gracemark" />
+                        <p class="text-[11px] text-slate-400 mt-1">Leave blank to use default password: <code class="text-slate-700 bg-slate-100 px-1 py-0.5 rounded">gracemark</code></p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Passport Photo URL (Image Link)</label>
+                        <input type="url" id="passport_photo_url" class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none" placeholder="https://example.com/photo.jpg" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 2: Educational Background -->
+            <div id="step2" class="step-content hidden space-y-5">
+                <div class="border-b border-slate-100 pb-3">
+                    <h2 class="text-xl font-bold text-slate-900">Previous Educational Background</h2>
+                    <p class="text-xs text-slate-500">Provide details on candidate's previous or current school.</p>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Previous School Name *</label>
+                        <input type="text" id="previous_school_name" required class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none" placeholder="e.g. St. Gregory Primary School" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Previous School Address</label>
+                        <input type="text" id="previous_school_address" class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none" placeholder="School location" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Last Class Completed</label>
+                        <input type="text" id="previous_class" class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none" placeholder="e.g. Primary 6 or JSS 3" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 3: Parent / Guardian Info -->
+            <div id="step3" class="step-content hidden space-y-5">
+                <div class="border-b border-slate-100 pb-3">
+                    <h2 class="text-xl font-bold text-slate-900">Parent / Guardian Information</h2>
+                    <p class="text-xs text-slate-500">Login credentials and fee invoices will be sent to guardian contact details.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Parent / Guardian Full Name *</label>
+                        <input type="text" id="parent_guardian_name" required class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none" placeholder="Mr./Mrs. Surname First Name" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Parent Email Address *</label>
+                        <input type="email" id="parent_guardian_email" required class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none" placeholder="guardian@example.com" />
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Parent Phone Number *</label>
+                        <input type="tel" id="parent_guardian_phone" required class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none" placeholder="08012345678" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Occupation</label>
+                        <input type="text" id="parent_guardian_occupation" class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none" placeholder="e.g. Architect, Engineer, Banker" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 4: Accommodation & Medical -->
+            <div id="step4" class="step-content hidden space-y-5">
+                <div class="border-b border-slate-100 pb-3">
+                    <h2 class="text-xl font-bold text-slate-900">Boarding & Medical Requirements</h2>
+                    <p class="text-xs text-slate-500">Specify accommodation preferences and health information.</p>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="flex items-center gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <input type="checkbox" id="is_boarding" class="w-5 h-5 rounded border-slate-300 text-slate-900 focus:ring-slate-900" />
+                        <div>
+                            <label for="is_boarding" class="text-sm font-semibold text-slate-900 block">Student Requires Boarding Accommodation</label>
+                            <span class="text-xs text-slate-500">Check if candidate will live in the school hostel.</span>
+                        </div>
+                    </div>
+
+                    <div id="boardingTypeContainer" class="hidden space-y-1">
+                        <label class="block text-xs font-semibold text-slate-700">Boarding Type</label>
+                        <select id="boarding_type" class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none">
+                            <option value="full">Full Boarding (7 Days/Week)</option>
+                            <option value="weekday">Weekday Boarding (Mon - Fri)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Medical Conditions or Allergies (If Any)</label>
+                        <textarea id="medical_conditions" rows="2" class="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none" placeholder="e.g. Asthma, Peanut allergy, None"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 5: Payment & Final Submit -->
+            <div id="step5" class="step-content hidden space-y-5">
+                <div class="border-b border-slate-100 pb-3">
+                    <h2 class="text-xl font-bold text-slate-900">Application Review & Registration Fee</h2>
+                    <p class="text-xs text-slate-500">Review application summary and complete registration.</p>
+                </div>
+
+                <div class="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-3">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-500">Application Fee:</span>
+                        <strong class="text-slate-900">₦10,000.00</strong>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-500">Target Class:</span>
+                        <strong class="text-slate-900" id="summaryClass">Selected Class</strong>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-500">Candidate Name:</span>
+                        <strong class="text-slate-900" id="summaryName">Candidate Full Name</strong>
+                    </div>
+                    <div class="border-t border-slate-200 pt-3 flex justify-between text-base font-bold">
+                        <span class="text-slate-700">Total Payable:</span>
+                        <span class="text-slate-900 text-lg">₦10,000.00</span>
+                    </div>
+                </div>
+
+                <p class="text-xs text-slate-500">Your student account will be created automatically upon registration so you can take entrance exams and update your profile in the student portal.</p>
+            </div>
+
+            <!-- Navigation Action Buttons -->
+            <div class="flex justify-between items-center border-t border-slate-100 pt-6">
+                <button type="button" id="btnPrev" class="hidden px-5 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-semibold transition-colors shadow-sm">
+                    ← Previous
+                </button>
+
+                <div class="ml-auto flex gap-3">
+                    <button type="button" id="btnNext" class="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-bold shadow-sm transition-colors">
+                        Continue →
+                    </button>
+                    <button type="submit" id="btnSubmit" class="hidden px-8 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-extrabold shadow-sm transition-colors">
+                        Complete Registration & Pay
+                    </button>
+                </div>
+            </div>
+
+        </form>
+    </main>
+
+    <!-- Modal: Registration Complete & Credentials -->
+    <div id="completionModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 max-w-md w-full shadow-xl space-y-4">
+            <div class="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto text-2xl font-bold">
+                ✓
+            </div>
+            <div class="text-center">
+                <h3 class="text-xl font-extrabold text-slate-900">Registration Successful!</h3>
+                <p class="text-xs text-slate-500 mt-1">Your student account has been created automatically.</p>
+            </div>
+
+            <div class="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-2 text-sm">
+                <div class="flex justify-between">
+                    <span class="text-slate-500">Admission No:</span>
+                    <strong id="modalAdmNo" class="text-slate-900 font-mono">ADM-2026-1001</strong>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-500">Email:</span>
+                    <strong id="modalEmail" class="text-slate-900">student@example.com</strong>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-500">Password:</span>
+                    <strong id="modalPassword" class="text-slate-900 font-mono">gracemark</strong>
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <button type="button" id="modalGoToPortalBtn" class="w-full py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm text-sm">
+                    Log In & Take Entrance Exam →
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-500">
+        © 2026 Gracemark Academy. Secure Payment Gateway via Paystack.
+    </footer>
+
+    <script type="module" src="/js/public/admissionForm.js"></script>
+</body>
+
+</html>

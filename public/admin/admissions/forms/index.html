@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admission Forms — Gracemark Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/assets/portal-layout.css" />
+    <style>
+        body { font-family: 'DM Sans', sans-serif; }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-800 portal-app flex h-screen h-[100dvh] overflow-hidden">
+
+    <!-- Auth Loader -->
+    <div id="authLoader" class="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center">
+        <div class="w-8 h-8 border-4 border-slate-900 border-t-transparent rounded-full animate-spin mb-3"></div>
+        <p class="text-sm font-medium text-slate-500">Loading Admission Forms...</p>
+    </div>
+
+    <!-- Sidebar -->
+    <aside id="portalSidebar" class="portal-sidebar w-64 bg-slate-950 text-slate-300 flex flex-col">
+        <div class="p-6 border-b border-slate-800 flex items-center justify-between gap-2">
+            <div class="portal-sidebar-brand flex items-center gap-3 min-w-0">
+                <div class="w-8 h-8 rounded bg-yellow-500 flex items-center justify-center font-bold text-slate-950">G</div>
+                <h2 class="text-lg font-bold text-white tracking-tight">Gracemark <span class="text-xs text-yellow-500 align-top">V2</span></h2>
+            </div>
+        </div>
+
+        <nav class="flex-1 p-4 space-y-1 overflow-y-auto text-sm font-medium">
+            <a href="/admin/dashboard/" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">Dashboard</a>
+            
+            <div class="pt-3 pb-1 text-[10px] font-bold uppercase text-slate-500 px-3 tracking-wider">Students & Portal</div>
+            <a href="/admin/students/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">Manage Students</a>
+            <a href="/admin/students/payment-status/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">Payment Status</a>
+            <a href="/admin/students/access/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">Portal Access</a>
+
+            <div class="pt-3 pb-1 text-[10px] font-bold uppercase text-slate-500 px-3 tracking-wider">Finance & Fees</div>
+            <a href="/admin/finance/fees/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">Fee Structure</a>
+            <a href="/admin/finance/payments/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">School Fee Payments</a>
+            <a href="/admin/finance/reports/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">Financial Reports</a>
+
+            <div class="pt-3 pb-1 text-[10px] font-bold uppercase text-slate-500 px-3 tracking-wider">Admissions</div>
+            <a href="/admin/admissions/forms/" class="flex items-center gap-3 px-3 py-2 bg-slate-800 text-white rounded-lg">Admission Forms</a>
+            <a href="/admin/admissions/applicants/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">Applicants</a>
+
+            <div class="pt-3 pb-1 text-[10px] font-bold uppercase text-slate-500 px-3 tracking-wider">Settings</div>
+            <a href="/admin/settings/portal-access/" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 hover:text-white transition-colors">Portal Access Policy</a>
+        </nav>
+    </aside>
+
+    <!-- Main Container -->
+    <main class="portal-main flex-1 flex flex-col min-h-0 overflow-y-auto">
+        <!-- Top Bar -->
+        <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-20 shrink-0">
+            <div>
+                <h1 class="text-xl font-bold text-slate-900">Admission Form Management</h1>
+                <p class="text-xs text-slate-500">Configure online admission application forms and application fee amounts.</p>
+            </div>
+            <button id="btnOpenAddFormModal" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
+                + Create Admission Form
+            </button>
+        </header>
+
+        <!-- Content Area -->
+        <div class="p-6 max-w-7xl mx-auto w-full space-y-6 flex-1">
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <table class="w-full text-left border-collapse text-xs">
+                    <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
+                        <tr>
+                            <th class="px-5 py-3.5">Form Name</th>
+                            <th class="px-5 py-3.5">Session</th>
+                            <th class="px-5 py-3.5 text-right">Application Fee (₦)</th>
+                            <th class="px-5 py-3.5 text-center">Status</th>
+                            <th class="px-5 py-3.5 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="formsTableBody" class="divide-y divide-slate-100">
+                        <tr><td colspan="5" class="p-8 text-center text-slate-500">Loading admission forms...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Add/Edit Form Modal -->
+    <div id="formModal" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                <h3 id="formModalTitle" class="font-bold text-base text-slate-900">Create Admission Form</h3>
+                <button id="btnCloseFormModal" class="text-slate-400 hover:text-slate-600 font-bold text-lg">×</button>
+            </div>
+            
+            <form id="admForm" class="space-y-4">
+                <input type="hidden" id="editFormId" />
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Form Name *</label>
+                    <input type="text" id="modalFormName" required placeholder="e.g. 2026/2027 Admission Form" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs" />
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1">Academic Session *</label>
+                        <select id="modalFormSession" required class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white"></select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1">Application Fee (₦) *</label>
+                        <input type="number" step="100" id="modalFormAmount" required min="0" value="10000" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs" />
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Status</label>
+                    <select id="modalFormStatus" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Description</label>
+                    <input type="text" id="modalFormDesc" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs" placeholder="e.g. Official Gracemark online entrance application form" />
+                </div>
+
+                <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                    <button type="button" id="btnCancelFormModal" class="px-4 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700">Cancel</button>
+                    <button type="submit" id="btnSaveForm" class="px-5 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800">Save Form</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="module" src="/js/admin/admissionForms.js"></script>
+</body>
+
+</html>

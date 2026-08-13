@@ -1,7 +1,8 @@
-﻿import { requireRole } from "/js/shared/guard.js";
+import { requireRole } from "/js/shared/guard.js";
 import { signOut } from "/js/shared/auth.js";
 import { supabase } from "/js/shared/supabaseClient.js";
 import { getLatestAppSettings } from "/js/shared/appSettings.js";
+import { getStudentCurrentInvoice, formatCurrency } from "/js/shared/schoolFinance.js";
 import { GRADING_CONFIG, normalizeBreakdown, calculateStudentResult } from "/shared/gradingEngine.js";
 import { openResultDashboard } from "/js/student/resultDashboard/mount.js";
 
@@ -51,36 +52,96 @@ function applyLatestSessionToUi(settings) {
   }
 
   if (sessionSelect) {
-    sessionSelect.innerHTML = "";
-    if (session) {
-      const option = document.createElement("option");
-      option.value = session;
-      option.textContent = session;
-      option.selected = true;
-      sessionSelect.appendChild(option);
-    } else {
-      const option = document.createElement("option");
-      option.value = "";
-      option.textContent = "No session configured";
-      sessionSelect.appendChild(option);
-    }
-    sessionSelect.disabled = true;
+    const sessionList = ["2027/2028", "2026/2027", "2025/2026", "2024/2025"];
+    if (session && !sessionList.includes(session)) sessionList.unshift(session);
+
+    sessionSelect.innerHTML = sessionList
+      .map((s) => `<option value="${s}" ${s === session ? "selected" : ""}>${s}</option>`)
+      .join("");
+    sessionSelect.disabled = false;
   }
 }
 
 async function loadStudentProfile(authId) {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("students")
     .select("id, admission_no, name, class_id, classes(name)")
     .eq("user_id", authId)
     .maybeSingle();
-  if (error) throw error;
-  if (!data) throw new Error("Student record not found. Ask an administrator to add your profile.");
+
+  if (error) console.warn("Student lookup notice:", error.message);
+
+  if (!data) {
+    // Auto-create missing student profile record
+    const { data: { user } } = await supabase.auth.getUser();
+    const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "Student";
+    const admissionNo = "GMA" + Math.floor(100000 + Math.random() * 900000);
+
+    // Fetch existing class or auto-create a default class if empty
+    let { data: defaultClass } = await supabase.from("classes").select("id").limit(1).maybeSingle();
+
+    if (!defaultClass) {
+      const { data: school } = await supabase.from("schools").select("id").limit(1).maybeSingle();
+      if (school?.id) {
+        const { data: createdClass } = await supabase
+          .from("classes")
+          .insert([{ name: "General Admission", school_id: school.id, session: "2026/2027" }])
+          .select("id")
+          .maybeSingle();
+        defaultClass = createdClass;
+      }
+    }
+
+    if (defaultClass?.id) {
+      const { data: newStudent } = await supabase
+        .from("students")
+        .upsert(
+          [
+            {
+              user_id: authId,
+              class_id: defaultClass.id,
+              admission_no: admissionNo,
+              name: displayName,
+            },
+          ],
+          { onConflict: "user_id" }
+        )
+        .select("id, admission_no, name, class_id, classes(name)")
+        .maybeSingle();
+
+      data = newStudent;
+    }
+  }
+
+  if (!data) throw new Error("Unable to initialize student profile. Please contact administration.");
 
   currentStudent = data;
   studentName.textContent = data.name || "Student";
   if (displayAdmNo) displayAdmNo.textContent = data.admission_no || "—";
   if (displayClass) displayClass.textContent = data.classes?.name || "Unassigned";
+
+  // Fetch Fee Summary
+  try {
+    const fin = await getStudentCurrentInvoice(data.id);
+    const dashFeeBalance = document.getElementById("dashFeeBalance");
+    const dashFeeStatusBadge = document.getElementById("dashFeeStatusBadge");
+
+    if (fin) {
+      if (dashFeeBalance) dashFeeBalance.textContent = formatCurrency(fin.outstandingBalance);
+      if (dashFeeStatusBadge) {
+        dashFeeStatusBadge.textContent = fin.status;
+        if (fin.status === "FULLY PAID") {
+          dashFeeStatusBadge.className = "px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500 text-slate-950 uppercase";
+        } else if (fin.status === "PARTIALLY PAID") {
+          dashFeeStatusBadge.className = "px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-400 text-slate-950 uppercase";
+        } else {
+          dashFeeStatusBadge.className = "px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-500 text-white uppercase";
+        }
+      }
+    }
+  } catch (finErr) {
+    console.warn("Dashboard fee summary fetch:", finErr);
+  }
 }
 
 async function loadLatestSettings() {
@@ -134,7 +195,7 @@ function renderResultCards(rows) {
         <span class="text-xs font-bold px-2 py-1 rounded bg-emerald-50 text-emerald-700">${row.grade ?? "—"}</span>
       </div>
       <p class="text-3xl font-bold text-slate-900 mb-3">${row.total ?? 0}<span class="text-base font-medium text-slate-500"> / 100</span></p>
-      <button type="button" class="view-result-btn w-full py-2 text-sm font-semibold rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md hover:from-violet-500 hover:to-indigo-500 transition-all">
+      <button type="button" class="view-result-btn w-full py-2 text-sm font-semibold rounded-lg bg-violet-600 text-white shadow-md hover:bg-violet-700 transition-all">
         View Result
       </button>
     `;
@@ -233,27 +294,33 @@ async function loadApprovedResults() {
   if (!currentStudent?.id) return;
 
   const term = termSelect?.value || latestSettings?.current_term || "term1";
+  const selectedSession = sessionSelect?.value || latestSettings?.current_session || "";
   renderResultsEmpty("Loading approved results…");
 
-  const baseQuery = () =>
-    supabase
-      .from("results")
-      .select(
-        "id, subject_id, cw, hw, test, project, exam, total, grade, term, status, score_breakdown, subjects(name)"
-      )
-      .eq("student_id", currentStudent.id)
-      .eq("term", term)
-      .eq("status", "approved");
+  let baseQuery = supabase
+    .from("results")
+    .select(
+      "id, subject_id, cw, hw, test, project, exam, total, grade, term, status, score_breakdown, subjects(name)"
+    )
+    .eq("student_id", currentStudent.id)
+    .eq("term", term)
+    .eq("status", "approved");
 
-  let { data, error } = await baseQuery();
+  if (selectedSession) {
+    baseQuery = baseQuery.eq("session", selectedSession);
+  }
+
+  let { data, error } = await baseQuery;
 
   if (error && /score_breakdown/i.test(error.message || "")) {
-    ({ data, error } = await supabase
+    let fallbackQuery = supabase
       .from("results")
       .select("id, subject_id, cw, hw, test, project, exam, total, grade, term, status, subjects(name)")
       .eq("student_id", currentStudent.id)
       .eq("term", term)
-      .eq("status", "approved"));
+      .eq("status", "approved");
+    if (selectedSession) fallbackQuery = fallbackQuery.eq("session", selectedSession);
+    ({ data, error } = await fallbackQuery);
   }
 
   if (error) throw error;
@@ -285,6 +352,94 @@ function refreshResults() {
   });
 }
 
+async function loadCbtSummary() {
+  const upcomingCbtContainer = document.getElementById("upcomingCbtContainer");
+  const recentAttemptsContainer = document.getElementById("recentAttemptsContainer");
+
+  if (!upcomingCbtContainer || !recentAttemptsContainer || !currentStudent || !latestSettings) return;
+
+  try {
+    const currentTerm = latestSettings.current_term || "term1";
+    const currentSession = latestSettings.current_session || "";
+
+    // 1. Fetch upcoming assessments
+    const { data: upcoming, error: upErr } = await supabase
+      .from("assessments")
+      .select("id, title, assessment_type, start_date, end_date, duration, total_marks, subjects(name)")
+      .eq("class_id", currentStudent.class_id)
+      .eq("status", "published")
+      .eq("session", currentSession)
+      .eq("term", currentTerm)
+      .order("created_at", { ascending: false });
+
+    if (upErr) throw upErr;
+
+    // Fetch student's submissions for these assessments to filter out already attempted ones
+    const assessmentIds = (upcoming || []).map(a => a.id);
+    let attemptedIds = new Set();
+    if (assessmentIds.length) {
+      const { data: subs } = await supabase
+        .from("assessment_submissions")
+        .select("assessment_id")
+        .in("assessment_id", assessmentIds)
+        .eq("student_id", currentStudent.id);
+      attemptedIds = new Set((subs || []).map(s => s.assessment_id));
+    }
+
+    const notAttempted = (upcoming || []).filter(a => !attemptedIds.has(a.id));
+
+    if (!notAttempted.length) {
+      upcomingCbtContainer.innerHTML = `<p class="text-sm text-slate-500 py-4 text-center">No upcoming CBT assessments.</p>`;
+    } else {
+      upcomingCbtContainer.innerHTML = notAttempted.map(a => `
+        <div class="p-3 border border-slate-200 rounded-lg flex justify-between items-center bg-slate-50/60 hover:bg-slate-50 transition-colors">
+          <div>
+            <div class="text-sm font-semibold text-slate-900">${a.title}</div>
+            <div class="text-xs text-slate-500 mt-0.5">${a.subjects?.name || "Subject"} · ${a.assessment_type} · ${a.duration} mins</div>
+          </div>
+          <a href="/student/assessments/" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors">
+            Start
+          </a>
+        </div>
+      `).join("");
+    }
+
+    // 2. Fetch recent attempts
+    const { data: attempts, error: attErr } = await supabase
+      .from("assessment_submissions")
+      .select("id, total_score, percentage, status, created_at, assessments(title, total_marks, subjects(name))")
+      .eq("student_id", currentStudent.id)
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    if (attErr) throw attErr;
+
+    if (!attempts?.length) {
+      recentAttemptsContainer.innerHTML = `<p class="text-sm text-slate-500 py-4 text-center">No recent assessment attempts.</p>`;
+    } else {
+      recentAttemptsContainer.innerHTML = attempts.map(sub => {
+        const a = sub.assessments || {};
+        const scoreStr = sub.status === "graded" 
+          ? `<strong>${sub.total_score}</strong> / ${a.total_marks || 0} (${sub.percentage}%)` 
+          : `<span class="text-amber-600 font-semibold">Pending Grading</span>`;
+        return `
+          <div class="p-3 border border-slate-200 rounded-lg flex justify-between items-center bg-slate-50/60">
+            <div>
+              <div class="text-sm font-semibold text-slate-900">${a.title || "Assessment"}</div>
+              <div class="text-xs text-slate-500 mt-0.5">${a.subjects?.name || "Subject"} · ${new Date(sub.created_at).toLocaleDateString()}</div>
+            </div>
+            <div class="text-xs text-slate-700 font-medium">
+              ${scoreStr}
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+  } catch (error) {
+    console.error("Load CBT summary error:", error);
+  }
+}
+
 async function init() {
   try {
     const ok = await requireRole("student", { redirectTo: "/" });
@@ -292,7 +447,7 @@ async function init() {
 
     await Promise.all([loadStudentProfile(ok.session.user.id), loadLatestSettings()]);
     authLoader.style.display = "none";
-    await refreshResults();
+    await Promise.all([refreshResults(), loadCbtSummary()]);
   } catch (error) {
     console.error("Student init error:", error);
     authLoader.innerHTML = `
@@ -331,6 +486,7 @@ function openFullResultDashboard() {
 
 viewResultsBtn?.addEventListener("click", () => openFullResultDashboard());
 termSelect?.addEventListener("change", () => refreshResults());
+sessionSelect?.addEventListener("change", () => refreshResults());
 
 closeModalBtn?.addEventListener("click", closeBreakdownModal);
 breakdownModal?.addEventListener("click", (e) => {

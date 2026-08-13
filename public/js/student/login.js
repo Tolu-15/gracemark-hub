@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  Gracemark Academy — Auth (Supabase)
 //  Vanilla JS + supabase-js CDN
 // ============================================================
@@ -121,12 +121,48 @@ async function clearStaleAuthSession() {
 //   }
 // });
 
-function normalizeLoginIdentifier(rawId) {
+async function resolveUserLoginEmail(rawId) {
   const trimmed = String(rawId || "").trim();
   if (!trimmed) return "";
   if (trimmed.includes("@")) return trimmed.toLowerCase();
-  // Optional: legacy Admission No. → synthetic email mapping
-  return `${trimmed.replace(/\s+/g, "").replace(/\//g, "")}@student.gracemark.edu.ng`.toLowerCase();
+
+  const cleanRef = trimmed.replace(/^PAY-/i, "").replace(/\s+/g, "").toUpperCase();
+
+  // 1. Check students table by admission_no
+  try {
+    const { data: student } = await supabase
+      .from("students")
+      .select("user_id, admission_no, users(email)")
+      .ilike("admission_no", cleanRef)
+      .limit(1)
+      .maybeSingle();
+
+    if (student?.users?.email) {
+      return student.users.email;
+    }
+  } catch {
+    /* RLS unauthenticated fallback */
+  }
+
+  // 2. Check admissions table by admission_number
+  try {
+    const { data: adm } = await supabase
+      .from("admissions")
+      .select("parent_guardian_email, admission_number")
+      .ilike("admission_number", cleanRef)
+      .limit(1)
+      .maybeSingle();
+
+    if (adm?.parent_guardian_email) {
+      return adm.parent_guardian_email;
+    }
+  } catch {
+    /* RLS unauthenticated fallback */
+  }
+
+  // 3. Fallback synthetic student email format
+  const clean = cleanRef.replace(/\//g, "").replace(/-/g, "").toLowerCase();
+  return `${clean}@student.gracemark.edu.ng`;
 }
 
 // Form submit
@@ -134,18 +170,40 @@ loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   hideError();
 
-  const email = normalizeLoginIdentifier(emailInput.value);
+  const rawInput = emailInput.value;
   const password = pwdInput.value;
 
-  if (!email || !password) {
-    showError("Please enter both your email and password.");
+  if (!rawInput || !password) {
+    showError("Please enter both your email/admission number and password.");
     return;
   }
 
   setLoading(true);
 
   try {
-    const signInData = await signInWithEmail(email, password);
+    let targetEmail = await resolveUserLoginEmail(rawInput);
+    let signInData = null;
+
+    try {
+      signInData = await signInWithEmail(targetEmail, password);
+    } catch (firstErr) {
+      if (!rawInput.includes("@")) {
+        const cleanRef = rawInput.replace(/^PAY-/i, "").replace(/\s+/g, "").toUpperCase();
+        const altSynthetic = `${cleanRef.replace(/[^A-Z0-9]/g, "").toLowerCase()}@student.gracemark.edu.ng`;
+        if (altSynthetic !== targetEmail) {
+          try {
+            signInData = await signInWithEmail(altSynthetic, password);
+          } catch {
+            throw firstErr;
+          }
+        } else {
+          throw firstErr;
+        }
+      } else {
+        throw firstErr;
+      }
+    }
+
     const user = signInData?.user;
     if (!user?.id) throw new Error("Sign-in succeeded but no user was returned.");
 
