@@ -11,26 +11,42 @@ function Icon({ d, className = "w-5 h-5" }) {
   );
 }
 
+function scoreColour(total) {
+  const n = Number(total);
+  if (!Number.isFinite(n)) return "";
+  if (n >= 70) return "rd-score-excellent";
+  if (n >= 55) return "rd-score-good";
+  if (n >= 45) return "rd-score-average";
+  if (n >= 40) return "rd-score-poor";
+  return "rd-score-fail";
+}
+
 function StatCard({ label, value, sub, icon, accent = "violet" }) {
-  const accentBorder =
-    accent === "emerald"
-      ? "border-emerald-500/30 text-emerald-400"
-      : accent === "amber"
-        ? "border-amber-500/30 text-amber-400"
-        : accent === "blue"
-          ? "border-sky-500/30 text-sky-400"
-          : "border-violet-500/30 text-violet-400";
+  const accentMap = {
+    emerald: "border-emerald-200 bg-emerald-50",
+    amber:   "border-amber-200 bg-amber-50",
+    blue:    "border-blue-200 bg-blue-50",
+    violet:  "border-violet-200 bg-violet-50",
+  };
+  const textMap = {
+    emerald: "text-emerald-700",
+    amber:   "text-amber-700",
+    blue:    "text-blue-700",
+    violet:  "text-violet-700",
+  };
+  const border = accentMap[accent] || accentMap.violet;
+  const textCls = textMap[accent] || textMap.violet;
 
   return h(
     "div",
-    { className: `rd-stat-card rd-glass rounded-xl p-4 flex flex-col justify-between ${accentBorder}` },
+    { className: `rd-stat-card rounded-xl p-4 flex flex-col justify-between border-2 ${border}` },
     [
       h("div", { className: "flex items-center justify-between gap-2 mb-1" }, [
-        h("span", { className: "text-xs font-bold uppercase tracking-wider text-slate-400" }, label),
-        h("span", { className: "opacity-80" }, icon),
+        h("span", { className: "text-xs font-bold uppercase tracking-wider text-slate-500" }, label),
+        h("span", { className: `${textCls} opacity-70` }, icon),
       ]),
       h("div", { className: "mt-1" }, [
-        h("p", { className: "text-2xl sm:text-3xl font-black text-white tracking-tight" }, value),
+        h("p", { className: `text-2xl sm:text-3xl font-black tracking-tight ${textCls}` }, value),
         sub && h("p", { className: "text-xs text-slate-400 mt-0.5" }, sub),
       ]),
     ]
@@ -74,28 +90,28 @@ function PromotionBanner({ statusInfo }) {
   const isWarning = statusInfo.code === "warning";
 
   const bannerCls = isSuccess
-    ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300"
+    ? "bg-emerald-50 border-emerald-300 text-emerald-800"
     : isWarning
-      ? "bg-amber-500/10 border-amber-500/40 text-amber-300"
-      : "bg-rose-500/10 border-rose-500/40 text-rose-300";
+      ? "bg-amber-50 border-amber-300 text-amber-800"
+      : "bg-red-50 border-red-300 text-red-800";
 
   return h(
     "div",
-    { className: `rd-promotion-banner rounded-xl p-4 sm:p-5 mb-6 border flex flex-wrap items-center justify-between gap-4 ${bannerCls}` },
+    { className: `rd-promotion-banner rounded-xl p-4 sm:p-5 mb-6 border-2 flex flex-wrap items-center justify-between gap-4 ${bannerCls}` },
     [
       h("div", { className: "space-y-1" }, [
-        h("div", { className: "text-[11px] font-bold uppercase tracking-widest opacity-80" }, "Session Promotion Decision"),
-        h("h2", { className: "text-lg sm:text-xl font-black tracking-tight text-white" }, statusInfo.text),
+        h("div", { className: "text-[11px] font-bold uppercase tracking-widest opacity-70" }, "Session Promotion Decision"),
+        h("h2", { className: "text-lg sm:text-xl font-black tracking-tight" }, statusInfo.text),
       ]),
       h(
         "span",
         {
-          className: `px-4 py-2 rounded-lg text-xs font-extrabold uppercase tracking-widest shadow-sm ${
+          className: `px-4 py-2 rounded-lg text-xs font-extrabold uppercase tracking-widest ${
             isSuccess
-              ? "bg-emerald-500 text-slate-950"
+              ? "bg-emerald-600 text-white"
               : isWarning
-                ? "bg-amber-400 text-slate-950"
-                : "bg-rose-500 text-white"
+                ? "bg-amber-500 text-white"
+                : "bg-red-600 text-white"
           }`,
         },
         statusInfo.status
@@ -108,7 +124,7 @@ function TerminalResultsTable({ subjects, term, isSenior }) {
   if (!subjects.length) {
     return h(
       "p",
-      { className: "text-center text-slate-400 py-12 rd-glass rounded-xl" },
+      { className: "text-center text-slate-500 py-12 rd-glass rounded-xl border border-slate-200" },
       "No approved results for this term yet."
     );
   }
@@ -121,19 +137,19 @@ function TerminalResultsTable({ subjects, term, isSenior }) {
       "div",
       { className: "flex items-center justify-between pb-2 rd-no-print" },
       [
-        h("span", { className: "text-xs font-semibold text-slate-400 uppercase tracking-wider" },
+        h("span", { className: "text-xs font-semibold text-slate-500 uppercase tracking-wider" },
           isTerm3 ? "Cumulative Terminal Scores (TR1 – TR3)" : `${termName} Terminal Scores`
         ),
         h(
           "span",
-          { className: "rd-table-scroll-hint text-[11px] text-violet-400 hidden sm:inline" },
+          { className: "rd-table-scroll-hint text-[11px] text-slate-400 hidden sm:inline" },
           "← Scroll horizontally to see full table →"
         ),
       ]
     ),
     h(
       "div",
-      { className: "rd-table-wrap rd-glass rounded-xl" },
+      { className: "rd-table-wrap" },
       h(
         "table",
         { className: "rd-table" },
@@ -144,93 +160,88 @@ function TerminalResultsTable({ subjects, term, isSenior }) {
                   h("th", { rowSpan: 2, className: "rd-col-subject text-left" }, "SUBJECT"),
                   h("th", { rowSpan: 2, className: "text-center font-bold" }, [
                     "1ST TERM",
-                    h("span", { className: "block text-[9px] font-normal text-slate-400" }, "100"),
+                    h("span", { className: "block text-[9px] font-normal text-slate-500" }, "100"),
                   ]),
                   h("th", { rowSpan: 2, className: "text-center font-bold" }, [
                     "2ND TERM",
-                    h("span", { className: "block text-[9px] font-normal text-slate-400" }, "100"),
+                    h("span", { className: "block text-[9px] font-normal text-slate-500" }, "100"),
                   ]),
-                  h("th", { colSpan: 6, className: "text-center rd-th-group bg-violet-950/40 text-violet-300 font-extrabold tracking-wider" }, "THIRD TERM ASSESSMENT"),
-                  h("th", { rowSpan: 2, className: "text-center font-black text-amber-300 bg-amber-950/30" }, [
+                  h("th", { colSpan: 6, className: "text-center rd-th-group" }, "THIRD TERM ASSESSMENT"),
+                  h("th", { rowSpan: 2, className: "text-center font-black rd-td-annual" }, [
                     "ANNUAL AVG",
-                    h("span", { className: "block text-[9px] font-normal text-slate-300" }, "100"),
+                    h("span", { className: "block text-[9px] font-normal" }, "100"),
                   ]),
-                  h("th", { rowSpan: 2, className: "text-center text-xs" }, "CLASS AVG"),
-                  h("th", { rowSpan: 2, className: "text-center text-xs text-rose-300" }, "LOWEST"),
-                  h("th", { rowSpan: 2, className: "text-center text-xs text-emerald-300" }, "HIGHEST"),
+                  h("th", { rowSpan: 2, className: "text-center text-xs rd-td-classavg" }, "CLASS AVG"),
+                  h("th", { rowSpan: 2, className: "text-center text-xs rd-td-low" }, "LOWEST"),
+                  h("th", { rowSpan: 2, className: "text-center text-xs rd-td-high" }, "HIGHEST"),
                   h("th", { rowSpan: 2, className: "text-center font-bold" }, "GRADE"),
                   h("th", { rowSpan: 2, className: "text-left" }, "REMARK"),
                 ])
               : h("tr", { className: "rd-thead-row-1" }, [
                   h("th", { rowSpan: 2, className: "rd-col-subject text-left" }, "SUBJECT"),
-                  h("th", { colSpan: 6, className: "text-center rd-th-group bg-violet-950/40 text-violet-300 font-extrabold tracking-wider" }, `${termName.toUpperCase()} SCORES`),
-                  h("th", { rowSpan: 2, className: "text-center text-xs" }, "CLASS AVG"),
-                  h("th", { rowSpan: 2, className: "text-center text-xs text-rose-300" }, "LOWEST"),
-                  h("th", { rowSpan: 2, className: "text-center text-xs text-emerald-300" }, "HIGHEST"),
+                  h("th", { colSpan: 6, className: "text-center rd-th-group" }, `${termName.toUpperCase()} SCORES`),
+                  h("th", { rowSpan: 2, className: "text-center text-xs rd-td-classavg" }, "CLASS AVG"),
+                  h("th", { rowSpan: 2, className: "text-center text-xs rd-td-low" }, "LOWEST"),
+                  h("th", { rowSpan: 2, className: "text-center text-xs rd-td-high" }, "HIGHEST"),
                   h("th", { rowSpan: 2, className: "text-center font-bold" }, "GRADE"),
                   h("th", { rowSpan: 2, className: "text-left" }, "REMARK"),
                 ]),
-            h("tr", { className: "rd-thead-row-2 text-[10px] text-slate-400" }, [
-              h("th", { className: "text-center" }, ["CW", h("span", { className: "block text-[9px] text-slate-500" }, "10")]),
-              h("th", { className: "text-center" }, ["HW", h("span", { className: "block text-[9px] text-slate-500" }, "5")]),
-              h("th", { className: "text-center" }, ["TEST", h("span", { className: "block text-[9px] text-slate-500" }, "10")]),
-              h("th", { className: "text-center" }, ["PROJ", h("span", { className: "block text-[9px] text-slate-500" }, "5")]),
-              h("th", { className: "text-center" }, ["EXAM", h("span", { className: "block text-[9px] text-slate-500" }, "70")]),
-              h("th", { className: "text-center font-bold text-white bg-violet-900/30" }, ["TOTAL", h("span", { className: "block text-[9px] text-slate-400" }, "100")]),
+            h("tr", { className: "rd-thead-row-2" }, [
+              h("th", { className: "text-center" }, ["CW", h("span", { className: "block text-[9px]" }, "10")]),
+              h("th", { className: "text-center" }, ["HW", h("span", { className: "block text-[9px]" }, "5")]),
+              h("th", { className: "text-center" }, ["TEST", h("span", { className: "block text-[9px]" }, "10")]),
+              h("th", { className: "text-center" }, ["PROJ", h("span", { className: "block text-[9px]" }, "5")]),
+              h("th", { className: "text-center" }, ["EXAM", h("span", { className: "block text-[9px]" }, "70")]),
+              h("th", { className: "text-center font-bold rd-td-total" }, ["TOTAL", h("span", { className: "block text-[9px] font-normal" }, "100")]),
             ]),
           ]),
           h(
             "tbody",
             null,
             subjects.map((row, idx) => {
+              const totalCls = scoreColour(row.total);
               const cells = [
-                h("td", { className: "font-bold text-white rd-td-subject", key: "subj" }, row.subject)
+                h("td", { className: "font-bold rd-td-subject", key: "subj" }, row.subject)
               ];
 
               if (isTerm3) {
                 cells.push(
-                  h("td", { className: "text-center font-medium", key: "t1" }, row.term1_total !== null ? row.term1_total : "—"),
-                  h("td", { className: "text-center font-medium", key: "t2" }, row.term2_total !== null ? row.term2_total : "—"),
-                  h("td", { className: "text-center text-slate-300", key: "cw" }, row.cw !== null ? row.cw : "—"),
-                  h("td", { className: "text-center text-slate-300", key: "hw" }, row.hw !== null ? row.hw : "—"),
-                  h("td", { className: "text-center text-slate-300", key: "test" }, row.test !== null ? row.test : "—"),
-                  h("td", { className: "text-center text-slate-300", key: "proj" }, row.project !== null ? row.project : "—"),
-                  h("td", { className: "text-center text-slate-300", key: "exam" }, row.exam !== null ? row.exam : "—"),
-                  h("td", { className: "text-center font-bold text-white bg-violet-950/20", key: "t3_total" }, row.total),
-                  h("td", { className: "text-center font-black text-amber-300 bg-amber-950/20 text-base", key: "annual" },
+                  h("td", { className: `text-center font-medium ${scoreColour(row.term1_total)}`, key: "t1" }, row.term1_total !== null ? row.term1_total : "—"),
+                  h("td", { className: `text-center font-medium ${scoreColour(row.term2_total)}`, key: "t2" }, row.term2_total !== null ? row.term2_total : "—"),
+                  h("td", { className: "text-center text-slate-600", key: "cw" }, row.cw !== null ? row.cw : "—"),
+                  h("td", { className: "text-center text-slate-600", key: "hw" }, row.hw !== null ? row.hw : "—"),
+                  h("td", { className: "text-center text-slate-600", key: "test" }, row.test !== null ? row.test : "—"),
+                  h("td", { className: "text-center text-slate-600", key: "proj" }, row.project !== null ? row.project : "—"),
+                  h("td", { className: "text-center text-slate-600", key: "exam" }, row.exam !== null ? row.exam : "—"),
+                  h("td", { className: `text-center rd-td-total ${scoreColour(row.total)}`, key: "t3_total" }, row.total),
+                  h("td", { className: `text-center rd-td-annual ${scoreColour(row.annualAverage)}`, key: "annual" },
                     row.annualAverage !== null ? row.annualAverage : "—"
                   )
                 );
               } else {
                 cells.push(
-                  h("td", { className: "text-center text-slate-300", key: "cw" }, row.cw !== null ? row.cw : "—"),
-                  h("td", { className: "text-center text-slate-300", key: "hw" }, row.hw !== null ? row.hw : "—"),
-                  h("td", { className: "text-center text-slate-300", key: "test" }, row.test !== null ? row.test : "—"),
-                  h("td", { className: "text-center text-slate-300", key: "proj" }, row.project !== null ? row.project : "—"),
-                  h("td", { className: "text-center text-slate-300", key: "exam" }, row.exam !== null ? row.exam : "—"),
-                  h("td", { className: "text-center font-black text-violet-300 bg-violet-950/30 text-base", key: "total" }, row.total)
+                  h("td", { className: "text-center text-slate-600", key: "cw" }, row.cw !== null ? row.cw : "—"),
+                  h("td", { className: "text-center text-slate-600", key: "hw" }, row.hw !== null ? row.hw : "—"),
+                  h("td", { className: "text-center text-slate-600", key: "test" }, row.test !== null ? row.test : "—"),
+                  h("td", { className: "text-center text-slate-600", key: "proj" }, row.project !== null ? row.project : "—"),
+                  h("td", { className: "text-center text-slate-600", key: "exam" }, row.exam !== null ? row.exam : "—"),
+                  h("td", { className: `text-center rd-td-total ${totalCls}`, key: "total" }, row.total)
                 );
               }
 
+              const remarkCls =
+                row.remark === "EXCELLENT" || row.remark === "VERY GOOD"
+                  ? "rd-remark-excellent"
+                  : row.remark === "GOOD" ? "rd-remark-good"
+                  : row.remark === "FAIL" ? "rd-remark-fail"
+                  : "rd-remark-average";
+
               cells.push(
-                h("td", { className: "text-center text-slate-300 text-xs", key: "avg" }, row.classAverage),
-                h("td", { className: "text-center text-xs text-rose-300/90", key: "low" }, row.low),
-                h("td", { className: "text-center text-xs text-emerald-300/90", key: "high" }, row.high),
+                h("td", { className: "text-center rd-td-classavg", key: "avg" }, row.classAverage),
+                h("td", { className: "text-center rd-td-low text-xs", key: "low" }, row.low),
+                h("td", { className: "text-center rd-td-high text-xs", key: "high" }, row.high),
                 h("td", { className: "text-center", key: "grade" }, h(GradeBadge, { grade: row.grade })),
-                h(
-                  "td",
-                  {
-                    className: `text-xs font-semibold ${
-                      row.remark === "EXCELLENT" || row.remark === "VERY GOOD"
-                        ? "text-emerald-400 font-bold"
-                        : row.remark === "FAIL"
-                          ? "text-rose-400"
-                          : "text-slate-300"
-                    }`,
-                    key: "rem"
-                  },
-                  row.remark
-                )
+                h("td", { className: `text-xs font-semibold ${remarkCls}`, key: "rem" }, row.remark)
               );
 
               return h("tr", { key: row.subject, className: idx % 2 === 0 ? "rd-tr-even" : "rd-tr-odd" }, cells);
@@ -318,42 +329,35 @@ function ProgressReportTable({
             null,
             subjects.map((row, idx) => {
               const pr = (row.prs && row.prs[activePrKey]) || row.pr || {};
+              const pctCls = scoreColour(pr.percentage);
+              const statusCls =
+                pr.status === "EXCELLENT" || pr.status === "VERY GOOD" ? "rd-remark-excellent"
+                : pr.status === "FAIL" ? "rd-remark-fail"
+                : "rd-remark-average";
               return h("tr", { key: row.subject, className: idx % 2 === 0 ? "rd-tr-even" : "rd-tr-odd" }, [
-                h("td", { className: "font-bold text-white rd-td-subject" }, row.subject),
-                h("td", { className: "text-center text-slate-300 font-medium" }, pr.cw ?? "—"),
-                h("td", { className: "text-center text-slate-300 font-medium" }, pr.hw ?? "—"),
-                h("td", { className: "text-center text-slate-300 font-medium" }, pr.test ?? "—"),
-                h("td", { className: "text-center font-extrabold text-white bg-violet-950/20" }, pr.hasData ? pr.totalCa : "—"),
-                h("td", { className: "text-center font-black text-amber-300 bg-amber-950/20 text-sm" },
+                h("td", { className: "font-bold rd-td-subject" }, row.subject),
+                h("td", { className: "text-center text-slate-700 font-medium" }, pr.cw ?? "—"),
+                h("td", { className: "text-center text-slate-700 font-medium" }, pr.hw ?? "—"),
+                h("td", { className: "text-center text-slate-700 font-medium" }, pr.test ?? "—"),
+                h("td", { className: "text-center rd-td-total font-extrabold" }, pr.hasData ? pr.totalCa : "—"),
+                h("td", { className: `text-center rd-td-annual font-black text-sm ${pctCls}` },
                   pr.hasData && pr.percentage !== undefined ? `${pr.percentage}%` : "—"
                 ),
                 h("td", { className: "text-center" }, pr.hasData ? h(GradeBadge, { grade: pr.grade }) : "—"),
-                h(
-                  "td",
-                  {
-                    className: `text-xs font-semibold ${
-                      pr.status === "EXCELLENT" || pr.status === "VERY GOOD"
-                        ? "text-emerald-400 font-bold"
-                        : pr.status === "FAIL"
-                          ? "text-rose-400"
-                          : "text-slate-300"
-                    }`,
-                  },
-                  pr.status
-                ),
+                h("td", { className: `text-xs font-semibold ${statusCls}` }, pr.status),
               ]);
             })
           ),
           h(
             "tfoot",
             null,
-            h("tr", { className: "rd-thead-row-2 border-t-2 border-slate-700 font-bold text-xs" }, [
-              h("td", { className: "font-black text-white uppercase text-left py-3 px-3" }, `OVERALL CA SUMMARY (${activeInterval?.shortLabel || "PR 1"}):`),
-              h("td", { colSpan: 3, className: "text-center text-slate-400" }, `Total CA Points: ${prTotalCa} / ${prMaxCa}`),
-              h("td", { className: "text-center text-white font-extrabold" }, prTotalCa),
-              h("td", { className: "text-center font-black text-amber-300 text-sm" }, `${prOverallPercentage}%`),
+            h("tr", { className: "border-t-2 border-slate-300 font-bold text-xs" }, [
+              h("td", { className: "font-black text-slate-800 uppercase text-left py-3 px-3" }, `OVERALL CA SUMMARY (${activeInterval?.shortLabel || "PR 1"}):`),
+              h("td", { colSpan: 3, className: "text-center text-slate-500" }, `Total CA Points: ${prTotalCa} / ${prMaxCa}`),
+              h("td", { className: "text-center rd-td-total font-extrabold" }, prTotalCa),
+              h("td", { className: `text-center rd-td-annual font-black text-sm ${scoreColour(prOverallPercentage)}` }, `${prOverallPercentage}%`),
               h("td", { className: "text-center" }, "—"),
-              h("td", { className: "text-left text-emerald-400 font-bold uppercase" }, prSummary),
+              h("td", { className: "text-left rd-remark-excellent font-bold uppercase" }, prSummary),
             ])
           ),
         ]
@@ -366,9 +370,9 @@ function PersonalSkillsTable({ traits, traitsTotal }) {
   if (!traits || !traits.length) return null;
 
   return h("div", { className: "rd-glass rounded-xl p-5 mb-6" }, [
-    h("div", { className: "flex items-center justify-between mb-4 border-b border-slate-700/60 pb-3" }, [
-      h("h3", { className: "text-sm font-bold text-white uppercase tracking-wider" }, "Personal Skills & Behavioral Ratings"),
-      h("span", { className: "text-xs font-extrabold text-violet-300 bg-violet-950/50 px-3 py-1 rounded-full border border-violet-700/40" },
+    h("div", { className: "flex items-center justify-between mb-4 border-b border-slate-200 pb-3" }, [
+      h("h3", { className: "text-sm font-bold text-slate-800 uppercase tracking-wider" }, "Personal Skills & Behavioral Ratings"),
+      h("span", { className: "text-xs font-extrabold text-violet-700 bg-violet-50 px-3 py-1 rounded-full border border-violet-200" },
         `Total Score: ${traitsTotal} / ${traits.length * 5}`
       ),
     ]),
@@ -377,17 +381,18 @@ function PersonalSkillsTable({ traits, traitsTotal }) {
       { className: "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3" },
       traits.map((t) => {
         const score = Number(t.score) || 0;
+        const scoreCls = score >= 4 ? "text-emerald-700" : score >= 3 ? "text-blue-700" : score >= 2 ? "text-amber-600" : "text-red-600";
         return h(
           "div",
           {
             key: t.name,
-            className: "flex items-center justify-between p-3 rounded-lg bg-slate-900/60 border border-slate-800 text-xs",
+            className: "flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs",
           },
           [
-            h("span", { className: "font-medium text-slate-300" }, t.name),
+            h("span", { className: "font-medium text-slate-700" }, t.name),
             h("div", { className: "flex items-center gap-1.5" }, [
-              h("span", { className: "font-black text-amber-300 text-sm" }, score),
-              h("span", { className: "text-slate-500 text-[10px]" }, "/ 5"),
+              h("span", { className: `font-black text-sm ${scoreCls}` }, score),
+              h("span", { className: "text-slate-400 text-[10px]" }, "/ 5"),
             ]),
           ]
         );
@@ -481,16 +486,16 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
           "div",
           { className: "rd-glass rounded-xl p-4 mb-6 flex flex-wrap items-center justify-between gap-4 rd-no-print" },
           [
-            /* Report Type Switcher: Terminal Report (TR) vs Progress Report (PR) */
-            h("div", { className: "flex items-center p-1 bg-slate-950/80 rounded-xl border border-slate-800 gap-1" }, [
+            /* Report Type Switcher */
+            h("div", { className: "flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 gap-1" }, [
               h(
                 "button",
                 {
                   type: "button",
                   className: `px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                     reportType === "TR"
-                      ? "bg-violet-600 text-white shadow-md"
-                      : "text-slate-400 hover:text-white"
+                      ? "bg-violet-600 text-white shadow"
+                      : "text-slate-500 hover:text-slate-800"
                   }`,
                   onClick: () => setReportType("TR"),
                 },
@@ -502,8 +507,8 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
                   type: "button",
                   className: `px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                     reportType === "PR"
-                      ? "bg-amber-500 text-slate-950 font-extrabold shadow-md"
-                      : "text-slate-400 hover:text-white"
+                      ? "bg-amber-500 text-white font-extrabold shadow"
+                      : "text-slate-500 hover:text-slate-800"
                   }`,
                   onClick: () => setReportType("PR"),
                 },
@@ -533,9 +538,7 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
                 "button",
                 {
                   type: "button",
-                  className: `rd-btn-print px-5 py-2.5 rounded-lg text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg ${
-                    isProgressReport ? "bg-gradient-to-tr from-amber-600 to-yellow-600" : ""
-                  }`,
+                  className: "rd-btn-print px-5 py-2.5 rounded-lg font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow",
                   onClick: () => window.print(),
                 },
                 [
@@ -547,26 +550,26 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
                 "button",
                 {
                   type: "button",
-                  className: "px-4 py-2.5 border border-slate-700 hover:bg-slate-800 text-slate-300 font-semibold text-xs rounded-lg transition-colors",
+                  className: "px-4 py-2.5 border border-slate-300 hover:bg-slate-100 text-slate-600 font-semibold text-xs rounded-lg transition-colors",
                   onClick: onClose,
                 },
                 "Close"
               ),
             ]),
 
-            /* 3-Week Interval Selector Tabs for Progress Reports */
+            /* 3-Week Interval Tabs for Progress Reports */
             isProgressReport &&
               h(
                 "div",
-                { className: "w-full flex items-center justify-between flex-wrap gap-2 pt-3 border-t border-slate-800" },
+                { className: "w-full flex items-center justify-between flex-wrap gap-2 pt-3 border-t border-slate-200" },
                 [
                   h("div", { className: "flex items-center gap-2" }, [
-                    h("span", { className: "text-xs font-bold text-amber-400 uppercase tracking-wider" }, "Progress Report Interval:"),
+                    h("span", { className: "text-xs font-bold text-amber-600 uppercase tracking-wider" }, "Progress Report Interval:"),
                     h("span", { className: "text-[11px] text-slate-400 hidden sm:inline" }, "(3-week evaluation cycles)"),
                   ]),
                   h(
                     "div",
-                    { className: "flex items-center gap-1.5 p-1 bg-slate-950/90 rounded-xl border border-amber-500/30 flex-wrap" },
+                    { className: "flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-amber-200 flex-wrap" },
                     PR_INTERVALS.map((intv) =>
                       h(
                         "button",
@@ -575,14 +578,14 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
                           type: "button",
                           className: `px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                             prIntervalKey === intv.value
-                              ? "bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black shadow-md ring-2 ring-amber-400/40"
-                              : "text-slate-400 hover:text-white hover:bg-slate-800"
+                              ? "bg-amber-500 text-white font-black shadow ring-2 ring-amber-300"
+                              : "text-slate-500 hover:text-slate-800 hover:bg-slate-200"
                           }`,
                           onClick: () => setPrIntervalKey(intv.value),
                         },
                         [
                           h("span", null, intv.shortLabel),
-                          h("span", { className: `text-[10px] ${prIntervalKey === intv.value ? "text-slate-900 font-semibold" : "text-slate-500"}` }, `(${intv.weeks})`),
+                          h("span", { className: `text-[10px] ${prIntervalKey === intv.value ? "text-white/80" : "text-slate-400"}` }, `(${intv.weeks})`),
                         ]
                       )
                     )
@@ -595,83 +598,81 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
         /* Official Report Sheet Container */
         h(
           "div",
-          { className: `rd-sheet-container bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-8 shadow-2xl ${isProgressReport ? "rd-sheet-pr" : "rd-sheet-tr"}` },
+          { className: `rd-sheet-container p-4 sm:p-8 ${isProgressReport ? "rd-sheet-pr" : "rd-sheet-tr"}` },
           [
             /* Official Header Banner */
-            h("header", { className: `rd-school-header border-b-2 pb-6 mb-6 text-center ${isProgressReport ? "border-amber-500/80" : "border-emerald-500/80"}` }, [
+            h("header", { className: `rd-school-header border-b-2 pb-6 mb-6 text-center ${isProgressReport ? "border-amber-400" : "border-emerald-500"}` }, [
               h("div", { className: "flex flex-col items-center justify-center gap-2" }, [
                 h("div", {
-                  className: `w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-xl mb-1 ${
-                    isProgressReport
-                      ? "bg-gradient-to-tr from-amber-500 to-orange-600 text-slate-950"
-                      : "bg-gradient-to-tr from-emerald-500 to-teal-600 text-white"
+                  className: `w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-lg mb-1 ${
+                    isProgressReport ? "bg-amber-500" : "bg-emerald-600"
                   }`
                 }, [
                   h(Icon, { d: "M12 14l9-5-9-5-9 5 9 5z M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z", className: "w-8 h-8" }),
                 ]),
-                h("h1", { className: "text-2xl sm:text-3xl font-black tracking-tight text-white uppercase" }, "Gracemark Academy"),
-                h("p", { className: "text-xs font-semibold text-emerald-400 uppercase tracking-widest" }, "Knowledge, Discipline & Character"),
+                h("h1", { className: "text-2xl sm:text-3xl font-black tracking-tight text-slate-900 uppercase" }, "Gracemark Academy"),
+                h("p", { className: "text-xs font-semibold text-emerald-600 uppercase tracking-widest" }, "Knowledge, Discipline & Character"),
                 h("div", {
                   className: `mt-2 inline-block px-4 py-1.5 rounded-md border text-xs sm:text-sm font-black uppercase tracking-wider ${
                     isProgressReport
-                      ? "bg-amber-950/40 border-amber-600 text-amber-300"
-                      : "bg-slate-800 border-slate-700 text-amber-300"
+                      ? "bg-amber-50 border-amber-400 text-amber-800"
+                      : "bg-slate-50 border-slate-300 text-slate-800"
                   }`
                 },
                   documentTitle
                 ),
-                isProgressReport && h("p", { className: "text-[11px] text-amber-300/90 mt-1 font-semibold" }, `Evaluation Period: ${activeInterval.weeks} (Checkpoint: ${activeInterval.checkpoint}) · Continuous Assessment (CA)`),
+                isProgressReport && h("p", { className: "text-[11px] text-amber-700 mt-1 font-semibold" }, `Evaluation Period: ${activeInterval.weeks} (Checkpoint: ${activeInterval.checkpoint}) · Continuous Assessment (CA)`),
               ]),
             ]),
 
-            /* Student Bio Information Card */
-            h("div", { className: "rd-student-bio grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-950/60 border border-slate-800 mb-6 text-xs" }, [
+            /* Student Bio Card */
+            h("div", { className: "rd-student-bio grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-xl mb-6 text-xs" }, [
               h("div", null, [
-                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, "Student Name"),
-                h("strong", { className: "text-white text-sm font-bold block truncate" }, report?.studentName ?? student?.name ?? "—"),
+                h("span", { className: "text-slate-500 block font-semibold uppercase text-[10px]" }, "Student Name"),
+                h("strong", { className: "text-slate-900 text-sm font-bold block truncate" }, report?.studentName ?? student?.name ?? "—"),
               ]),
               h("div", null, [
-                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, "Admission No"),
-                h("strong", { className: "text-emerald-400 text-sm font-mono block" }, report?.admissionNo ?? student?.admission_no ?? "—"),
+                h("span", { className: "text-slate-500 block font-semibold uppercase text-[10px]" }, "Admission No"),
+                h("strong", { className: "text-emerald-700 text-sm font-mono block" }, report?.admissionNo ?? student?.admission_no ?? "—"),
               ]),
               h("div", null, [
-                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, "Class"),
-                h("strong", { className: "text-white text-sm font-bold block" }, className),
+                h("span", { className: "text-slate-500 block font-semibold uppercase text-[10px]" }, "Class"),
+                h("strong", { className: "text-slate-900 text-sm font-bold block" }, className),
               ]),
               h("div", null, [
-                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, "Academic Session"),
-                h("strong", { className: "text-violet-300 text-sm font-bold block" }, session || "—"),
+                h("span", { className: "text-slate-500 block font-semibold uppercase text-[10px]" }, "Academic Session"),
+                h("strong", { className: "text-violet-700 text-sm font-bold block" }, session || "—"),
               ]),
               h("div", null, [
-                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, "Report Type"),
-                h("strong", { className: `text-sm font-bold block ${isProgressReport ? "text-amber-400" : "text-emerald-400"}` },
+                h("span", { className: "text-slate-500 block font-semibold uppercase text-[10px]" }, "Report Type"),
+                h("strong", { className: `text-sm font-bold block ${isProgressReport ? "text-amber-600" : "text-emerald-700"}` },
                   isProgressReport ? `${activeInterval.shortLabel} Progress Report` : "Terminal Result (TR)"
                 ),
               ]),
               h("div", null, [
-                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, isProgressReport ? "Evaluation Period" : "Days Opened"),
-                h("strong", { className: "text-slate-200 text-sm font-bold block" }, isProgressReport ? activeInterval.weeks : String(report?.daysOpened ?? 120)),
+                h("span", { className: "text-slate-500 block font-semibold uppercase text-[10px]" }, isProgressReport ? "Evaluation Period" : "Days Opened"),
+                h("strong", { className: "text-slate-800 text-sm font-bold block" }, isProgressReport ? activeInterval.weeks : String(report?.daysOpened ?? 120)),
               ]),
               h("div", null, [
-                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, isProgressReport ? "Assessment Checkpoint" : "Days Present"),
-                h("strong", { className: "text-slate-200 text-sm font-bold block" }, isProgressReport ? activeInterval.checkpoint : String(report?.daysPresent ?? 120)),
+                h("span", { className: "text-slate-500 block font-semibold uppercase text-[10px]" }, isProgressReport ? "Assessment Checkpoint" : "Days Present"),
+                h("strong", { className: "text-slate-800 text-sm font-bold block" }, isProgressReport ? activeInterval.checkpoint : String(report?.daysPresent ?? 120)),
               ]),
               h("div", null, [
-                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, "Educational Tier"),
-                h("strong", { className: "text-amber-400 text-sm font-bold block uppercase" }, report?.isSenior ? "Senior Secondary" : "Junior Secondary"),
+                h("span", { className: "text-slate-500 block font-semibold uppercase text-[10px]" }, "Educational Tier"),
+                h("strong", { className: "text-amber-600 text-sm font-bold block uppercase" }, report?.isSenior ? "Senior Secondary" : "Junior Secondary"),
               ]),
             ]),
 
             loading &&
               h(
                 "div",
-                { className: "text-center py-20 text-slate-400 animate-pulse font-medium" },
+                { className: "text-center py-20 text-slate-500 animate-pulse font-medium" },
                 "Loading academic records…"
               ),
 
             error &&
               !loading &&
-              h("div", { className: "rd-glass rounded-xl p-6 text-red-400 text-center mb-6" }, error),
+              h("div", { className: "p-6 bg-red-50 border border-red-200 text-red-700 rounded-xl text-center mb-6" }, error),
 
             report &&
               !loading &&
@@ -727,27 +728,27 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
                       prMaxCa: activePrMetrics.maxCa,
                     }),
 
-                    /* Progress Report Signatures & Guidance */
-                    h("div", { className: "p-4 rounded-xl bg-slate-950/60 border border-slate-800 mb-6 text-xs text-slate-300" }, [
-                      h("h4", { className: "text-xs font-bold uppercase tracking-wider text-amber-400 mb-1" }, "Continuous Assessment Evaluation Notice"),
-                      h("p", { className: "leading-relaxed text-slate-400" },
+                    /* Progress Report Guidance */
+                    h("div", { className: "p-4 rounded-xl bg-amber-50 border border-amber-200 mb-6 text-xs" }, [
+                      h("h4", { className: "text-xs font-bold uppercase tracking-wider text-amber-700 mb-1" }, "Continuous Assessment Evaluation Notice"),
+                      h("p", { className: "leading-relaxed text-amber-800" },
                         `This progress report reflects continuous assessment results for ${activeInterval.label} covering Class Work (10 Marks), Home Work / Assignments (5 Marks), and Regular Test at ${activeInterval.checkpoint} (15 Marks) for a total CA score of 30 Marks. Final terminal exams will be conducted at the end of term.`
                       ),
                     ]),
 
-                    h("footer", { className: "rd-sheet-footer pt-6 border-t border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400" }, [
+                    h("footer", { className: "rd-sheet-footer pt-6 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-500" }, [
                       h("div", { className: "flex items-center gap-2 font-medium" }, [
-                        h("span", { className: "text-slate-500 uppercase text-[10px] font-bold" }, "Assessment Status:"),
-                        h("strong", { className: "text-emerald-400 text-xs font-bold" }, activePrMetrics.summary),
+                        h("span", { className: "text-slate-400 uppercase text-[10px] font-bold" }, "Assessment Status:"),
+                        h("strong", { className: "text-emerald-700 text-xs font-bold" }, activePrMetrics.summary),
                       ]),
                       h("div", { className: "flex items-center gap-6" }, [
                         h("div", { className: "text-center" }, [
-                          h("div", { className: "border-b border-slate-600 w-36 mb-1" }),
-                          h("span", { className: "text-[10px] text-slate-400 uppercase font-bold" }, "Class Teacher's Signature"),
+                          h("div", { className: "border-b border-slate-400 w-36 mb-1" }),
+                          h("span", { className: "text-[10px] text-slate-500 uppercase font-bold" }, "Class Teacher's Signature"),
                         ]),
                         h("div", { className: "text-center" }, [
-                          h("div", { className: "border-b border-slate-600 w-24 mb-1" }),
-                          h("span", { className: "text-[10px] text-slate-400 uppercase font-bold" }, "Date"),
+                          h("div", { className: "border-b border-slate-400 w-24 mb-1" }),
+                          h("span", { className: "text-[10px] text-slate-500 uppercase font-bold" }, "Date"),
                         ]),
                       ]),
                     ]),
@@ -786,7 +787,7 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
                         h(StatCard, {
                           label: "Attendance Rate",
                           value: `${report.attendancePct}%`,
-                          sub: `${report.daysPresent} of ${report.daysOpened} days`,
+                          sub: `${report.timesPresent} of ${report.timesOpened} sessions`,
                           accent: "blue",
                           icon: h(Icon, { d: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" }),
                         }),
@@ -812,39 +813,41 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
                       { className: "rd-ai-box rounded-xl p-5 mb-6 rd-no-print" },
                       [
                         h("div", { className: "flex items-center gap-2 mb-2" }, [
-                          h("span", { className: "text-amber-400" }, h(Icon, { d: "M13 10V3L4 14h7v7l9-11h-7z" })),
-                          h("h3", { className: "text-xs font-bold text-white uppercase tracking-wider" }, "Academic Performance Insight"),
+                          h("span", { className: "text-emerald-600" }, h(Icon, { d: "M13 10V3L4 14h7v7l9-11h-7z" })),
+                          h("h3", { className: "text-xs font-bold text-slate-800 uppercase tracking-wider" }, "Academic Performance Insight"),
                         ]),
-                        h("p", { className: "text-xs sm:text-sm text-slate-300 leading-relaxed" }, report.aiInsight),
+                        h("p", { className: "text-xs sm:text-sm text-slate-700 leading-relaxed" }, report.aiInsight),
                       ]
                     ),
 
-                    /* Remarks & Official Signatures Section */
+                    /* Remarks & Signatures */
                     h("div", { className: "rd-remarks-grid grid grid-cols-1 md:grid-cols-2 gap-6 mb-6" }, [
-                      h("div", { className: "p-4 rounded-xl bg-slate-950/60 border border-slate-800" }, [
-                        h("h4", { className: "text-xs font-bold uppercase tracking-wider text-slate-400 mb-2" }, "Class Teacher's Remark"),
-                        h("p", { className: "text-sm text-white italic" }, `"${report.teacherRemark}"`),
+                      h("div", { className: "p-4" }, [
+                        h("h4", { className: "text-xs font-bold uppercase tracking-wider text-slate-500 mb-2" }, "Class Teacher's Remark"),
+                        h("p", { className: "text-sm text-slate-800 italic" }, `"${report.teacherRemark}"`),
                       ]),
-                      h("div", { className: "p-4 rounded-xl bg-slate-950/60 border border-slate-800" }, [
-                        h("h4", { className: "text-xs font-bold uppercase tracking-wider text-slate-400 mb-2" }, "Principal's Remark"),
-                        h("p", { className: "text-sm text-amber-300 font-semibold uppercase italic" }, `"${report.principalRemark}"`),
+                      h("div", { className: "p-4" }, [
+                        h("h4", { className: "text-xs font-bold uppercase tracking-wider text-slate-500 mb-2" }, "Principal's Remark"),
+                        h("p", { className: "text-sm text-amber-700 font-semibold uppercase italic" }, `"${report.principalRemark}"`),
                       ]),
                     ]),
 
-                    /* Official Footer Notice & Resumption Date */
-                    h("footer", { className: "rd-sheet-footer pt-6 border-t border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400" }, [
+                    /* Footer */
+                    h("footer", { className: "rd-sheet-footer pt-6 flex flex-wrap items-center justify-between gap-4 text-xs" }, [
                       h("div", { className: "flex items-center gap-2 font-medium" }, [
-                        h("span", { className: "text-slate-500 uppercase text-[10px] font-bold" }, "Next Term Begins:"),
-                        h("strong", { className: "text-white text-xs" }, report.nextTermBegins),
+                        h("span", { className: "text-slate-400 uppercase text-[10px] font-bold" }, "Next Term Begins:"),
+                        h("strong", { className: "text-slate-800 text-xs" }, report.nextTermBegins),
                       ]),
                       h("div", { className: "flex items-center gap-6" }, [
                         h("div", { className: "text-center" }, [
-                          h("div", { className: "border-b border-slate-600 w-32 mb-1" }),
-                          h("span", { className: "text-[10px] text-slate-400 uppercase font-bold" }, "Principal's Signature"),
+                          report.principalSignature
+                            ? h("img", { src: report.principalSignature, alt: "Principal Signature", className: "h-8 max-w-[8rem] mx-auto mb-1 object-contain" })
+                            : h("div", { className: "border-b border-slate-400 w-32 mb-1" }),
+                          h("span", { className: "text-[10px] text-slate-500 uppercase font-bold" }, "Principal's Signature"),
                         ]),
                         h("div", { className: "text-center" }, [
-                          h("div", { className: "border-b border-slate-600 w-24 mb-1" }),
-                          h("span", { className: "text-[10px] text-slate-400 uppercase font-bold" }, "Date"),
+                          h("div", { className: "text-xs font-semibold text-slate-800 mb-1" }, report.publishedDate || "Approved"),
+                          h("span", { className: "text-[10px] text-slate-500 uppercase font-bold" }, "Date Published"),
                         ]),
                       ]),
                     ]),

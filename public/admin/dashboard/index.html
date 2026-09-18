@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8" />
+  <link rel="icon" type="image/jpeg" href="/assets/icons/favicon.jpg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Admin Dashboard — Gracemark Academy</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -53,13 +54,7 @@
     <aside id="portalSidebar" class="portal-sidebar w-64 bg-slate-950 text-slate-300 flex flex-col ">
         <div class="p-6 border-b border-slate-800 flex items-center justify-between gap-2">
             <div class="portal-sidebar-brand flex items-center gap-3 min-w-0">
-                <div
-                    class="w-8 h-8 rounded bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center shadow-lg">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M12 14l9-5-9-5-9 5 9 5z"></path>
-                    </svg>
-                </div>
+                <img src="/assets/icons/logo.jpg" alt="Gracemark Logo" class="w-9 h-9 rounded-lg object-cover shadow-sm flex-shrink-0" />
                 <h2 class="text-lg font-bold text-white tracking-tight">Gracemark <span
                         class="text-xs text-yellow-500 align-top">V2</span></h2>
             </div>
@@ -233,6 +228,19 @@
                             class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm">
                             Save Settings
                         </button>
+                    </div>
+
+                    <!-- Term Grade Sheet Permissions Overrides -->
+                    <div class="mt-4 pt-4 border-t border-slate-200">
+                        <div class="mb-3">
+                            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-800">Term Grade Sheet Edit Permissions</h4>
+                            <p class="text-[11px] text-slate-500 mt-0.5">
+                                By default, only the current active term is editable by teachers. Toggle edit access below to unlock or lock score entries for past/other terms.
+                            </p>
+                        </div>
+                        <div id="termPermissionsList" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div class="text-xs text-slate-400 py-2">Loading term permissions...</div>
+                        </div>
                     </div>
                 </div>
             </section>

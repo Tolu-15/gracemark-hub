@@ -1,6 +1,15 @@
 import { supabase } from "/js/shared/supabaseClient.js";
 import { getLatestAppSettings } from "/js/shared/appSettings.js";
-import { normalizeBreakdown, calculateStudentResult, isSeniorClass, getGradeAndRemark } from "/shared/gradingEngine.js";
+import {
+  normalizeBreakdown,
+  calculateStudentResult,
+  isSeniorClass,
+  getGradeAndRemark,
+  calculatePR1,
+  calculatePR2,
+  calculatePR3,
+  calculateTR,
+} from "/shared/gradingEngine.js";
 import {
   gradeToRemark,
   buildPrincipalRemark,
@@ -17,9 +26,9 @@ const TERM_OPTIONS = [
 ];
 
 export const PR_INTERVALS = [
-  { value: "pr1", label: "PR 1 (Weeks 1 – 3)", shortLabel: "PR 1", weeks: "Weeks 1 – 3", checkpoint: "Week 3", testIndex: 0 },
-  { value: "pr2", label: "PR 2 (Weeks 4 – 6)", shortLabel: "PR 2", weeks: "Weeks 4 – 6", checkpoint: "Week 6", testIndex: 1 },
-  { value: "pr3", label: "PR 3 (Weeks 7 – 9)", shortLabel: "PR 3", weeks: "Weeks 7 – 9", checkpoint: "Week 9", testIndex: 2 },
+  { value: "pr1", label: "PR 1 (Weeks 1 – 4)", shortLabel: "PR 1", weeks: "Weeks 1 – 4", checkpoint: "Week 4", testIndex: 0 },
+  { value: "pr2", label: "PR 2 (Weeks 1 – 7)", shortLabel: "PR 2", weeks: "Weeks 1 – 7", checkpoint: "Week 7", testIndex: 1 },
+  { value: "pr3", label: "PR 3 (Weeks 1 – 10)", shortLabel: "PR 3", weeks: "Weeks 1 – 10", checkpoint: "Week 10", testIndex: 2 },
 ];
 
 export function termLabel(term) {
@@ -27,39 +36,60 @@ export function termLabel(term) {
 }
 
 function computePrForInterval(raw, fallbackScores, testIndex, isSenior) {
-  const hasBreakdown = raw?.tests && raw.tests.some((t) => t !== "" && t !== null && t !== undefined);
-
-  let cwItem = 0;
-  let hwItem = 0;
-  let testItem = 0;
-  let hasData = false;
-
-  if (hasBreakdown) {
-    const rawCw = raw.cw?.[testIndex];
-    if (rawCw !== "" && rawCw !== null && rawCw !== undefined) {
-      cwItem = Number(rawCw) || 0;
-      hasData = true;
+  if (raw && (raw.cw?.length || raw.tests?.length)) {
+    if (testIndex === 0) {
+      const pr = calculatePR1(raw, isSenior);
+      return {
+        cw: pr.hasData ? pr.cw : "—",
+        hw: pr.hasData ? pr.hw : "—",
+        test: pr.hasData ? pr.test : "—",
+        cwNum: pr.cw,
+        hwNum: pr.hw,
+        testNum: pr.test,
+        totalCa: pr.totalCA,
+        percentage: pr.percentage,
+        grade: pr.grade,
+        status: pr.remark,
+        hasData: pr.hasData,
+      };
+    } else if (testIndex === 1) {
+      const pr = calculatePR2(raw, isSenior);
+      return {
+        cw: pr.hasData ? pr.cw : "—",
+        hw: pr.hasData ? pr.hw : "—",
+        test: pr.hasData ? pr.test : "—",
+        cwNum: pr.cw,
+        hwNum: pr.hw,
+        testNum: pr.test,
+        totalCa: pr.totalCA,
+        percentage: pr.percentage,
+        grade: pr.grade,
+        status: pr.remark,
+        hasData: pr.hasData,
+      };
+    } else {
+      const pr = calculatePR3(raw, isSenior);
+      return {
+        cw: pr.hasData ? pr.cw : "—",
+        hw: pr.hasData ? pr.hw : "—",
+        test: pr.hasData ? pr.test : "—",
+        cwNum: pr.cw,
+        hwNum: pr.hw,
+        testNum: pr.test,
+        totalCa: pr.totalCA,
+        percentage: pr.percentage,
+        grade: pr.grade,
+        status: pr.remark,
+        hasData: pr.hasData,
+      };
     }
-
-    const rawHw = raw.hw?.[testIndex];
-    if (rawHw !== "" && rawHw !== null && rawHw !== undefined) {
-      hwItem = +((Number(rawHw) || 0) / 2).toFixed(1);
-      hasData = true;
-    }
-
-    const rawTest = raw.tests?.[testIndex];
-    if (rawTest !== "" && rawTest !== null && rawTest !== undefined) {
-      const rawVal = Number(rawTest) || 0;
-      testItem = testIndex === 2 ? +(rawVal * 15 / 30).toFixed(1) : rawVal;
-      hasData = true;
-    }
-  } else {
-    // Legacy single CA scores (CW /10, HW /5, Test /10)
-    cwItem = fallbackScores.cw ?? 0;
-    hwItem = fallbackScores.hw ?? 0;
-    testItem = +((fallbackScores.test ?? 0) * 1.5).toFixed(1);
-    hasData = cwItem > 0 || hwItem > 0 || testItem > 0;
   }
+
+  // Fallback for legacy single CA scores (CW /10, HW /5, Test /10)
+  const cwItem = fallbackScores.cw ?? 0;
+  const hwItem = fallbackScores.hw ?? 0;
+  const testItem = +((fallbackScores.test ?? 0) * 1.5).toFixed(1);
+  const hasData = cwItem > 0 || hwItem > 0 || testItem > 0;
 
   const prCw = Math.min(10, Math.max(0, cwItem));
   const prHw = Math.min(5, Math.max(0, hwItem));
@@ -221,14 +251,25 @@ export async function fetchStudentReport({ student, term, session }) {
 
   rows.sort((a, b) => a.subject.localeCompare(b.subject));
 
+  let classSize = 0;
+  let position = null;
   let averagesMap = new Map();
-  if (classId && rows.length) {
-    const { data: avgs } = await supabase
-      .from("class_averages")
-      .select("subject_id, avg, lowest, highest")
-      .eq("class_id", classId)
-      .eq("term", term);
-    averagesMap = new Map((avgs ?? []).map((a) => [a.subject_id, a]));
+
+  if (classId) {
+    try {
+      const qUrl = `/api/student/class-benchmarks?class_id=${encodeURIComponent(classId)}&term=${encodeURIComponent(term)}&session=${encodeURIComponent(session || "")}&student_id=${encodeURIComponent(student.id)}`;
+      const resp = await fetch(qUrl);
+      if (resp.ok) {
+        const json = await resp.json();
+        if (json.ok) {
+          classSize = json.classSize || 0;
+          position = json.position || null;
+          averagesMap = new Map(Object.entries(json.subjectBenchmarks || {}));
+        }
+      }
+    } catch (benchErr) {
+      console.warn("Could not fetch class benchmarks from API:", benchErr);
+    }
   }
 
   rows.forEach((r) => {
@@ -246,51 +287,17 @@ export async function fetchStudentReport({ student, term, session }) {
 
   const { data: attendance } = await supabase
     .from("attendance")
-    .select("days_present, days_absent")
+    .select("times_opened, times_present, times_absent, days_present, days_absent")
     .eq("student_id", student.id)
     .eq("term", term)
     .maybeSingle();
 
-  const daysPresent = attendance?.days_present ?? 0;
-  const daysAbsent = attendance?.days_absent ?? 0;
-  const daysOpened = Math.max(daysPresent + daysAbsent, 120);
-  const attendancePct =
-    daysPresent + daysAbsent > 0 ? Math.round((daysPresent / (daysPresent + daysAbsent)) * 100) : 95;
-
-  let classSize = 0;
-  let position = null;
-  if (classId) {
-    const { count } = await supabase
-      .from("students")
-      .select("id", { count: "exact", head: true })
-      .eq("class_id", classId);
-    classSize = count ?? 0;
-
-    const { data: classStudents } = await supabase.from("students").select("id").eq("class_id", classId);
-    const ids = (classStudents ?? []).map((s) => s.id);
-    if (ids.length) {
-      const { data: classResults } = await supabase
-        .from("results")
-        .select("student_id, total")
-        .in("student_id", ids)
-        .eq("term", term)
-        .eq("status", "approved");
-
-      const totalsByStudent = new Map();
-      (classResults ?? []).forEach((r) => {
-        const t = Number(r.total) || 0;
-        totalsByStudent.set(r.student_id, (totalsByStudent.get(r.student_id) ?? 0) + t);
-      });
-
-      const sorted = [...totalsByStudent.entries()].sort((a, b) => b[1] - a[1]);
-      const myTotal = totalsByStudent.get(student.id) ?? 0;
-      let rank = 1;
-      for (const [, total] of sorted) {
-        if (total > myTotal) rank += 1;
-      }
-      if (sorted.some(([id]) => id === student.id)) position = rank;
-    }
-  }
+  const timesOpened = attendance?.times_opened || ((attendance?.days_present || 0) + (attendance?.days_absent || 0)) * 2 || 130;
+  const timesPresent = attendance?.times_present ?? (attendance?.days_present ? attendance.days_present * 2 : 0);
+  const timesAbsent = attendance?.times_absent ?? Math.max(0, timesOpened - timesPresent);
+  const daysOpened = Math.round(timesOpened / 2);
+  const daysPresent = Math.round(timesPresent / 2);
+  const attendancePct = timesOpened > 0 ? Math.round((timesPresent / timesOpened) * 100) : 95;
 
   // Calculate overall marks (GPA intentionally omitted per requirements)
   const sumOfScores = rows.reduce((s, r) => {
@@ -338,6 +345,80 @@ export async function fetchStudentReport({ student, term, session }) {
   const teacherRemark = evaluations?.teacher_remark || "A commendable performance. Keep up the good work.";
   const principalRemark = evaluations?.principal_remark || buildPrincipalRemark({ percentage });
 
+  // Stamped Signature & Resumption Date
+  let principalSignature = null;
+  let nextTermBegins = "Monday 5th January, 2026";
+  let publishedDate = null;
+  let isPublished = false;
+
+  try {
+    const { data: snapshot } = await supabase
+      .from("published_snapshots")
+      .select("snapshot_data, published_at, is_active")
+      .eq("student_id", student.id)
+      .eq("term", term)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+
+    if (snapshot?.snapshot_data) {
+      isPublished = true;
+      publishedDate = snapshot.published_at
+        ? new Date(snapshot.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+        : null;
+      if (snapshot.snapshot_data.principal_signature) {
+        principalSignature = snapshot.snapshot_data.principal_signature;
+      }
+      if (snapshot.snapshot_data.resumption_date) {
+        nextTermBegins = snapshot.snapshot_data.resumption_date;
+      }
+      if (snapshot.snapshot_data.class_size) {
+        classSize = snapshot.snapshot_data.class_size;
+      }
+      if (snapshot.snapshot_data.position) {
+        position = snapshot.snapshot_data.position;
+      }
+      if (Array.isArray(snapshot.snapshot_data.subjects)) {
+        const snapSubjs = new Map(snapshot.snapshot_data.subjects.map((s) => [s.subject_name, s]));
+        rows.forEach((r) => {
+          const s = snapSubjs.get(r.subject);
+          if (s) {
+            if (s.class_avg !== undefined && s.class_avg !== null) r.classAverage = s.class_avg;
+            if (s.lowest !== undefined && s.lowest !== null) r.low = s.lowest;
+            if (s.highest !== undefined && s.highest !== null) r.high = s.highest;
+          }
+        });
+      }
+    }
+  } catch (_) {}
+
+  if (!principalSignature) {
+    try {
+      const { data: sig } = await supabase
+        .from("signatures")
+        .select("signature_data")
+        .eq("owner_role", "principal")
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+      principalSignature = sig?.signature_data || localStorage.getItem("gracemark_principal_sig");
+    } catch (_) {
+      principalSignature = localStorage.getItem("gracemark_principal_sig");
+    }
+  }
+
+  try {
+    const { data: termRow } = await supabase
+      .from("terms")
+      .select("next_term_begins")
+      .eq("term", term)
+      .limit(1)
+      .maybeSingle();
+    if (termRow?.next_term_begins) {
+      nextTermBegins = termRow.next_term_begins;
+    }
+  } catch (_) {}
+
   const report = {
     studentName: student.name,
     admissionNo: student.admission_no,
@@ -354,12 +435,18 @@ export async function fetchStudentReport({ student, term, session }) {
     percentage,
     attendancePct,
     classSize: classSize || "—",
+    timesOpened,
+    timesPresent,
+    timesAbsent,
     daysOpened,
     daysPresent,
+    principalSignature,
+    publishedDate,
+    isPublished,
     subjects: rows,
     strengths,
     weaknesses,
-    nextTermBegins: "Monday 5th January, 2026",
+    nextTermBegins,
     traits: traitsList,
     traitsTotal,
     teacherRemark,

@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8" />
+  <link rel="icon" type="image/jpeg" href="/assets/icons/favicon.jpg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Student Portal — Gracemark Academy</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -29,13 +30,7 @@
     <aside id="portalSidebar" class="portal-sidebar w-64 bg-slate-900 text-slate-300 flex flex-col ">
         <div class="p-6 border-b border-slate-800 flex items-center justify-between gap-2">
             <div class="portal-sidebar-brand flex items-center gap-3 min-w-0">
-                <div
-                    class="w-8 h-8 rounded bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M12 14l9-5-9-5-9 5 9 5z"></path>
-                    </svg>
-                </div>
+                <img src="/assets/icons/logo.jpg" alt="Gracemark Logo" class="w-9 h-9 rounded-lg object-cover shadow-sm flex-shrink-0" />
                 <h2 class="text-lg font-bold text-white tracking-tight">Student <span
                         class="text-xs text-emerald-400 align-top">Portal</span></h2>
             </div>
@@ -58,6 +53,15 @@
                     </path>
                 </svg>
                 My Assessments
+            </a>
+            <a href="/student/result/"
+                class="flex items-center gap-3 px-3 py-2.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                    </path>
+                </svg>
+                Report Sheet
             </a>
 
             <div class="pt-4 pb-1 text-[10px] font-bold uppercase text-slate-500 px-3 tracking-wider">Fees & Financials</div>

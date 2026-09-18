@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/jpeg" href="/assets/icons/favicon.jpg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Class Attendance Register — Gracemark V2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/assets/score-entry.css" />
+    <link rel="stylesheet" href="/assets/powered-by.css" />
+    <style>
+        body {
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        .attendance-toggle {
+            transition: all 0.15s ease;
+        }
+
+        .attendance-toggle.is-present {
+            background-color: #ecfdf5;
+            color: #047857;
+            border-color: #a7f3d0;
+        }
+
+        .attendance-toggle.is-absent {
+            background-color: #fef2f2;
+            color: #b91c1c;
+            border-color: #fecaca;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden">
+
+    <!-- Top Header -->
+    <header class="score-entry-header bg-white border-b border-slate-200 shadow-sm z-20 shrink-0">
+        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div class="flex items-center gap-3 min-w-0">
+                <a href="/teacher/dashboard/"
+                    class="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                    aria-label="Back to dashboard">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                    </svg>
+                    Back
+                </a>
+                <div class="min-w-0">
+                    <h1 class="text-lg md:text-xl font-bold text-slate-900 leading-tight">Class Attendance Register</h1>
+                    <p class="text-xs text-slate-500 mt-0.5">
+                        Two sessions daily: Morning (AM) & Afternoon (PM) · 10 sessions/week
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap gap-2 md:gap-3 items-center">
+                <div class="px-2.5 py-1.5 bg-blue-50 border border-blue-100 rounded-lg">
+                    <span class="block text-[10px] font-bold text-blue-600 uppercase tracking-wide">Term</span>
+                    <span id="displayTerm" class="text-xs md:text-sm font-bold text-blue-900">—</span>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-0.5">Class</label>
+                    <select id="classSelect"
+                        class="w-full min-w-[8rem] px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:border-blue-500"></select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-0.5">Date</label>
+                    <input type="date" id="datePicker"
+                        class="px-2.5 py-1.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:border-blue-500" />
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Subheader Action Toolbar -->
+    <div class="bg-white border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div class="flex items-center gap-2">
+            <button id="btnMarkAllPresent"
+                class="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                Mark All Present (AM + PM)
+            </button>
+            <button id="btnResetDay"
+                class="px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200 rounded-lg text-xs font-semibold transition-colors">
+                Clear Day
+            </button>
+        </div>
+
+        <div class="flex items-center gap-4 text-xs font-medium text-slate-600">
+            <div>Class Size: <strong id="statClassSize" class="text-slate-900 font-bold">0</strong></div>
+            <div>AM Present: <strong id="statAmPresent" class="text-emerald-700 font-bold">0</strong></div>
+            <div>PM Present: <strong id="statPmPresent" class="text-emerald-700 font-bold">0</strong></div>
+            <div>Term Opened: <strong id="statTermOpened" class="text-blue-700 font-bold">130 sessions</strong></div>
+        </div>
+    </div>
+
+    <!-- Main Register Content -->
+    <main class="flex-1 overflow-auto p-3 md:p-4">
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+            <table class="w-full text-left border-collapse text-sm">
+                <thead class="bg-slate-50 text-slate-700 border-b border-slate-200 text-xs font-bold uppercase tracking-wider sticky top-0 z-10">
+                    <tr>
+                        <th class="p-3 w-12 text-center border-r border-slate-200 bg-slate-50">#</th>
+                        <th class="p-3 min-w-[12rem] border-r border-slate-200 bg-slate-50">Student Name</th>
+                        <th class="p-3 w-32 text-center border-r border-slate-200 bg-slate-50">Admission No</th>
+                        <th class="p-3 w-36 text-center border-r border-slate-200 bg-amber-50/50 text-amber-900">
+                            Morning (AM)
+                        </th>
+                        <th class="p-3 w-36 text-center border-r border-slate-200 bg-indigo-50/50 text-indigo-900">
+                            Afternoon (PM)
+                        </th>
+                        <th class="p-3 w-32 text-center border-r border-slate-200">Day Total</th>
+                        <th class="p-3 w-36 text-center border-r border-slate-200">Term Present</th>
+                        <th class="p-3 w-28 text-center">Rate %</th>
+                    </tr>
+                </thead>
+                <tbody id="attendanceTableBody" class="divide-y divide-slate-100 text-slate-800">
+                    <tr>
+                        <td colspan="8" class="p-8 text-center text-slate-500">Select a class to load attendance register.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <!-- Footer with Save button -->
+    <footer class="bg-white border-t border-slate-200 px-4 py-3 flex justify-between items-center shrink-0 shadow-sm">
+        <div class="text-xs md:text-sm text-slate-500">
+            <span id="saveStatus" class="font-medium text-slate-700">Changes will be saved to term records.</span>
+        </div>
+        <div class="flex gap-2">
+            <button id="btnSaveAttendance"
+                class="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                Save Attendance
+            </button>
+        </div>
+    </footer>
+
+    <script type="module" src="/js/teacher/attendance.js"></script>
+    <script type="module" src="/js/shared/poweredBy.js"></script>
+</body>
+
+</html>

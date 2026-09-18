@@ -177,7 +177,7 @@ function renderResultCards(rows) {
   if (!rows.length) {
     const termLabel = termDbToLabel(termSelect?.value);
     renderResultsEmpty(
-      `No approved results for <strong>${termLabel}</strong> yet.<br><span class="text-sm mt-2 block">Scores appear here only after your teacher publishes <em>and</em> the school admin approves them. If your teacher recently updated scores, admin must approve again.</span>`
+      `No published results for <strong>${termLabel}</strong> yet.<br><span class="text-sm mt-2 block">Scores will appear here once the school administration officially releases results for this term.</span>`
     );
     return;
   }

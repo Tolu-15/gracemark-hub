@@ -4,6 +4,10 @@ import { getAppSettings } from "/js/shared/appSettings.js";
 import { getClassByName } from "/js/shared/schoolContext.js";
 import {
   GRADING_CONFIG,
+  calculatePR1,
+  calculatePR2,
+  calculatePR3,
+  calculateTR,
   calculateStudentResult,
   emptyRawScores,
   normalizeBreakdown,
@@ -13,15 +17,141 @@ import {
 
 const classSelect = document.getElementById("classSelect");
 const subjectSelect = document.getElementById("subjectSelect");
+const termSelect = document.getElementById("termSelect");
 const scoreTableBody = document.getElementById("scoreTableBody");
 const scoreCardsMobile = document.getElementById("scoreCardsMobile");
 const saveStatus = document.getElementById("saveStatus");
 const btnSaveDraft = document.getElementById("btnSaveDraft");
-const btnPublish = document.getElementById("btnPublish");
+const btnSubmit = document.getElementById("btnSubmit");
+const returnReasonBanner = document.getElementById("returnReasonBanner");
+const returnReasonText = document.getElementById("returnReasonText");
+const termLockBanner = document.getElementById("termLockBanner");
+const termLockIcon = document.getElementById("termLockIcon");
+const termLockText = document.getElementById("termLockText");
+const termLockBadge = document.getElementById("termLockBadge");
 
-const COL_COUNT = 24;
+const COL_COUNT = 32;
 
 let gridHasInvalid = false;
+let currentView = "all";
+
+let termMeta = {
+  currentTerm: "term1",
+  currentSession: "2025/2026",
+  termsList: [],
+};
+
+async function loadTermsMetadata() {
+  try {
+    const res = await fetch("/api/terms");
+    if (res.ok) {
+      const data = await res.json();
+      if (data.ok) {
+        termMeta = {
+          currentTerm: data.current_term || "term1",
+          currentSession: data.current_session || "2025/2026",
+          termsList: data.terms || [],
+        };
+        return termMeta;
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to fetch /api/terms:", e);
+  }
+  return termMeta;
+}
+
+function isTermEditable(termCode) {
+  const t = termMeta.termsList.find((item) => item.term === termCode);
+  if (t) return Boolean(t.allow_edit);
+  return termCode === termMeta.currentTerm;
+}
+
+function populateTermSelect() {
+  if (!termSelect) return;
+  const currentVal = termSelect.value;
+  termSelect.innerHTML = "";
+  const terms =
+    termMeta.termsList.length > 0
+      ? termMeta.termsList
+      : [
+          { term: "term1", label: "1st Term", is_current: termMeta.currentTerm === "term1", allow_edit: true },
+          { term: "term2", label: "2nd Term", is_current: termMeta.currentTerm === "term2", allow_edit: false },
+          { term: "term3", label: "3rd Term", is_current: termMeta.currentTerm === "term3", allow_edit: false },
+        ];
+
+  terms.forEach((t) => {
+    const opt = document.createElement("option");
+    opt.value = t.term;
+    let suffix = "";
+    if (t.is_current) suffix = " (Current)";
+    else if (t.allow_edit) suffix = " (Unlocked)";
+    else suffix = " (Locked)";
+    opt.textContent = `${t.label}${suffix}`;
+    termSelect.appendChild(opt);
+  });
+
+  if (currentVal && terms.some((t) => t.term === currentVal)) {
+    termSelect.value = currentVal;
+  } else {
+    termSelect.value = termMeta.currentTerm;
+  }
+}
+
+function updateTermLockUI(term) {
+  const editable = isTermEditable(term);
+  const isCurrent = term === termMeta.currentTerm;
+
+  // 1. Inputs enabled/disabled
+  document.querySelectorAll(".score-input").forEach((inp) => {
+    inp.disabled = !editable;
+  });
+
+  // 2. Buttons
+  if (btnSaveDraft) {
+    btnSaveDraft.disabled = !editable || gridHasInvalid;
+    btnSaveDraft.textContent = editable ? "Save Draft" : "Locked (Read-Only)";
+  }
+  if (btnSubmit) {
+    btnSubmit.disabled = !editable || gridHasInvalid;
+    btnSubmit.title = editable
+      ? "Submit completed scores to administration for approval"
+      : "Score editing is locked for this term";
+  }
+
+  // 3. Banner
+  if (termLockBanner) {
+    if (!editable) {
+      termLockBanner.className =
+        "bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-xs text-amber-900 flex items-center justify-between gap-3 shrink-0";
+      if (termLockIcon) termLockIcon.textContent = "🔒";
+      if (termLockText) {
+        termLockText.innerHTML = `<strong>Viewing ${termLabel(term)} (Read-Only):</strong> Only the active school term can be edited. Administration permission is required to edit scores for this term.`;
+      }
+      if (termLockBadge) {
+        termLockBadge.className =
+          "px-2.5 py-0.5 bg-amber-200 text-amber-900 rounded font-semibold text-[10px] uppercase tracking-wide";
+        termLockBadge.textContent = "Locked · Read-Only";
+      }
+      termLockBanner.classList.remove("hidden");
+    } else if (!isCurrent) {
+      termLockBanner.className =
+        "bg-emerald-50 border-b border-emerald-200 px-4 py-2.5 text-xs text-emerald-900 flex items-center justify-between gap-3 shrink-0";
+      if (termLockIcon) termLockIcon.textContent = "🔓";
+      if (termLockText) {
+        termLockText.innerHTML = `<strong>Admin Override Active:</strong> Score editing is unlocked for ${termLabel(term)}. Changes will save to ${termLabel(term)}.`;
+      }
+      if (termLockBadge) {
+        termLockBadge.className =
+          "px-2.5 py-0.5 bg-emerald-200 text-emerald-900 rounded font-semibold text-[10px] uppercase tracking-wide";
+        termLockBadge.textContent = "Admin Edit Permitted";
+      }
+      termLockBanner.classList.remove("hidden");
+    } else {
+      termLockBanner.classList.add("hidden");
+    }
+  }
+}
 
 function termLabel(term) {
   if (term === "term1") return "1st Term";
@@ -39,14 +169,28 @@ function compareStudents(a, b) {
   return String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, { sensitivity: "base" });
 }
 
+function gradeBadge(grade) {
+  const g = String(grade || "").trim().toUpperCase();
+  const cls = { A: "grade-a", B: "grade-b", C: "grade-c", D: "grade-d", E: "grade-e", F: "grade-f" }[g] || "grade-f";
+  return `<span class="grade-badge ${cls}">${g || "—"}</span>`;
+}
+
 function statusBadge(status) {
   const s = String(status || "draft").toLowerCase();
   const styles = {
     draft: "bg-slate-100 text-slate-600 ring-slate-200",
-    published: "bg-amber-50 text-amber-800 ring-amber-200",
+    submitted: "bg-blue-50 text-blue-800 ring-blue-200",
     approved: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+    published: "bg-purple-50 text-purple-800 ring-purple-200",
+    returned: "bg-rose-50 text-rose-800 ring-rose-200",
   };
-  const labels = { draft: "Draft", published: "Published", approved: "Approved" };
+  const labels = {
+    draft: "Draft",
+    submitted: "Submitted",
+    approved: "Approved",
+    published: "Published",
+    returned: "Returned",
+  };
   const cls = styles[s] || styles.draft;
   const label = labels[s] || s;
   return `<span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ring-1 ring-inset ${cls}">${label}</span>`;
@@ -65,16 +209,9 @@ function getSavePanels() {
   return [...scoreTableBody.querySelectorAll("tr[data-student-id]")];
 }
 
-function getActivePanels() {
-  if (window.matchMedia("(max-width: 767px)").matches && scoreCardsMobile) {
-    return [...scoreCardsMobile.querySelectorAll("[data-student-id]")];
-  }
-  return getSavePanels();
-}
-
 function defaultStatusMessage(panels) {
   return panels.length
-    ? "Ready to save. Blanks are ignored; type 0 for zero."
+    ? "Ready. Blanks are ignored; type 0 for zero."
     : "Select a class and subject.";
 }
 
@@ -144,15 +281,33 @@ function recalcPanel(panel) {
   applyInputValidation(panel, validation);
 
   const className = classSelect?.value || "";
-  const result = calculateStudentResult(raw, undefined, { className });
-  const stored = toStoredScores(result);
+  const isSenior = className.toUpperCase().includes("SS") && !className.toUpperCase().includes("JSS");
 
-  panel.querySelector('[data-out="cw"]').textContent = String(stored.cw);
-  panel.querySelector('[data-out="hw"]').textContent = String(stored.hw);
-  panel.querySelector('[data-out="tests"]').textContent = String(stored.test);
-  panel.querySelector('[data-out="ca"]').textContent = String(Math.round(result.caTotal));
-  panel.querySelector('[data-out="total"]').textContent = String(stored.total);
-  panel.querySelector('[data-out="grade"]').textContent = stored.grade;
+  // Calculate Checkpoints
+  const pr1 = calculatePR1(raw, isSenior);
+  const pr2 = calculatePR2(raw, isSenior);
+  const pr3 = calculatePR3(raw, isSenior);
+  const tr = calculateTR(raw, { isSenior });
+  const stored = toStoredScores(tr);
+
+  // Desktop Elements
+  const elPr1 = panel.querySelector('[data-out="pr1"]');
+  if (elPr1) elPr1.textContent = pr1.hasData ? `${pr1.percentage}% (${pr1.grade})` : "—";
+
+  const elPr2 = panel.querySelector('[data-out="pr2"]');
+  if (elPr2) elPr2.textContent = pr2.hasData ? `${pr2.percentage}% (${pr2.grade})` : "—";
+
+  const elPr3 = panel.querySelector('[data-out="pr3"]');
+  if (elPr3) elPr3.textContent = pr3.hasData ? `${pr3.percentage}% (${pr3.grade})` : "—";
+
+  const elCa = panel.querySelector('[data-out="ca"]');
+  if (elCa) elCa.textContent = String(Math.round(tr.caTotal));
+
+  const elTot = panel.querySelector('[data-out="total"]');
+  if (elTot) elTot.textContent = String(stored.total);
+
+  const elGr = panel.querySelector('[data-out="grade"]');
+  if (elGr) elGr.innerHTML = gradeBadge(stored.grade);
 
   panel.dataset.invalid = validation.valid ? "0" : "1";
   return validation.valid;
@@ -166,7 +321,7 @@ function refreshGridValidationState(options = {}) {
   const canSave = !gridHasInvalid && panels.length > 0;
 
   if (btnSaveDraft) btnSaveDraft.disabled = !canSave;
-  if (btnPublish) btnPublish.disabled = !canSave;
+  if (btnSubmit) btnSubmit.disabled = !canSave;
 
   if (!saveStatus) return;
 
@@ -187,14 +342,14 @@ function refreshGridValidationState(options = {}) {
   if (
     current === "Fix red scores (over max) before saving." ||
     current.endsWith("Save failed.") ||
-    current.endsWith("Publish failed.")
+    current.endsWith("Submit failed.")
   ) {
     saveStatus.textContent = defaultStatusMessage(panels);
   }
 }
 
-function scoreFieldCell(name, value, max) {
-  return `<td class="score-cell score-cell--input">${scoreInput(name, value, max)}</td>`;
+function scoreFieldCell(name, value, max, colClass = "") {
+  return `<td class="score-cell score-cell--input ${colClass}">${scoreInput(name, value, max)}</td>`;
 }
 
 function buildRow(student, existing, rowIndex) {
@@ -203,20 +358,19 @@ function buildRow(student, existing, rowIndex) {
   tr.dataset.studentId = student.id;
   tr.dataset.resultId = existing?.id ?? "";
   tr.dataset.status = existing?.status ?? "draft";
+  tr.dataset.returnReason = existing?.return_reason ?? "";
 
   const raw = normalizeBreakdown(existing);
-  const preview = calculateStudentResult(raw);
-  const stored = toStoredScores(preview);
   const status = tr.dataset.status;
 
   const cwTds = raw.cw
-    .map((v, i) => scoreFieldCell(`cw${i + 1}`, v, GRADING_CONFIG.cw.itemMax))
+    .map((v, i) => scoreFieldCell(`cw${i + 1}`, v, GRADING_CONFIG.cw.itemMax, `col-cw-${i + 1}`))
     .join("");
   const hwTds = raw.hw
-    .map((v, i) => scoreFieldCell(`hw${i + 1}`, v, GRADING_CONFIG.hw.itemMax))
+    .map((v, i) => scoreFieldCell(`hw${i + 1}`, v, GRADING_CONFIG.hw.itemMax, `col-hw-${i + 1}`))
     .join("");
   const testTds = raw.tests
-    .map((v, i) => scoreFieldCell(`test${i + 1}`, v, GRADING_CONFIG.tests.maxes[i]))
+    .map((v, i) => scoreFieldCell(`test${i + 1}`, v, GRADING_CONFIG.tests.maxes[i], `col-test-${i + 1}`))
     .join("");
 
   tr.innerHTML = `
@@ -230,15 +384,17 @@ function buildRow(student, existing, rowIndex) {
     ${cwTds}
     ${hwTds}
     ${testTds}
-    <td class="score-cell score-cell--input border-l border-slate-100">${scoreInput("project", raw.project, GRADING_CONFIG.project.max)}</td>
-    <td class="score-cell score-cell--input">${scoreInput("exam", raw.exam, GRADING_CONFIG.exam.max)}</td>
-    <td class="score-cell score-cell--computed border-l border-slate-100" data-out="cw">${stored.cw}</td>
-    <td class="score-cell score-cell--computed" data-out="hw">${stored.hw}</td>
-    <td class="score-cell score-cell--computed" data-out="tests">${stored.test}</td>
-    <td class="score-cell score-cell--computed" data-out="ca">${Math.round(preview.caTotal)}</td>
-    <td class="score-cell score-cell--total" data-out="total">${stored.total}</td>
-    <td class="score-cell score-cell--grade" data-out="grade">${stored.grade}</td>
-    <td class="score-cell score-cell--status" data-out="status">${statusBadge(status)}</td>
+    <td class="score-cell score-cell--input border-l border-slate-200 col-final-prj">${scoreInput("project", raw.project, GRADING_CONFIG.project.max)}</td>
+    <td class="score-cell score-cell--input col-final-exm">${scoreInput("exam", raw.exam, GRADING_CONFIG.exam.max)}</td>
+    
+    <td class="score-cell score-cell--computed border-l border-slate-200 col-pr1" data-out="pr1">—</td>
+    <td class="score-cell score-cell--computed col-pr2" data-out="pr2">—</td>
+    <td class="score-cell score-cell--computed col-pr3" data-out="pr3">—</td>
+    
+    <td class="score-cell score-cell--computed border-l border-slate-200 col-tr-ca" data-out="ca">—</td>
+    <td class="score-cell score-cell--total col-tr-tot" data-out="total">—</td>
+    <td class="score-cell score-cell--grade col-tr-grd" data-out="grade">—</td>
+    <td class="score-cell score-cell--status col-status" data-out="status">${statusBadge(status)}</td>
   `;
 
   recalcPanel(tr);
@@ -261,20 +417,17 @@ function buildMobileCard(student, existing, rowIndex) {
   card.dataset.resultId = existing?.id ?? "";
   card.dataset.status = existing?.status ?? "draft";
 
-  const className = classSelect?.value || "";
   const raw = normalizeBreakdown(existing);
-  const preview = calculateStudentResult(raw, undefined, { className });
-  const stored = toStoredScores(preview);
   const status = card.dataset.status;
 
   const cwFields = raw.cw
-    .map((v, i) => mobileFieldGroup(i + 1, `cw${i + 1}`, v, GRADING_CONFIG.cw.itemMax))
+    .map((v, i) => mobileFieldGroup(`Wk ${i + 1}`, `cw${i + 1}`, v, GRADING_CONFIG.cw.itemMax))
     .join("");
   const hwFields = raw.hw
-    .map((v, i) => mobileFieldGroup(i + 1, `hw${i + 1}`, v, GRADING_CONFIG.hw.itemMax))
+    .map((v, i) => mobileFieldGroup(`Wk ${i + 1}`, `hw${i + 1}`, v, GRADING_CONFIG.hw.itemMax))
     .join("");
   const testFields = raw.tests
-    .map((v, i) => mobileFieldGroup(["15", "15", "30"][i], `test${i + 1}`, v, GRADING_CONFIG.tests.maxes[i]))
+    .map((v, i) => mobileFieldGroup(`Test ${i + 1} (/${GRADING_CONFIG.tests.maxes[i]})`, `test${i + 1}`, v, GRADING_CONFIG.tests.maxes[i]))
     .join("");
 
   card.innerHTML = `
@@ -286,15 +439,15 @@ function buildMobileCard(student, existing, rowIndex) {
       <span data-out="status">${statusBadge(status)}</span>
     </div>
     <div class="score-card__section">
-      <div class="score-card__section-title">Classwork (max 10)</div>
+      <div class="score-card__section-title">Class Work (Weeks 1–10, each /10)</div>
       <div class="score-card__grid">${cwFields}</div>
     </div>
     <div class="score-card__section">
-      <div class="score-card__section-title">Assignment (max 10)</div>
+      <div class="score-card__section-title">Home Work / Assignment (Weeks 1–10, each /10)</div>
       <div class="score-card__grid">${hwFields}</div>
     </div>
     <div class="score-card__section">
-      <div class="score-card__section-title">Tests</div>
+      <div class="score-card__section-title">Regular Tests (T1 /15, T2 /15, T3 /30)</div>
       <div class="score-card__grid score-card__grid--3">${testFields}</div>
     </div>
     <div class="score-card__section">
@@ -305,14 +458,9 @@ function buildMobileCard(student, existing, rowIndex) {
       </div>
     </div>
     <div class="score-card__summary">
-      <div class="score-card__stat">Total<strong data-out="total">${stored.total}</strong></div>
-      <div class="score-card__stat">CA<strong data-out="ca">${Math.round(preview.caTotal)}</strong></div>
-      <div class="score-card__stat">Grade<strong data-out="grade">${stored.grade}</strong></div>
-    </div>
-    <div class="hidden" aria-hidden="true">
-      <span data-out="cw">${stored.cw}</span>
-      <span data-out="hw">${stored.hw}</span>
-      <span data-out="tests">${stored.test}</span>
+      <div class="score-card__stat">Total<strong data-out="total">—</strong></div>
+      <div class="score-card__stat">CA<strong data-out="ca">—</strong></div>
+      <div class="score-card__stat">Grade<strong data-out="grade">—</strong></div>
     </div>
   `;
 
@@ -368,13 +516,24 @@ async function fetchStudentsForClassId(classId) {
 async function fetchResults({ studentIds, subjectId, term }) {
   if (!studentIds.length) return [];
   let selectCols =
-    "id, student_id, subject_id, term, cw, hw, test, project, exam, total, grade, status, score_breakdown";
+    "id, student_id, subject_id, term, cw, hw, test, project, exam, total, grade, status, return_reason, score_breakdown";
   let { data, error } = await supabase
     .from("results")
     .select(selectCols)
     .eq("subject_id", subjectId)
     .eq("term", term)
     .in("student_id", studentIds);
+
+  if (error && /return_reason/i.test(error.message || "")) {
+    selectCols = "id, student_id, subject_id, term, cw, hw, test, project, exam, total, grade, status, score_breakdown";
+    ({ data, error } = await supabase
+      .from("results")
+      .select(selectCols)
+      .eq("subject_id", subjectId)
+      .eq("term", term)
+      .in("student_id", studentIds));
+  }
+
   if (error && /score_breakdown/i.test(error.message || "")) {
     selectCols = "id, student_id, subject_id, term, cw, hw, test, project, exam, total, grade, status";
     ({ data, error } = await supabase
@@ -407,6 +566,15 @@ async function renderGrid({ className, subjectId, term, statusMessage } = {}) {
   const results = await fetchResults({ studentIds: students.map((s) => s.id), subjectId, term });
   const resultsByStudent = new Map(results.map((r) => [r.student_id, r]));
 
+  // Check for any returned results
+  const returnedRecord = results.find((r) => r.status === "returned" && r.return_reason);
+  if (returnedRecord && returnReasonBanner) {
+    returnReasonText.textContent = returnedRecord.return_reason || "Admin requested corrections on this subject.";
+    returnReasonBanner.classList.remove("hidden");
+  } else if (returnReasonBanner) {
+    returnReasonBanner.classList.add("hidden");
+  }
+
   scoreTableBody.innerHTML = "";
   if (scoreCardsMobile) scoreCardsMobile.innerHTML = "";
 
@@ -416,9 +584,67 @@ async function renderGrid({ className, subjectId, term, statusMessage } = {}) {
     scoreTableBody.appendChild(buildRow(s, existing, idx));
     if (scoreCardsMobile) scoreCardsMobile.appendChild(buildMobileCard(s, existing, idx));
   });
+
+  applyColumnVisibility(currentView);
+  updateTermLockUI(term);
+
   refreshGridValidationState({
-    message: statusMessage ?? "Loaded. Blanks are ignored; type 0 for zero.",
+    message: statusMessage ?? (isTermEditable(term) ? "Loaded. Blanks are ignored; type 0 for zero." : "Term scores are locked (Read-Only)."),
   });
+}
+
+function applyColumnVisibility(viewMode) {
+  currentView = viewMode;
+  document.querySelectorAll(".view-tab").forEach((tab) => {
+    if (tab.dataset.view === viewMode) {
+      tab.classList.add("active");
+    } else {
+      tab.classList.remove("active");
+    }
+  });
+
+  const table = document.querySelector(".score-table");
+  if (!table) return;
+
+  const cwGroup = table.querySelector(".col-cw-group");
+  const hwGroup = table.querySelector(".col-hw-group");
+  const testGroup = table.querySelector(".col-test-group");
+
+  // Reset all
+  table.querySelectorAll("[class*='col-']").forEach((el) => el.classList.remove("col-hidden"));
+
+  if (viewMode === "pr1") {
+    // Hide weeks 5-10 of CW & HW, Tests 2-3, Project, Exam
+    table.querySelectorAll(".col-cw-5, .col-cw-6, .col-cw-7, .col-cw-8, .col-cw-9, .col-cw-10").forEach((el) => el.classList.add("col-hidden"));
+    table.querySelectorAll(".col-hw-5, .col-hw-6, .col-hw-7, .col-hw-8, .col-hw-9, .col-hw-10").forEach((el) => el.classList.add("col-hidden"));
+    table.querySelectorAll(".col-test-2, .col-test-3, .col-final-prj, .col-final-exm").forEach((el) => el.classList.add("col-hidden"));
+    if (cwGroup) cwGroup.colSpan = 4;
+    if (hwGroup) hwGroup.colSpan = 4;
+    if (testGroup) testGroup.colSpan = 1;
+  } else if (viewMode === "pr2") {
+    // Hide weeks 8-10 of CW & HW, Test 3, Project, Exam
+    table.querySelectorAll(".col-cw-8, .col-cw-9, .col-cw-10").forEach((el) => el.classList.add("col-hidden"));
+    table.querySelectorAll(".col-hw-8, .col-hw-9, .col-hw-10").forEach((el) => el.classList.add("col-hidden"));
+    table.querySelectorAll(".col-test-3, .col-final-prj, .col-final-exm").forEach((el) => el.classList.add("col-hidden"));
+    if (cwGroup) cwGroup.colSpan = 7;
+    if (hwGroup) hwGroup.colSpan = 7;
+    if (testGroup) testGroup.colSpan = 2;
+  } else if (viewMode === "pr3") {
+    table.querySelectorAll(".col-final-prj, .col-final-exm").forEach((el) => el.classList.add("col-hidden"));
+    if (cwGroup) cwGroup.colSpan = 10;
+    if (hwGroup) hwGroup.colSpan = 10;
+    if (testGroup) testGroup.colSpan = 3;
+  } else if (viewMode === "tr") {
+    table.querySelectorAll(".col-pr1, .col-pr2, .col-pr3").forEach((el) => el.classList.add("col-hidden"));
+    if (cwGroup) cwGroup.colSpan = 10;
+    if (hwGroup) hwGroup.colSpan = 10;
+    if (testGroup) testGroup.colSpan = 3;
+  } else {
+    // all
+    if (cwGroup) cwGroup.colSpan = 10;
+    if (hwGroup) hwGroup.colSpan = 10;
+    if (testGroup) testGroup.colSpan = 3;
+  }
 }
 
 async function saveAll({ teacherAuthId, status }) {
@@ -434,29 +660,33 @@ async function saveAll({ teacherAuthId, status }) {
   }
 
   const settings = await getAppSettings();
-  const term = settings?.current_term ?? "term1";
+  const term = termSelect ? termSelect.value : (settings?.current_term ?? "term1");
   const className = classSelect.value;
   const subjectId = subjectSelect.value;
   if (!className || !subjectId) return;
 
-  saveStatus.textContent = status === "published" ? "Publishing..." : "Saving draft...";
+  if (!isTermEditable(term)) {
+    throw new Error(`Editing scores for ${termLabel(term)} is locked by administration.`);
+  }
+
+  saveStatus.textContent = status === "submitted" ? "Submitting to Admin..." : "Saving draft...";
   saveStatus.classList.remove("text-red-600");
 
   const currentSession = settings?.current_session || "2025/2026";
   const cls = await getClassByName(className);
+  const now = new Date().toISOString();
 
   const payload = panels.map((panel) => {
     const raw = readRawScoresFromPanel(panel);
     const result = calculateStudentResult(raw, undefined, { className });
     const stored = toStoredScores(result);
 
-    return {
+    const record = {
       student_id: panel.dataset.studentId,
       subject_id: subjectId,
       class_id: cls?.id || null,
       session: currentSession,
       term,
-      submitted_by: teacherAuthId,
       status,
       score_breakdown: raw,
       cw: stored.cw,
@@ -466,32 +696,65 @@ async function saveAll({ teacherAuthId, status }) {
       exam: stored.exam,
       total: stored.total,
       grade: stored.grade,
+      updated_at: now,
+      submitted_by: teacherAuthId || null,
     };
+
+    if (status === "submitted") {
+      record.submitted_at = now;
+      // Clear previous return reason if re-submitting
+      record.return_reason = null;
+    }
+
+    return record;
   });
 
-  let { error } = await supabase.from("results").upsert(payload, { onConflict: "student_id,subject_id,term,session" });
-  if (error && /session|score_breakdown/i.test(error.message || "")) {
-    const fallbackPayload = payload.map(({ session, class_id, score_breakdown, ...rest }) => rest);
-    ({ error } = await supabase.from("results").upsert(fallbackPayload, { onConflict: "student_id,subject_id,term" }));
+  // 1. Try secure backend API first (uses service role, immune to client RLS restrictions)
+  let savedViaApi = false;
+  try {
+    const res = await fetch("/api/results/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ records: payload, status, teacherAuthId }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.ok) savedViaApi = true;
+    }
+  } catch (apiErr) {
+    console.warn("Backend save API fallback to direct Supabase:", apiErr);
   }
-  if (error) throw error;
 
-  const publishedMsg =
-    status === "published"
-      ? "Published to Admin. Students see scores after admin approval."
-      : "Draft saved.";
-  await renderGrid({ className, subjectId, term, statusMessage: publishedMsg });
+  // 2. Fallback to direct client-side Supabase if server API is unavailable
+  if (!savedViaApi) {
+    let { error } = await supabase.from("results").upsert(payload, { onConflict: "student_id,subject_id,term,session" });
+    if (error && /submitted_at|return_reason/i.test(error.message || "")) {
+      const cleanedPayload = payload.map(({ submitted_at, return_reason, ...rest }) => rest);
+      ({ error } = await supabase.from("results").upsert(cleanedPayload, { onConflict: "student_id,subject_id,term,session" }));
+    }
+    if (error && /session|score_breakdown/i.test(error.message || "")) {
+      const fallbackPayload = payload.map(({ session, class_id, score_breakdown, submitted_at, return_reason, ...rest }) => rest);
+      ({ error } = await supabase.from("results").upsert(fallbackPayload, { onConflict: "student_id,subject_id,term" }));
+    }
+    if (error) throw error;
+  }
+
+  const msg =
+    status === "submitted"
+      ? "✓ Submitted to Admin for approval. Results will be locked until approved."
+      : "✓ Draft saved.";
+  await renderGrid({ className, subjectId, term, statusMessage: msg });
 }
 
 export async function startResultsEntry() {
   const ok = await requireRole("teacher", { redirectTo: "/" });
   if (!ok) return;
 
-  const settings = await getAppSettings();
-  const term = settings?.current_term ?? "term1";
+  await loadTermsMetadata();
+  populateTermSelect();
 
-  const termDisplay = document.getElementById("displayTerm");
-  if (termDisplay) termDisplay.textContent = termLabel(term);
+  const settings = await getAppSettings();
+  const activeTerm = termSelect?.value || settings?.current_term || "term1";
 
   const assignments = await loadAssignments(ok.session.user.id);
   populateClassSelect(assignments);
@@ -506,13 +769,28 @@ export async function startResultsEntry() {
     subjectSelect.value || assignments.find((a) => a.classes?.name === selectedClass)?.subject_id;
   if (selectedSubjectId) subjectSelect.value = selectedSubjectId;
 
+  termSelect?.addEventListener("change", async () => {
+    await renderGrid({
+      className: classSelect.value,
+      subjectId: subjectSelect.value,
+      term: termSelect.value,
+    });
+  });
+
   classSelect.addEventListener("change", async () => {
     populateSubjectSelect(assignments, classSelect.value);
-    await renderGrid({ className: classSelect.value, subjectId: subjectSelect.value, term });
+    await renderGrid({ className: classSelect.value, subjectId: subjectSelect.value, term: termSelect?.value || activeTerm });
   });
 
   subjectSelect.addEventListener("change", async () => {
-    await renderGrid({ className: classSelect.value, subjectId: subjectSelect.value, term });
+    await renderGrid({ className: classSelect.value, subjectId: subjectSelect.value, term: termSelect?.value || activeTerm });
+  });
+
+  // View tab switcher
+  document.querySelectorAll(".view-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      applyColumnVisibility(tab.dataset.view);
+    });
   });
 
   function handleScoreInput(e) {
@@ -535,7 +813,7 @@ export async function startResultsEntry() {
   btnSaveDraft?.addEventListener("click", async () => {
     if (gridHasInvalid) return;
     btnSaveDraft.disabled = true;
-    btnPublish.disabled = true;
+    if (btnSubmit) btnSubmit.disabled = true;
     try {
       await saveAll({ teacherAuthId: ok.session.user.id, status: "draft" });
     } catch (error) {
@@ -547,15 +825,18 @@ export async function startResultsEntry() {
     }
   });
 
-  btnPublish?.addEventListener("click", async () => {
+  btnSubmit?.addEventListener("click", async () => {
     if (gridHasInvalid) return;
+    const confirmSubmit = confirm("Submit these scores to Admin for approval?\n\nOnce submitted, scores are queued for administrator sign-off.");
+    if (!confirmSubmit) return;
+
     btnSaveDraft.disabled = true;
-    btnPublish.disabled = true;
+    btnSubmit.disabled = true;
     try {
-      await saveAll({ teacherAuthId: ok.session.user.id, status: "published" });
+      await saveAll({ teacherAuthId: ok.session.user.id, status: "submitted" });
     } catch (error) {
-      alert(error?.message || "Failed to publish.");
-      saveStatus.textContent = error?.message || "Publish failed.";
+      alert(error?.message || "Failed to submit.");
+      saveStatus.textContent = error?.message || "Submit failed.";
       saveStatus.classList.add("text-red-600");
     } finally {
       refreshGridValidationState({ skipMessage: true });

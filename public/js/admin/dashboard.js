@@ -96,6 +96,87 @@ async function loadSettings() {
   }
 }
 
+async function loadTermPermissions() {
+  const container = document.getElementById("termPermissionsList");
+  if (!container) return;
+
+  try {
+    const res = await fetch("/api/terms");
+    if (!res.ok) throw new Error("Failed to load terms");
+    const data = await res.json();
+    const terms = data.terms || [];
+
+    container.innerHTML = terms.map((t) => {
+      const isCurrent = t.is_current;
+      const isUnlocked = t.allow_edit;
+
+      if (isCurrent) {
+        return `
+          <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl flex flex-col justify-between gap-2 shadow-xs">
+            <div>
+              <span class="text-[10px] font-bold uppercase text-blue-600 block">Current Active Term</span>
+              <span class="text-sm font-bold text-blue-950">${t.label}</span>
+            </div>
+            <span class="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              Always Editable
+            </span>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="p-3 ${isUnlocked ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'} border rounded-xl flex flex-col justify-between gap-2 transition-colors shadow-xs">
+          <div>
+            <span class="text-[10px] font-bold uppercase ${isUnlocked ? 'text-emerald-600' : 'text-slate-400'} block">
+              ${isUnlocked ? 'Unlocked Override' : 'Locked (Default)'}
+            </span>
+            <span class="text-sm font-bold text-slate-800">${t.label}</span>
+          </div>
+          <button type="button" 
+            data-term="${t.term}" 
+            data-allow="${isUnlocked ? 'false' : 'true'}"
+            class="btn-toggle-term-edit px-2.5 py-1 text-xs font-semibold rounded-lg border transition-all ${
+              isUnlocked 
+                ? 'bg-rose-100 hover:bg-rose-200 text-rose-800 border-rose-300 cursor-pointer' 
+                : 'bg-indigo-600 hover:bg-indigo-700 text-white border-transparent cursor-pointer'
+            }">
+            ${isUnlocked ? '🔒 Lock Term' : '🔓 Permit Edit'}
+          </button>
+        </div>
+      `;
+    }).join("");
+
+    container.querySelectorAll(".btn-toggle-term-edit").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const term = btn.dataset.term;
+        const allowEdit = btn.dataset.allow === "true";
+        btn.disabled = true;
+        btn.textContent = "Updating...";
+
+        try {
+          const resp = await fetch("/api/admin/terms/toggle-edit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              session: data.current_session,
+              term,
+              allow_edit: allowEdit,
+            }),
+          });
+          if (!resp.ok) throw new Error("Failed to update term edit permission");
+          await loadTermPermissions();
+        } catch (err) {
+          alert("Error: " + err.message);
+          btn.disabled = false;
+        }
+      });
+    });
+  } catch (e) {
+    container.innerHTML = `<div class="text-xs text-rose-500 py-2">Failed to load term permissions.</div>`;
+  }
+}
+
 async function init() {
   try {
     const ok = await requireRole("admin", { redirectTo: "/" });
@@ -104,7 +185,7 @@ async function init() {
     adminNameDisplay.textContent = ok.profile.display_name || "Administrator";
     authLoader.style.display = "none";
 
-    await Promise.all([loadStats(), loadSettings()]);
+    await Promise.all([loadStats(), loadSettings(), loadTermPermissions()]);
   } catch (error) {
     console.error("Admin init error:", error);
     authLoader.innerHTML = `
@@ -158,6 +239,7 @@ saveGlobalSettingsBtn?.addEventListener("click", async () => {
       current_session: sessionToSave,
     });
     alert(`Global academic settings updated! Active Session is now: ${sessionToSave}`);
+    await loadTermPermissions();
   } catch (error) {
     console.error("Error saving global settings:", error);
     alert("Failed to save global settings. " + error.message);
