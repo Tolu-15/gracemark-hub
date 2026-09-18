@@ -6,34 +6,38 @@ export interface UserProfile {
   email: string | null;
   display_name: string | null;
   role: UserRole;
-  created_at: string;
+  created_at?: string;
 }
 
 export interface School {
   id: string;
   name: string;
   session: string;
-  created_at: string;
+  created_at?: string;
 }
 
-export interface SchoolClass {
+export interface ClassRecord {
   id: string;
   name: string;
-  session: string;
-  school_id: string;
-  created_at: string;
+  session?: string;
+  school_id?: string;
+  created_at?: string;
 }
 
-export interface Subject {
+export type SchoolClass = ClassRecord;
+
+export interface SubjectRecord {
   id: string;
   name: string;
-  created_at: string;
+  created_at?: string;
 }
 
-export interface Student {
+export type Subject = SubjectRecord;
+
+export interface StudentRecord {
   id: string;
   class_id: string;
-  user_id: string;
+  user_id?: string;
   admission_no: string;
   name: string;
   gender?: string | null;
@@ -41,15 +45,45 @@ export interface Student {
   guardian_name?: string | null;
   guardian_phone?: string | null;
   portal_access_status?: "ACTIVE" | "LOCKED" | null;
-  created_at: string;
-  users?: {
-    email: string;
-    display_name?: string;
-  };
-  classes?: {
-    id: string;
-    name: string;
-  };
+  portal_lock_reason?: string | null;
+  created_at?: string;
+  users?: any;
+  classes?: any;
+}
+
+export type Student = StudentRecord;
+
+export interface ResultRecord {
+  id: string;
+  student_id: string;
+  subject_id: string;
+  class_id?: string;
+  term: string;
+  session?: string;
+  status: string;
+  submitted_by?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  cw: number;
+  hw: number;
+  test: number;
+  project: number;
+  exam: number;
+  score_breakdown?: any;
+  total: number;
+  grade: string;
+  remark?: string;
+  pr1_status?: string | null;
+  pr2_status?: string | null;
+  pr3_status?: string | null;
+  tr_status?: string | null;
+  return_reason?: string | null;
+  rejection_reason?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  students?: any;
+  subjects?: any;
+  classes?: any;
 }
 
 export interface TeacherAssignment {
@@ -57,9 +91,9 @@ export interface TeacherAssignment {
   teacher_user_id: string;
   class_id: string;
   subject_id: string;
-  created_at: string;
-  classes?: SchoolClass;
-  subjects?: Subject;
+  created_at?: string;
+  classes?: ClassRecord;
+  subjects?: SubjectRecord;
 }
 
 export interface TermRecord {
@@ -77,27 +111,28 @@ export interface AttendanceRecord {
   term: string;
   days_present: number;
   days_absent: number;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface StudentEvaluation {
-  id: string;
+  id?: string;
   student_id: string;
   term: string;
-  session?: string;
-  punctuality?: number;
-  neatness?: number;
-  politeness?: number;
-  honesty?: number;
-  cooperation?: number;
-  leadership?: number;
-  attentiveness?: number;
-  perseverance?: number;
-  sports?: number;
-  handwriting?: number;
-  teacher_remarks?: string;
-  principal_remarks?: string;
+  session: string;
+  punctuality?: number | null;
+  neatness?: number | null;
+  politeness?: number | null;
+  honesty?: number | null;
+  cooperation?: number | null;
+  leadership?: number | null;
+  handwriting?: number | null;
+  sports?: number | null;
+  crafts?: number | null;
+  music?: number | null;
+  teacher_remark?: string | null;
+  principal_remark?: string | null;
+  submitted_by?: string | null;
   created_at?: string;
   updated_at?: string;
 }

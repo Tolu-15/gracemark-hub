@@ -393,7 +393,7 @@ export function calculateStudentResult(
   return calculateTR(rawScores, options);
 }
 
-export function toStoredScores(result: TRResult) {
+export function toStoredScores(result: TRResult, rawScores?: RawScores) {
   return {
     cw: Math.round(result.scaled.cw),
     hw: Math.round(result.scaled.hw),
@@ -402,6 +402,7 @@ export function toStoredScores(result: TRResult) {
     exam: Math.round(result.scaled.exam),
     total: Math.round(result.totalScore),
     grade: result.grade,
+    ...(rawScores ? { score_breakdown: rawScores } : {}),
   };
 }
 
