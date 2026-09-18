@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "https://esm.sh/react@18.3.1";
-import { fetchStudentReport, TERM_OPTIONS, loadSessions } from "./data.js";
+import { fetchStudentReport, TERM_OPTIONS, PR_INTERVALS, loadSessions } from "./data.js";
 
 const h = React.createElement;
 
@@ -11,47 +11,52 @@ function Icon({ d, className = "w-5 h-5" }) {
   );
 }
 
-function StatCard({ label, value, icon, accent = "purple" }) {
-  const accentClass =
-    accent === "blue"
-      ? "text-sky-400 shadow-[0_0_20px_rgba(56,189,248,0.2)]"
-      : "text-violet-400 shadow-[0_0_20px_rgba(168,85,247,0.2)]";
+function StatCard({ label, value, sub, icon, accent = "violet" }) {
+  const accentBorder =
+    accent === "emerald"
+      ? "border-emerald-500/30 text-emerald-400"
+      : accent === "amber"
+        ? "border-amber-500/30 text-amber-400"
+        : accent === "blue"
+          ? "border-sky-500/30 text-sky-400"
+          : "border-violet-500/30 text-violet-400";
+
   return h(
     "div",
-    {
-      className:
-        "rd-stat-card rd-glass rounded-2xl p-4 flex flex-col gap-2 " + accentClass,
-    },
-    h("div", { className: "flex items-center justify-between" }, [
-      h("span", { className: "text-xs font-medium uppercase tracking-wider text-slate-400" }, label),
-      h("span", { className: "opacity-80" }, icon),
-    ]),
-    h("p", { className: "text-2xl font-bold text-white tracking-tight" }, value)
+    { className: `rd-stat-card rd-glass rounded-xl p-4 flex flex-col justify-between ${accentBorder}` },
+    [
+      h("div", { className: "flex items-center justify-between gap-2 mb-1" }, [
+        h("span", { className: "text-xs font-bold uppercase tracking-wider text-slate-400" }, label),
+        h("span", { className: "opacity-80" }, icon),
+      ]),
+      h("div", { className: "mt-1" }, [
+        h("p", { className: "text-2xl sm:text-3xl font-black text-white tracking-tight" }, value),
+        sub && h("p", { className: "text-xs text-slate-400 mt-0.5" }, sub),
+      ]),
+    ]
   );
 }
 
 function GradeBadge({ grade }) {
-  const g = String(grade || "F").toUpperCase();
-  const cls =
-    g === "A"
-      ? "rd-badge-a"
-      : g === "B"
-        ? "rd-badge-b"
-        : g === "C"
-          ? "rd-badge-c"
-          : g === "D"
-            ? "rd-badge-d"
-            : "rd-badge-f";
-  return h("span", { className: `rd-badge-grade ${cls}` }, g);
+  const g = String(grade || "—").toUpperCase();
+  let badgeClass = "rd-badge-f";
+  if (g.startsWith("A")) badgeClass = "rd-badge-a";
+  else if (g.startsWith("B")) badgeClass = "rd-badge-b";
+  else if (g.startsWith("C")) badgeClass = "rd-badge-c";
+  else if (g.startsWith("D")) badgeClass = "rd-badge-d";
+  else if (g.startsWith("E")) badgeClass = "rd-badge-e";
+  else if (g === "F" || g === "F9") badgeClass = "rd-badge-f";
+
+  return h("span", { className: `rd-badge-grade ${badgeClass}` }, g);
 }
 
 function SelectField({ label, value, onChange, options, disabled = false }) {
-  return h("div", { className: "flex flex-col gap-1 min-w-[7rem]" }, [
-    h("label", { className: "text-xs font-semibold uppercase tracking-wide text-slate-300" }, label),
+  return h("div", { className: "flex flex-col gap-1 min-w-[7.5rem]" }, [
+    h("label", { className: "text-[11px] font-bold uppercase tracking-wider text-slate-400" }, label),
     h(
       "select",
       {
-        className: "rd-select w-full",
+        className: "rd-select w-full text-xs font-semibold",
         value,
         disabled,
         onChange: (e) => onChange(e.target.value),
@@ -63,136 +68,34 @@ function SelectField({ label, value, onChange, options, disabled = false }) {
   ]);
 }
 
-function ResultsTable({ subjects, term }) {
-  if (!subjects.length) {
-    return h(
-      "p",
-      { className: "text-center text-slate-400 py-12 rd-glass rounded-2xl" },
-      "No approved results for this term yet."
-    );
-  }
-
-  const isTerm3 = term === "term3";
-  const cols = isTerm3
-    ? [
-        "Subject",
-        "1st Term (30%)",
-        "2nd Term (30%)",
-        "3rd Term (40%)",
-        "Annual Total",
-        "Class Avg",
-        "High/Low",
-        "Grade",
-        "Remark",
-      ]
-    : [
-        "Subject",
-        "HW",
-        "Test",
-        "Project",
-        "Exam",
-        "Total",
-        "Class Avg",
-        "High/Low",
-        "Grade",
-        "Remark",
-      ];
-
-  return h("div", { className: "rd-table-section" }, [
-    h(
-      "p",
-      { className: "rd-table-scroll-hint", "aria-hidden": "true" },
-      "Swipe sideways to see all subject scores →"
-    ),
-    h(
-      "div",
-      { className: "rd-table-wrap rd-glass rounded-2xl" },
-      h(
-        "table",
-        { className: "rd-table" },
-        h(
-          "thead",
-          null,
-          h(
-            "tr",
-            null,
-            cols.map((c) => h("th", { key: c }, c))
-          )
-        ),
-        h(
-          "tbody",
-          null,
-          subjects.map((row) => {
-            const cells = [
-              h("td", { className: "font-semibold text-white", key: "subj" }, row.subject)
-            ];
-
-            if (isTerm3) {
-              cells.push(
-                h("td", { key: "t1" }, row.term1_total !== null ? row.term1_total : "—"),
-                h("td", { key: "t2" }, row.term2_total !== null ? row.term2_total : "—"),
-                h("td", { key: "t3" }, row.term3_total !== null ? row.term3_total : "—"),
-                h("td", { className: "font-bold text-violet-300", key: "annual" }, row.annualTotal !== null ? row.annualTotal : "—")
-              );
-            } else {
-              cells.push(
-                h("td", { key: "hw" }, row.hw),
-                h("td", { key: "test" }, row.test),
-                h("td", { key: "project" }, row.project),
-                h("td", { key: "exam" }, row.exam),
-                h("td", { className: "font-bold text-violet-300", key: "total" }, row.total)
-              );
-            }
-
-            cells.push(
-              h("td", { key: "avg" }, row.classAverage),
-              h("td", { className: "text-xs text-slate-400", key: "hilow" }, `${row.high} / ${row.low}`),
-              h("td", { key: "grade" }, h(GradeBadge, { grade: row.grade })),
-              h(
-                "td",
-                {
-                  className: row.remark === "EXCELLENT" ? "rd-remark-excellent" : "text-slate-300",
-                  key: "rem"
-                },
-                row.remark
-              )
-            );
-
-            return h("tr", { key: row.subject }, cells);
-          })
-        )
-      )
-    ),
-  ]);
-}
-
 function PromotionBanner({ statusInfo }) {
   if (!statusInfo) return null;
   const isSuccess = statusInfo.code === "success";
   const isWarning = statusInfo.code === "warning";
-  const bgCls = isSuccess
-    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+
+  const bannerCls = isSuccess
+    ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300"
     : isWarning
-      ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
-      : "bg-rose-500/10 border-rose-500/30 text-rose-300";
+      ? "bg-amber-500/10 border-amber-500/40 text-amber-300"
+      : "bg-rose-500/10 border-rose-500/40 text-rose-300";
 
   return h(
     "div",
-    { className: `rd-glass rounded-2xl p-5 mb-6 border flex items-center justify-between gap-4 ${bgCls}` },
+    { className: `rd-promotion-banner rounded-xl p-4 sm:p-5 mb-6 border flex flex-wrap items-center justify-between gap-4 ${bannerCls}` },
     [
       h("div", { className: "space-y-1" }, [
-        h("p", { className: "text-xs font-bold uppercase tracking-wider opacity-80" }, "Session Promotion Decision"),
-        h("h2", { className: "text-xl font-extrabold tracking-tight" }, statusInfo.text),
+        h("div", { className: "text-[11px] font-bold uppercase tracking-widest opacity-80" }, "Session Promotion Decision"),
+        h("h2", { className: "text-lg sm:text-xl font-black tracking-tight text-white" }, statusInfo.text),
       ]),
       h(
         "span",
         {
-          className: `px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest ${
+          className: `px-4 py-2 rounded-lg text-xs font-extrabold uppercase tracking-widest shadow-sm ${
             isSuccess
-              ? "bg-emerald-500/20 text-emerald-200 border border-emerald-400/30"
+              ? "bg-emerald-500 text-slate-950"
               : isWarning
-                ? "bg-amber-500/20 text-amber-200 border border-amber-400/30"
-                : "bg-rose-500/20 text-rose-200 border border-rose-400/30"
+                ? "bg-amber-400 text-slate-950"
+                : "bg-rose-500 text-white"
           }`,
         },
         statusInfo.status
@@ -201,7 +104,301 @@ function PromotionBanner({ statusInfo }) {
   );
 }
 
+function TerminalResultsTable({ subjects, term, isSenior }) {
+  if (!subjects.length) {
+    return h(
+      "p",
+      { className: "text-center text-slate-400 py-12 rd-glass rounded-xl" },
+      "No approved results for this term yet."
+    );
+  }
+
+  const isTerm3 = term === "term3";
+  const termName = term === "term1" ? "First Term" : term === "term2" ? "Second Term" : "Third Term";
+
+  return h("div", { className: "rd-table-section mb-6" }, [
+    h(
+      "div",
+      { className: "flex items-center justify-between pb-2 rd-no-print" },
+      [
+        h("span", { className: "text-xs font-semibold text-slate-400 uppercase tracking-wider" },
+          isTerm3 ? "Cumulative Terminal Scores (TR1 – TR3)" : `${termName} Terminal Scores`
+        ),
+        h(
+          "span",
+          { className: "rd-table-scroll-hint text-[11px] text-violet-400 hidden sm:inline" },
+          "← Scroll horizontally to see full table →"
+        ),
+      ]
+    ),
+    h(
+      "div",
+      { className: "rd-table-wrap rd-glass rounded-xl" },
+      h(
+        "table",
+        { className: "rd-table" },
+        [
+          h("thead", null, [
+            isTerm3
+              ? h("tr", { className: "rd-thead-row-1" }, [
+                  h("th", { rowSpan: 2, className: "rd-col-subject text-left" }, "SUBJECT"),
+                  h("th", { rowSpan: 2, className: "text-center font-bold" }, [
+                    "1ST TERM",
+                    h("span", { className: "block text-[9px] font-normal text-slate-400" }, "100"),
+                  ]),
+                  h("th", { rowSpan: 2, className: "text-center font-bold" }, [
+                    "2ND TERM",
+                    h("span", { className: "block text-[9px] font-normal text-slate-400" }, "100"),
+                  ]),
+                  h("th", { colSpan: 6, className: "text-center rd-th-group bg-violet-950/40 text-violet-300 font-extrabold tracking-wider" }, "THIRD TERM ASSESSMENT"),
+                  h("th", { rowSpan: 2, className: "text-center font-black text-amber-300 bg-amber-950/30" }, [
+                    "ANNUAL AVG",
+                    h("span", { className: "block text-[9px] font-normal text-slate-300" }, "100"),
+                  ]),
+                  h("th", { rowSpan: 2, className: "text-center text-xs" }, "CLASS AVG"),
+                  h("th", { rowSpan: 2, className: "text-center text-xs text-rose-300" }, "LOWEST"),
+                  h("th", { rowSpan: 2, className: "text-center text-xs text-emerald-300" }, "HIGHEST"),
+                  h("th", { rowSpan: 2, className: "text-center font-bold" }, "GRADE"),
+                  h("th", { rowSpan: 2, className: "text-left" }, "REMARK"),
+                ])
+              : h("tr", { className: "rd-thead-row-1" }, [
+                  h("th", { rowSpan: 2, className: "rd-col-subject text-left" }, "SUBJECT"),
+                  h("th", { colSpan: 6, className: "text-center rd-th-group bg-violet-950/40 text-violet-300 font-extrabold tracking-wider" }, `${termName.toUpperCase()} SCORES`),
+                  h("th", { rowSpan: 2, className: "text-center text-xs" }, "CLASS AVG"),
+                  h("th", { rowSpan: 2, className: "text-center text-xs text-rose-300" }, "LOWEST"),
+                  h("th", { rowSpan: 2, className: "text-center text-xs text-emerald-300" }, "HIGHEST"),
+                  h("th", { rowSpan: 2, className: "text-center font-bold" }, "GRADE"),
+                  h("th", { rowSpan: 2, className: "text-left" }, "REMARK"),
+                ]),
+            h("tr", { className: "rd-thead-row-2 text-[10px] text-slate-400" }, [
+              h("th", { className: "text-center" }, ["CW", h("span", { className: "block text-[9px] text-slate-500" }, "10")]),
+              h("th", { className: "text-center" }, ["HW", h("span", { className: "block text-[9px] text-slate-500" }, "5")]),
+              h("th", { className: "text-center" }, ["TEST", h("span", { className: "block text-[9px] text-slate-500" }, "10")]),
+              h("th", { className: "text-center" }, ["PROJ", h("span", { className: "block text-[9px] text-slate-500" }, "5")]),
+              h("th", { className: "text-center" }, ["EXAM", h("span", { className: "block text-[9px] text-slate-500" }, "70")]),
+              h("th", { className: "text-center font-bold text-white bg-violet-900/30" }, ["TOTAL", h("span", { className: "block text-[9px] text-slate-400" }, "100")]),
+            ]),
+          ]),
+          h(
+            "tbody",
+            null,
+            subjects.map((row, idx) => {
+              const cells = [
+                h("td", { className: "font-bold text-white rd-td-subject", key: "subj" }, row.subject)
+              ];
+
+              if (isTerm3) {
+                cells.push(
+                  h("td", { className: "text-center font-medium", key: "t1" }, row.term1_total !== null ? row.term1_total : "—"),
+                  h("td", { className: "text-center font-medium", key: "t2" }, row.term2_total !== null ? row.term2_total : "—"),
+                  h("td", { className: "text-center text-slate-300", key: "cw" }, row.cw !== null ? row.cw : "—"),
+                  h("td", { className: "text-center text-slate-300", key: "hw" }, row.hw !== null ? row.hw : "—"),
+                  h("td", { className: "text-center text-slate-300", key: "test" }, row.test !== null ? row.test : "—"),
+                  h("td", { className: "text-center text-slate-300", key: "proj" }, row.project !== null ? row.project : "—"),
+                  h("td", { className: "text-center text-slate-300", key: "exam" }, row.exam !== null ? row.exam : "—"),
+                  h("td", { className: "text-center font-bold text-white bg-violet-950/20", key: "t3_total" }, row.total),
+                  h("td", { className: "text-center font-black text-amber-300 bg-amber-950/20 text-base", key: "annual" },
+                    row.annualAverage !== null ? row.annualAverage : "—"
+                  )
+                );
+              } else {
+                cells.push(
+                  h("td", { className: "text-center text-slate-300", key: "cw" }, row.cw !== null ? row.cw : "—"),
+                  h("td", { className: "text-center text-slate-300", key: "hw" }, row.hw !== null ? row.hw : "—"),
+                  h("td", { className: "text-center text-slate-300", key: "test" }, row.test !== null ? row.test : "—"),
+                  h("td", { className: "text-center text-slate-300", key: "proj" }, row.project !== null ? row.project : "—"),
+                  h("td", { className: "text-center text-slate-300", key: "exam" }, row.exam !== null ? row.exam : "—"),
+                  h("td", { className: "text-center font-black text-violet-300 bg-violet-950/30 text-base", key: "total" }, row.total)
+                );
+              }
+
+              cells.push(
+                h("td", { className: "text-center text-slate-300 text-xs", key: "avg" }, row.classAverage),
+                h("td", { className: "text-center text-xs text-rose-300/90", key: "low" }, row.low),
+                h("td", { className: "text-center text-xs text-emerald-300/90", key: "high" }, row.high),
+                h("td", { className: "text-center", key: "grade" }, h(GradeBadge, { grade: row.grade })),
+                h(
+                  "td",
+                  {
+                    className: `text-xs font-semibold ${
+                      row.remark === "EXCELLENT" || row.remark === "VERY GOOD"
+                        ? "text-emerald-400 font-bold"
+                        : row.remark === "FAIL"
+                          ? "text-rose-400"
+                          : "text-slate-300"
+                    }`,
+                    key: "rem"
+                  },
+                  row.remark
+                )
+              );
+
+              return h("tr", { key: row.subject, className: idx % 2 === 0 ? "rd-tr-even" : "rd-tr-odd" }, cells);
+            })
+          ),
+        ]
+      )
+    ),
+  ]);
+}
+
+function ProgressReportTable({
+  subjects,
+  term,
+  isSenior,
+  activePrKey = "pr1",
+  activeInterval,
+  prOverallPercentage,
+  prSummary,
+  prTotalCa,
+  prMaxCa,
+}) {
+  if (!subjects.length) {
+    return h(
+      "p",
+      { className: "text-center text-slate-400 py-12 rd-glass rounded-xl" },
+      "No approved continuous assessment records for this term yet."
+    );
+  }
+
+  const termName = term === "term1" ? "First Term" : term === "term2" ? "Second Term" : "Third Term";
+  const intervalTitle = activeInterval?.label ?? "PR 1 (Weeks 1 – 3)";
+
+  return h("div", { className: "rd-table-section mb-6" }, [
+    h(
+      "div",
+      { className: "flex items-center justify-between pb-2 rd-no-print" },
+      [
+        h("span", { className: "text-xs font-semibold text-slate-400 uppercase tracking-wider" },
+          `${termName} Continuous Assessment — ${intervalTitle}`
+        ),
+        h(
+          "span",
+          { className: "rd-table-scroll-hint text-[11px] text-amber-400 hidden sm:inline" },
+          "← Scroll horizontally to see all CA columns →"
+        ),
+      ]
+    ),
+    h(
+      "div",
+      { className: "rd-table-wrap rd-glass rounded-xl" },
+      h(
+        "table",
+        { className: "rd-table" },
+        [
+          h("thead", null, [
+            h("tr", { className: "rd-thead-row-1" }, [
+              h("th", { className: "rd-col-subject text-left" }, "SUBJECT"),
+              h("th", { className: "text-center font-bold" }, [
+                "CLASS WORK",
+                h("span", { className: "block text-[9px] font-normal text-slate-400" }, "10MKS"),
+              ]),
+              h("th", { className: "text-center font-bold" }, [
+                "HOME WORK",
+                h("span", { className: "block text-[9px] font-normal text-slate-400" }, "5MKS"),
+              ]),
+              h("th", { className: "text-center font-bold" }, [
+                "REGULAR TEST",
+                h("span", { className: "block text-[9px] font-normal text-slate-400" }, "15MKS"),
+              ]),
+              h("th", { className: "text-center font-black text-white bg-violet-950/50" }, [
+                "TOTAL CA",
+                h("span", { className: "block text-[9px] font-normal text-slate-300" }, "30MKS"),
+              ]),
+              h("th", { className: "text-center font-black text-amber-300 bg-amber-950/40" }, [
+                "PERCENTAGE",
+                h("span", { className: "block text-[9px] font-normal text-slate-300" }, "100%"),
+              ]),
+              h("th", { className: "text-center font-bold" }, "GRADE"),
+              h("th", { className: "text-left" }, "STATUS"),
+            ]),
+          ]),
+          h(
+            "tbody",
+            null,
+            subjects.map((row, idx) => {
+              const pr = (row.prs && row.prs[activePrKey]) || row.pr || {};
+              return h("tr", { key: row.subject, className: idx % 2 === 0 ? "rd-tr-even" : "rd-tr-odd" }, [
+                h("td", { className: "font-bold text-white rd-td-subject" }, row.subject),
+                h("td", { className: "text-center text-slate-300 font-medium" }, pr.cw ?? "—"),
+                h("td", { className: "text-center text-slate-300 font-medium" }, pr.hw ?? "—"),
+                h("td", { className: "text-center text-slate-300 font-medium" }, pr.test ?? "—"),
+                h("td", { className: "text-center font-extrabold text-white bg-violet-950/20" }, pr.hasData ? pr.totalCa : "—"),
+                h("td", { className: "text-center font-black text-amber-300 bg-amber-950/20 text-sm" },
+                  pr.hasData && pr.percentage !== undefined ? `${pr.percentage}%` : "—"
+                ),
+                h("td", { className: "text-center" }, pr.hasData ? h(GradeBadge, { grade: pr.grade }) : "—"),
+                h(
+                  "td",
+                  {
+                    className: `text-xs font-semibold ${
+                      pr.status === "EXCELLENT" || pr.status === "VERY GOOD"
+                        ? "text-emerald-400 font-bold"
+                        : pr.status === "FAIL"
+                          ? "text-rose-400"
+                          : "text-slate-300"
+                    }`,
+                  },
+                  pr.status
+                ),
+              ]);
+            })
+          ),
+          h(
+            "tfoot",
+            null,
+            h("tr", { className: "rd-thead-row-2 border-t-2 border-slate-700 font-bold text-xs" }, [
+              h("td", { className: "font-black text-white uppercase text-left py-3 px-3" }, `OVERALL CA SUMMARY (${activeInterval?.shortLabel || "PR 1"}):`),
+              h("td", { colSpan: 3, className: "text-center text-slate-400" }, `Total CA Points: ${prTotalCa} / ${prMaxCa}`),
+              h("td", { className: "text-center text-white font-extrabold" }, prTotalCa),
+              h("td", { className: "text-center font-black text-amber-300 text-sm" }, `${prOverallPercentage}%`),
+              h("td", { className: "text-center" }, "—"),
+              h("td", { className: "text-left text-emerald-400 font-bold uppercase" }, prSummary),
+            ])
+          ),
+        ]
+      )
+    ),
+  ]);
+}
+
+function PersonalSkillsTable({ traits, traitsTotal }) {
+  if (!traits || !traits.length) return null;
+
+  return h("div", { className: "rd-glass rounded-xl p-5 mb-6" }, [
+    h("div", { className: "flex items-center justify-between mb-4 border-b border-slate-700/60 pb-3" }, [
+      h("h3", { className: "text-sm font-bold text-white uppercase tracking-wider" }, "Personal Skills & Behavioral Ratings"),
+      h("span", { className: "text-xs font-extrabold text-violet-300 bg-violet-950/50 px-3 py-1 rounded-full border border-violet-700/40" },
+        `Total Score: ${traitsTotal} / ${traits.length * 5}`
+      ),
+    ]),
+    h(
+      "div",
+      { className: "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3" },
+      traits.map((t) => {
+        const score = Number(t.score) || 0;
+        return h(
+          "div",
+          {
+            key: t.name,
+            className: "flex items-center justify-between p-3 rounded-lg bg-slate-900/60 border border-slate-800 text-xs",
+          },
+          [
+            h("span", { className: "font-medium text-slate-300" }, t.name),
+            h("div", { className: "flex items-center gap-1.5" }, [
+              h("span", { className: "font-black text-amber-300 text-sm" }, score),
+              h("span", { className: "text-slate-500 text-[10px]" }, "/ 5"),
+            ]),
+          ]
+        );
+      })
+    ),
+  ]);
+}
+
 export function ResultDashboardApp({ student, initialTerm, initialSession, onClose }) {
+  const [reportType, setReportType] = useState("TR"); // "TR" = Terminal Report, "PR" = Progress Report
+  const [prIntervalKey, setPrIntervalKey] = useState("pr1"); // "pr1" | "pr2" | "pr3"
   const [term, setTerm] = useState(initialTerm || "term1");
   const [session, setSession] = useState(initialSession || "");
   const [sessions, setSessions] = useState([]);
@@ -238,6 +435,30 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
 
   const sessionOptions = sessions.map((s) => ({ value: s, label: s }));
 
+  const isProgressReport = reportType === "PR";
+  const activeInterval = PR_INTERVALS.find((p) => p.value === prIntervalKey) || PR_INTERVALS[0];
+  const activePrMetrics = report?.prIntervals?.[prIntervalKey] ?? {
+    overallPercentage: report?.prOverallPercentage ?? 0,
+    totalCa: report?.prTotalCa ?? 0,
+    maxCa: report?.prMaxCa ?? 0,
+    summary: report?.prSummary ?? "—",
+  };
+
+  const documentTitle = isProgressReport
+    ? `${termLabel(term)} Continuous Assessment Report — ${activeInterval.label}`
+    : term === "term1"
+      ? "First Term Student Report Sheet"
+      : term === "term2"
+        ? "Second Term Student Report Sheet"
+        : "Third Term Student Cumulative Report Sheet";
+
+  function termLabel(t) {
+    if (t === "term1") return "First Term";
+    if (t === "term2") return "Second Term";
+    if (t === "term3") return "Third Term";
+    return t || "Term";
+  }
+
   return h(
     "div",
     { className: "rd-root min-h-full" },
@@ -254,205 +475,384 @@ export function ResultDashboardApp({ student, initialTerm, initialSession, onClo
     h(
       "div",
       { className: "rd-inner" },
-      h(
-        "header",
-        { className: "rd-glass rounded-2xl p-4 sm:p-6 mb-6" },
-        h("div", { className: "flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4" }, [
-          h("div", { className: "space-y-3 flex-1" }, [
-            h("p", { className: "text-xs font-bold uppercase tracking-[0.2em] text-violet-400" }, "Academic Report"),
-            h(
-              "h1",
-              { className: "text-2xl sm:text-3xl font-bold text-white" },
-              report?.studentName ?? student?.name ?? "Student"
-            ),
-            h(
-              "div",
-              { className: "flex flex-wrap gap-4 text-sm text-slate-400" },
-              [
-                h("span", null, ["Class: ", h("strong", { className: "text-slate-200" }, className)]),
-                h("span", null, ["Session: ", h("strong", { className: "text-slate-200" }, session || "—")]),
-                h("span", null, [
-                  "Total Results: ",
-                  h("strong", { className: "text-violet-300" }, String(report?.totalResults ?? 0)),
-                ]),
-              ]
-            ),
-            h(
-              "div",
-              { className: "flex flex-wrap gap-3 rd-no-print" },
-              [
-                h(SelectField, {
-                  label: "Academic Year",
-                  value: session,
-                  onChange: setSession,
-                  options: sessionOptions.length ? sessionOptions : [{ value: "", label: "—" }],
-                }),
-                h(SelectField, {
-                  label: "Class",
-                  value: className,
-                  onChange: () => {},
-                  disabled: true,
-                  options: [{ value: className, label: className }],
-                }),
-                h(SelectField, {
-                  label: "Term",
-                  value: term,
-                  onChange: setTerm,
-                  options: TERM_OPTIONS,
-                }),
-              ]
-            ),
-          ]),
-          h(
-            "button",
-            {
-              type: "button",
-              className:
-                "rd-btn-print rd-no-print px-6 py-3 rounded-xl text-white font-semibold text-sm whitespace-nowrap self-start lg:self-end",
-              onClick: () => window.print(),
-            },
-            "Print Result"
-          ),
-        ])
-      ),
-
-      loading &&
+      [
+        /* Top Navigation Controls (Hidden in Print) */
         h(
           "div",
-          { className: "text-center py-20 text-slate-400 animate-pulse" },
-          "Loading academic report…"
+          { className: "rd-glass rounded-xl p-4 mb-6 flex flex-wrap items-center justify-between gap-4 rd-no-print" },
+          [
+            /* Report Type Switcher: Terminal Report (TR) vs Progress Report (PR) */
+            h("div", { className: "flex items-center p-1 bg-slate-950/80 rounded-xl border border-slate-800 gap-1" }, [
+              h(
+                "button",
+                {
+                  type: "button",
+                  className: `px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                    reportType === "TR"
+                      ? "bg-violet-600 text-white shadow-md"
+                      : "text-slate-400 hover:text-white"
+                  }`,
+                  onClick: () => setReportType("TR"),
+                },
+                "Terminal Report (TR)"
+              ),
+              h(
+                "button",
+                {
+                  type: "button",
+                  className: `px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                    reportType === "PR"
+                      ? "bg-amber-500 text-slate-950 font-extrabold shadow-md"
+                      : "text-slate-400 hover:text-white"
+                  }`,
+                  onClick: () => setReportType("PR"),
+                },
+                "Progress Report (PR)"
+              ),
+            ]),
+
+            /* Filter fields */
+            h("div", { className: "flex flex-wrap items-center gap-3" }, [
+              h(SelectField, {
+                label: "Academic Session",
+                value: session,
+                onChange: setSession,
+                options: sessionOptions.length ? sessionOptions : [{ value: "", label: "—" }],
+              }),
+              h(SelectField, {
+                label: "Term",
+                value: term,
+                onChange: setTerm,
+                options: TERM_OPTIONS,
+              }),
+            ]),
+
+            /* Action buttons */
+            h("div", { className: "flex items-center gap-3" }, [
+              h(
+                "button",
+                {
+                  type: "button",
+                  className: `rd-btn-print px-5 py-2.5 rounded-lg text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg ${
+                    isProgressReport ? "bg-gradient-to-tr from-amber-600 to-yellow-600" : ""
+                  }`,
+                  onClick: () => window.print(),
+                },
+                [
+                  h(Icon, { d: "M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" }),
+                  isProgressReport ? `Print ${activeInterval.shortLabel}` : "Print Terminal Sheet",
+                ]
+              ),
+              h(
+                "button",
+                {
+                  type: "button",
+                  className: "px-4 py-2.5 border border-slate-700 hover:bg-slate-800 text-slate-300 font-semibold text-xs rounded-lg transition-colors",
+                  onClick: onClose,
+                },
+                "Close"
+              ),
+            ]),
+
+            /* 3-Week Interval Selector Tabs for Progress Reports */
+            isProgressReport &&
+              h(
+                "div",
+                { className: "w-full flex items-center justify-between flex-wrap gap-2 pt-3 border-t border-slate-800" },
+                [
+                  h("div", { className: "flex items-center gap-2" }, [
+                    h("span", { className: "text-xs font-bold text-amber-400 uppercase tracking-wider" }, "Progress Report Interval:"),
+                    h("span", { className: "text-[11px] text-slate-400 hidden sm:inline" }, "(3-week evaluation cycles)"),
+                  ]),
+                  h(
+                    "div",
+                    { className: "flex items-center gap-1.5 p-1 bg-slate-950/90 rounded-xl border border-amber-500/30 flex-wrap" },
+                    PR_INTERVALS.map((intv) =>
+                      h(
+                        "button",
+                        {
+                          key: intv.value,
+                          type: "button",
+                          className: `px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            prIntervalKey === intv.value
+                              ? "bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black shadow-md ring-2 ring-amber-400/40"
+                              : "text-slate-400 hover:text-white hover:bg-slate-800"
+                          }`,
+                          onClick: () => setPrIntervalKey(intv.value),
+                        },
+                        [
+                          h("span", null, intv.shortLabel),
+                          h("span", { className: `text-[10px] ${prIntervalKey === intv.value ? "text-slate-900 font-semibold" : "text-slate-500"}` }, `(${intv.weeks})`),
+                        ]
+                      )
+                    )
+                  ),
+                ]
+              ),
+          ]
         ),
 
-      error &&
-        !loading &&
-        h("div", { className: "rd-glass rounded-2xl p-6 text-red-400 text-center mb-6" }, error),
-
-      report &&
-        !loading &&
-        h(React.Fragment, null, [
-          term === "term3" && h(PromotionBanner, { statusInfo: report.promotionStatus }),
-          h(
-            "section",
-            { className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6" },
-            [
-              h(StatCard, {
-                label: "Position",
-                value: report.position,
-                accent: "purple",
-                icon: h(Icon, {
-                  d: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
-                }),
-              }),
-              h(StatCard, {
-                label: "Total Score",
-                value: `${report.totalScore}%`,
-                icon: h(Icon, { d: "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" }),
-              }),
-              h(StatCard, {
-                label: "GPA",
-                value: String(report.gpa ?? "0.0"),
-                accent: "purple",
-                icon: h(Icon, { d: "M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" }),
-              }),
-              h(StatCard, {
-                label: "Attendance",
-                value: `${report.attendancePct}%`,
-                accent: "blue",
-                icon: h(Icon, { d: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" }),
-              }),
-              h(StatCard, {
-                label: "In Class",
-                value: String(report.classSize),
-                icon: h(Icon, { d: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" }),
-              }),
-              h(StatCard, {
-                label: "Days Opened",
-                value: String(report.daysOpened),
-                accent: "blue",
-                icon: h(Icon, { d: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" }),
-              }),
-            ]
-          ),
-
-          h(
-            "section",
-            { className: "rd-ai-box rd-glass rounded-2xl p-5 sm:p-6 mb-6" },
-            h("div", { className: "flex items-center gap-2 mb-3" }, [
-              h(
-                "span",
-                { className: "text-amber-400" },
-                h(Icon, {
-                  className: "w-6 h-6",
-                  d: "M13 10V3L4 14h7v7l9-11h-7z",
-                })
-              ),
-              h("h2", { className: "text-lg font-bold text-white tracking-wide" }, "AI INSIGHT"),
+        /* Official Report Sheet Container */
+        h(
+          "div",
+          { className: `rd-sheet-container bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-8 shadow-2xl ${isProgressReport ? "rd-sheet-pr" : "rd-sheet-tr"}` },
+          [
+            /* Official Header Banner */
+            h("header", { className: `rd-school-header border-b-2 pb-6 mb-6 text-center ${isProgressReport ? "border-amber-500/80" : "border-emerald-500/80"}` }, [
+              h("div", { className: "flex flex-col items-center justify-center gap-2" }, [
+                h("div", {
+                  className: `w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-xl mb-1 ${
+                    isProgressReport
+                      ? "bg-gradient-to-tr from-amber-500 to-orange-600 text-slate-950"
+                      : "bg-gradient-to-tr from-emerald-500 to-teal-600 text-white"
+                  }`
+                }, [
+                  h(Icon, { d: "M12 14l9-5-9-5-9 5 9 5z M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z", className: "w-8 h-8" }),
+                ]),
+                h("h1", { className: "text-2xl sm:text-3xl font-black tracking-tight text-white uppercase" }, "Gracemark Academy"),
+                h("p", { className: "text-xs font-semibold text-emerald-400 uppercase tracking-widest" }, "Knowledge, Discipline & Character"),
+                h("div", {
+                  className: `mt-2 inline-block px-4 py-1.5 rounded-md border text-xs sm:text-sm font-black uppercase tracking-wider ${
+                    isProgressReport
+                      ? "bg-amber-950/40 border-amber-600 text-amber-300"
+                      : "bg-slate-800 border-slate-700 text-amber-300"
+                  }`
+                },
+                  documentTitle
+                ),
+                isProgressReport && h("p", { className: "text-[11px] text-amber-300/90 mt-1 font-semibold" }, `Evaluation Period: ${activeInterval.weeks} (Checkpoint: ${activeInterval.checkpoint}) · Continuous Assessment (CA)`),
+              ]),
             ]),
-            h("p", { className: "text-sm sm:text-base text-slate-300 leading-relaxed" }, report.aiInsight)
-          ),
 
-          h("section", { className: "mb-6" }, [
-            h("h2", { className: "text-lg font-bold text-white mb-3" }, "Subject Results"),
-            h(ResultsTable, { subjects: report.subjects, term: term }),
-          ]),
+            /* Student Bio Information Card */
+            h("div", { className: "rd-student-bio grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-950/60 border border-slate-800 mb-6 text-xs" }, [
+              h("div", null, [
+                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, "Student Name"),
+                h("strong", { className: "text-white text-sm font-bold block truncate" }, report?.studentName ?? student?.name ?? "—"),
+              ]),
+              h("div", null, [
+                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, "Admission No"),
+                h("strong", { className: "text-emerald-400 text-sm font-mono block" }, report?.admissionNo ?? student?.admission_no ?? "—"),
+              ]),
+              h("div", null, [
+                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, "Class"),
+                h("strong", { className: "text-white text-sm font-bold block" }, className),
+              ]),
+              h("div", null, [
+                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, "Academic Session"),
+                h("strong", { className: "text-violet-300 text-sm font-bold block" }, session || "—"),
+              ]),
+              h("div", null, [
+                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, "Report Type"),
+                h("strong", { className: `text-sm font-bold block ${isProgressReport ? "text-amber-400" : "text-emerald-400"}` },
+                  isProgressReport ? `${activeInterval.shortLabel} Progress Report` : "Terminal Result (TR)"
+                ),
+              ]),
+              h("div", null, [
+                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, isProgressReport ? "Evaluation Period" : "Days Opened"),
+                h("strong", { className: "text-slate-200 text-sm font-bold block" }, isProgressReport ? activeInterval.weeks : String(report?.daysOpened ?? 120)),
+              ]),
+              h("div", null, [
+                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, isProgressReport ? "Assessment Checkpoint" : "Days Present"),
+                h("strong", { className: "text-slate-200 text-sm font-bold block" }, isProgressReport ? activeInterval.checkpoint : String(report?.daysPresent ?? 120)),
+              ]),
+              h("div", null, [
+                h("span", { className: "text-slate-400 block font-semibold uppercase text-[10px]" }, "Educational Tier"),
+                h("strong", { className: "text-amber-400 text-sm font-bold block uppercase" }, report?.isSenior ? "Senior Secondary" : "Junior Secondary"),
+              ]),
+            ]),
 
-          h("section", { className: "mb-6" }, [
-            h("h2", { className: "text-lg font-bold text-white mb-3" }, "Affective & Psychomotor Traits"),
-            h(
-              "div",
-              { className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" },
-              report.traits.map((t) =>
-                h(
-                  "div",
-                  { key: t.name, className: "rd-trait-pill" },
-                  h("span", { className: "text-sm text-slate-300" }, t.name),
-                  h(
-                    "span",
-                    { className: "text-sm font-bold text-violet-300" },
-                    `${t.score}/${t.max}`
-                  )
-                )
-              )
-            ),
-          ]),
-
-          h(
-            "section",
-            { className: "grid grid-cols-1 md:grid-cols-2 gap-6 mb-6" },
-            [
+            loading &&
               h(
                 "div",
-                { className: "rd-glass rounded-2xl p-5 sm:p-6 border border-violet-500/10" },
-                [
-                  h("h2", { className: "text-lg font-bold text-white mb-2" }, "Form Teacher's Remark"),
-                  h(
-                    "p",
-                    { className: "text-slate-300 italic leading-relaxed text-sm sm:text-base" },
-                    `"${report.teacherRemark}"`
-                  ),
-                ]
+                { className: "text-center py-20 text-slate-400 animate-pulse font-medium" },
+                "Loading academic records…"
               ),
-              h(
-                "div",
-                { className: "rd-glass rounded-2xl p-5 sm:p-6 border border-violet-500/10" },
-                [
-                  h("h2", { className: "text-lg font-bold text-white mb-2" }, "Principal's Remark"),
-                  h(
-                    "p",
-                    { className: "text-slate-300 italic leading-relaxed text-sm sm:text-base" },
-                    `"${report.principalRemark}"`
-                  ),
-                ]
-              ),
-            ]
-          ),
 
-          h(
-            "footer",
-            { className: "rd-footer-notice" },
-            `Next Term Begins: ${report.nextTermBegins}`
-          ),
-        ])
+            error &&
+              !loading &&
+              h("div", { className: "rd-glass rounded-xl p-6 text-red-400 text-center mb-6" }, error),
+
+            report &&
+              !loading &&
+              (isProgressReport
+                ? /* ==================== PROGRESS REPORT (PR) VIEW ==================== */
+                  h(React.Fragment, null, [
+                    /* Progress Report Key Stat Cards */
+                    h(
+                      "section",
+                      { className: "grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6" },
+                      [
+                        h(StatCard, {
+                          label: "Overall CA Percentage",
+                          value: `${activePrMetrics.overallPercentage}%`,
+                          sub: `${activeInterval.shortLabel} (${activeInterval.weeks}) Avg`,
+                          accent: "amber",
+                          icon: h(Icon, { d: "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" }),
+                        }),
+                        h(StatCard, {
+                          label: "Performance Status",
+                          value: activePrMetrics.summary,
+                          sub: `Based on ${activeInterval.shortLabel} CA average`,
+                          accent: "emerald",
+                          icon: h(Icon, { d: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" }),
+                        }),
+                        h(StatCard, {
+                          label: "Total CA Score",
+                          value: String(activePrMetrics.totalCa),
+                          sub: `out of ${activePrMetrics.maxCa} points`,
+                          accent: "violet",
+                          icon: h(Icon, { d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" }),
+                        }),
+                        h(StatCard, {
+                          label: "Subjects Assessed",
+                          value: String(report.totalResults),
+                          sub: "Continuous evaluation",
+                          accent: "blue",
+                          icon: h(Icon, { d: "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" }),
+                        }),
+                      ]
+                    ),
+
+                    /* Progress Report Table */
+                    h(ProgressReportTable, {
+                      subjects: report.subjects,
+                      term: term,
+                      isSenior: report.isSenior,
+                      activePrKey: prIntervalKey,
+                      activeInterval: activeInterval,
+                      prOverallPercentage: activePrMetrics.overallPercentage,
+                      prSummary: activePrMetrics.summary,
+                      prTotalCa: activePrMetrics.totalCa,
+                      prMaxCa: activePrMetrics.maxCa,
+                    }),
+
+                    /* Progress Report Signatures & Guidance */
+                    h("div", { className: "p-4 rounded-xl bg-slate-950/60 border border-slate-800 mb-6 text-xs text-slate-300" }, [
+                      h("h4", { className: "text-xs font-bold uppercase tracking-wider text-amber-400 mb-1" }, "Continuous Assessment Evaluation Notice"),
+                      h("p", { className: "leading-relaxed text-slate-400" },
+                        `This progress report reflects continuous assessment results for ${activeInterval.label} covering Class Work (10 Marks), Home Work / Assignments (5 Marks), and Regular Test at ${activeInterval.checkpoint} (15 Marks) for a total CA score of 30 Marks. Final terminal exams will be conducted at the end of term.`
+                      ),
+                    ]),
+
+                    h("footer", { className: "rd-sheet-footer pt-6 border-t border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400" }, [
+                      h("div", { className: "flex items-center gap-2 font-medium" }, [
+                        h("span", { className: "text-slate-500 uppercase text-[10px] font-bold" }, "Assessment Status:"),
+                        h("strong", { className: "text-emerald-400 text-xs font-bold" }, activePrMetrics.summary),
+                      ]),
+                      h("div", { className: "flex items-center gap-6" }, [
+                        h("div", { className: "text-center" }, [
+                          h("div", { className: "border-b border-slate-600 w-36 mb-1" }),
+                          h("span", { className: "text-[10px] text-slate-400 uppercase font-bold" }, "Class Teacher's Signature"),
+                        ]),
+                        h("div", { className: "text-center" }, [
+                          h("div", { className: "border-b border-slate-600 w-24 mb-1" }),
+                          h("span", { className: "text-[10px] text-slate-400 uppercase font-bold" }, "Date"),
+                        ]),
+                      ]),
+                    ]),
+                  ])
+                : /* ==================== TERMINAL REPORT (TR) VIEW ==================== */
+                  h(React.Fragment, null, [
+                    /* Promotion status banner (Term 3) */
+                    term === "term3" && h(PromotionBanner, { statusInfo: report.promotionStatus }),
+
+                    /* Key Performance Summary Cards */
+                    h(
+                      "section",
+                      { className: "grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6" },
+                      [
+                        h(StatCard, {
+                          label: "Class Position",
+                          value: report.position,
+                          sub: report.classSize ? `out of ${report.classSize} students` : null,
+                          accent: "violet",
+                          icon: h(Icon, { d: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" }),
+                        }),
+                        h(StatCard, {
+                          label: "Average Percentage",
+                          value: `${report.percentage}%`,
+                          sub: term === "term3" ? "Annual Cumulative Avg" : "Term Average",
+                          accent: "amber",
+                          icon: h(Icon, { d: "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" }),
+                        }),
+                        h(StatCard, {
+                          label: "Overall Total Mark",
+                          value: String(report.overallTotal),
+                          sub: `across ${report.totalResults} subjects`,
+                          accent: "emerald",
+                          icon: h(Icon, { d: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" }),
+                        }),
+                        h(StatCard, {
+                          label: "Attendance Rate",
+                          value: `${report.attendancePct}%`,
+                          sub: `${report.daysPresent} of ${report.daysOpened} days`,
+                          accent: "blue",
+                          icon: h(Icon, { d: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" }),
+                        }),
+                      ]
+                    ),
+
+                    /* Main Academic Results Table matching TR1 - TR3 Full Result */
+                    h(TerminalResultsTable, {
+                      subjects: report.subjects,
+                      term: term,
+                      isSenior: report.isSenior,
+                    }),
+
+                    /* Personal Skills / Behavioral Ratings Table */
+                    h(PersonalSkillsTable, {
+                      traits: report.traits,
+                      traitsTotal: report.traitsTotal,
+                    }),
+
+                    /* AI Academic Analysis (Digital view) */
+                    h(
+                      "section",
+                      { className: "rd-ai-box rounded-xl p-5 mb-6 rd-no-print" },
+                      [
+                        h("div", { className: "flex items-center gap-2 mb-2" }, [
+                          h("span", { className: "text-amber-400" }, h(Icon, { d: "M13 10V3L4 14h7v7l9-11h-7z" })),
+                          h("h3", { className: "text-xs font-bold text-white uppercase tracking-wider" }, "Academic Performance Insight"),
+                        ]),
+                        h("p", { className: "text-xs sm:text-sm text-slate-300 leading-relaxed" }, report.aiInsight),
+                      ]
+                    ),
+
+                    /* Remarks & Official Signatures Section */
+                    h("div", { className: "rd-remarks-grid grid grid-cols-1 md:grid-cols-2 gap-6 mb-6" }, [
+                      h("div", { className: "p-4 rounded-xl bg-slate-950/60 border border-slate-800" }, [
+                        h("h4", { className: "text-xs font-bold uppercase tracking-wider text-slate-400 mb-2" }, "Class Teacher's Remark"),
+                        h("p", { className: "text-sm text-white italic" }, `"${report.teacherRemark}"`),
+                      ]),
+                      h("div", { className: "p-4 rounded-xl bg-slate-950/60 border border-slate-800" }, [
+                        h("h4", { className: "text-xs font-bold uppercase tracking-wider text-slate-400 mb-2" }, "Principal's Remark"),
+                        h("p", { className: "text-sm text-amber-300 font-semibold uppercase italic" }, `"${report.principalRemark}"`),
+                      ]),
+                    ]),
+
+                    /* Official Footer Notice & Resumption Date */
+                    h("footer", { className: "rd-sheet-footer pt-6 border-t border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400" }, [
+                      h("div", { className: "flex items-center gap-2 font-medium" }, [
+                        h("span", { className: "text-slate-500 uppercase text-[10px] font-bold" }, "Next Term Begins:"),
+                        h("strong", { className: "text-white text-xs" }, report.nextTermBegins),
+                      ]),
+                      h("div", { className: "flex items-center gap-6" }, [
+                        h("div", { className: "text-center" }, [
+                          h("div", { className: "border-b border-slate-600 w-32 mb-1" }),
+                          h("span", { className: "text-[10px] text-slate-400 uppercase font-bold" }, "Principal's Signature"),
+                        ]),
+                        h("div", { className: "text-center" }, [
+                          h("div", { className: "border-b border-slate-600 w-24 mb-1" }),
+                          h("span", { className: "text-[10px] text-slate-400 uppercase font-bold" }, "Date"),
+                        ]),
+                      ]),
+                    ]),
+                  ])
+              ),
+          ]
+        ),
+      ]
     )
   );
 }

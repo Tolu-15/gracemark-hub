@@ -93,7 +93,40 @@ export function validateRawScores(rawScores = {}) {
   return { valid: issues.length === 0, issues };
 }
 
-export function calculateStudentResult(rawScores, config = GRADING_CONFIG) {
+export function isSeniorClass(className) {
+  const c = String(className || "").trim().toUpperCase();
+  return (c.includes("SSS") || c.includes("SS ") || c.includes("SS1") || c.includes("SS2") || c.includes("SS3") || c.includes("SENIOR")) &&
+    !c.includes("JSS") &&
+    !c.includes("JUNIOR");
+}
+
+export function getSeniorGradeAndRemark(score) {
+  const s = Number(score) || 0;
+  if (s >= 75) return { grade: "A1", remark: "EXCELLENT" };
+  if (s >= 70) return { grade: "B2", remark: "VERY GOOD" };
+  if (s >= 65) return { grade: "B3", remark: "GOOD" };
+  if (s >= 60) return { grade: "C4", remark: "CREDIT" };
+  if (s >= 55) return { grade: "C5", remark: "CREDIT" };
+  if (s >= 50) return { grade: "C6", remark: "CREDIT" };
+  if (s >= 45) return { grade: "D7", remark: "PASS" };
+  if (s >= 40) return { grade: "E8", remark: "PASS" };
+  return { grade: "F9", remark: "FAIL" };
+}
+
+export function getJuniorGradeAndRemark(score) {
+  const s = Number(score) || 0;
+  if (s >= 89.5) return { grade: "A", remark: "EXCELLENT" };
+  if (s >= 79.5) return { grade: "B", remark: "GOOD" };
+  if (s >= 59.5) return { grade: "C", remark: "SATISFACTORY" };
+  if (s >= 49.5) return { grade: "D", remark: "WEAK" };
+  return { grade: "F", remark: "FAIL" };
+}
+
+export function getGradeAndRemark(score, isSenior = false) {
+  return isSenior ? getSeniorGradeAndRemark(score) : getJuniorGradeAndRemark(score);
+}
+
+export function calculateStudentResult(rawScores, config = GRADING_CONFIG, options = {}) {
   const calculateScaledAverage = (arr, constraints) => {
     if (!Array.isArray(arr)) return 0;
 
@@ -130,11 +163,8 @@ export function calculateStudentResult(rawScores, config = GRADING_CONFIG) {
   const caTotal = +(cwScaled + hwScaled + testsScaled + projectScaled).toFixed(2);
   const totalScore = +(caTotal + examScaled).toFixed(2);
 
-  let grade = "F";
-  if (totalScore >= 89.5) grade = "A";
-  else if (totalScore >= 79.5) grade = "B";
-  else if (totalScore >= 59.5) grade = "C";
-  else if (totalScore >= 49.5) grade = "D";
+  const isSenior = options?.isSenior ?? (options?.className ? isSeniorClass(options.className) : false);
+  const { grade, remark } = getGradeAndRemark(totalScore, isSenior);
 
   return {
     scaled: {
@@ -147,6 +177,7 @@ export function calculateStudentResult(rawScores, config = GRADING_CONFIG) {
     caTotal,
     totalScore,
     grade,
+    remark,
   };
 }
 
@@ -161,3 +192,4 @@ export function toStoredScores(result) {
     grade: result.grade,
   };
 }
+

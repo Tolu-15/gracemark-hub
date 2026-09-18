@@ -1,110 +1,81 @@
-/* Futuristic student result dashboard */
+/* Gracemark Academy - Official Student Academic Report & Result Viewer */
 
 .rd-root {
   --rd-bg: #060b18;
   --rd-navy: #0c1229;
-  --rd-purple: #a855f7;
+  --rd-purple: #8b5cf6;
+  --rd-emerald: #10b981;
   --rd-blue: #38bdf8;
-  --rd-glow: rgba(168, 85, 247, 0.45);
   font-family: "DM Sans", system-ui, sans-serif;
   color: #e2e8f0;
   min-height: 100%;
   position: relative;
-  /* Do not clip horizontal overflow — subject table scrolls inside .rd-table-wrap */
-}
-
-.rd-root::before,
-.rd-root::after {
-  display: none;
-}
-
-@keyframes rd-float {
-  0%,
-  100% {
-    transform: translate(0, 0);
-  }
-  50% {
-    transform: translate(20px, 16px);
-  }
 }
 
 .rd-inner {
   position: relative;
   z-index: 1;
-  max-width: min(1400px, 100%);
+  max-width: min(1200px, 100%);
   min-width: 0;
   margin: 0 auto;
-  padding: 1rem 1rem 2rem;
+  padding: 1rem 1rem 2.5rem;
 }
 
 @media (min-width: 768px) {
   .rd-inner {
-    padding: 1.5rem 2rem 2.5rem;
+    padding: 1.5rem 2rem 3rem;
   }
 }
 
 .rd-glass {
-  background: rgba(15, 23, 42, 0.55);
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.15);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  box-shadow:
-    0 0 0 1px rgba(168, 85, 247, 0.08),
-    0 8px 32px rgba(0, 0, 0, 0.35);
-}
-
-.rd-glass:hover {
-  border-color: rgba(168, 85, 247, 0.35);
-  box-shadow:
-    0 0 24px rgba(168, 85, 247, 0.12),
-    0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
 }
 
 .rd-stat-card {
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease,
-    border-color 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  border-width: 1px;
 }
 
 .rd-stat-card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(56, 189, 248, 0.4);
-  box-shadow: 0 0 28px rgba(56, 189, 248, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 
 .rd-btn-print {
-  background: #7c3aed;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  transition: background-color 0.15s ease, transform 0.15s ease;
+  background: linear-gradient(135deg, #059669, #0d9488);
+  transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
 .rd-btn-print:hover {
-  background: #6d28d9;
+  opacity: 0.92;
   transform: translateY(-1px);
 }
 
 .rd-select {
-  background: rgba(15, 23, 42, 0.8);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.25);
   color: #f1f5f9;
   border-radius: 0.5rem;
-  padding: 0.5rem 2rem 0.5rem 0.75rem;
-  font-size: 0.8125rem;
+  padding: 0.5rem 1.75rem 0.5rem 0.75rem;
   outline: none;
 }
 
 .rd-select:focus {
-  border-color: rgba(168, 85, 247, 0.6);
-  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.2);
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
 }
 
 .rd-ai-box {
-  background: #0f172a;
-  border: 1px solid rgba(168, 85, 247, 0.25);
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(139, 92, 246, 0.25);
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
+/* Academic Result Table - Excel TR1 to TR3 Layout */
 .rd-table-section {
   min-width: 0;
   max-width: 100%;
@@ -116,114 +87,104 @@
   overflow-x: auto;
   overflow-y: visible;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
-  border-radius: 1rem;
-  /* Room for horizontal scrollbar so last column isn’t flush against edge */
-  padding-bottom: 0.25rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .rd-table {
   width: 100%;
-  min-width: 960px;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: 0.875rem;
+  min-width: 900px;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
   line-height: 1.35;
 }
 
 .rd-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: #0f172a;
-  padding: 0.75rem 0.65rem;
-  text-align: left;
-  font-weight: 600;
+  padding: 0.55rem 0.6rem;
+  font-weight: 700;
   color: #cbd5e1;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: #0f172a;
+}
+
+.rd-thead-row-1 th {
+  background: #0f172a;
   font-size: 0.75rem;
-  border-bottom: 1px solid rgba(168, 85, 247, 0.25);
 }
 
-.rd-table tbody tr {
-  transition: background 0.15s ease;
-}
-
-.rd-table tbody tr:hover {
-  background: rgba(168, 85, 247, 0.08);
+.rd-thead-row-2 th {
+  background: #1e293b;
+  font-size: 0.7rem;
+  padding: 0.45rem 0.5rem;
 }
 
 .rd-table tbody td {
-  padding: 0.7rem 0.65rem;
-  border-bottom: 1px solid rgba(51, 65, 85, 0.5);
-  color: #e2e8f0;
-}
-
-.rd-badge-grade {
-  display: inline-flex;
-  min-width: 1.75rem;
-  justify-content: center;
-  padding: 0.2rem 0.5rem;
-  border-radius: 0.375rem;
-  font-weight: 700;
-  font-size: 0.75rem;
-}
-
-.rd-badge-a {
-  background: #16a34a;
-  color: #fff;
-}
-
-.rd-badge-b {
-  background: #0ea5e9;
-  color: #fff;
-}
-
-.rd-badge-c {
-  background: #fbbf24;
-  color: #1e293b;
-}
-
-.rd-badge-d,
-.rd-badge-f {
-  background: rgba(100, 116, 139, 0.4);
+  padding: 0.6rem 0.65rem;
+  border: 1px solid rgba(71, 85, 105, 0.4);
   color: #f1f5f9;
 }
 
-.rd-remark-excellent {
-  color: #4ade80;
-  font-weight: 700;
-  text-shadow: 0 0 12px rgba(74, 222, 128, 0.35);
+.rd-tr-even {
+  background: rgba(15, 23, 42, 0.5);
 }
 
-.rd-trait-pill {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.65rem 1rem;
-  border-radius: 9999px;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(148, 163, 184, 0.15);
-  transition: border-color 0.2s, box-shadow 0.2s;
+.rd-tr-odd {
+  background: rgba(30, 41, 59, 0.35);
 }
 
-.rd-trait-pill:hover {
-  border-color: rgba(168, 85, 247, 0.4);
-  box-shadow: 0 0 16px rgba(168, 85, 247, 0.12);
+.rd-table tbody tr:hover {
+  background: rgba(16, 185, 129, 0.08);
 }
 
-.rd-footer-notice {
-  background: #4f46e5;
-  text-align: center;
-  padding: 1rem 1.25rem;
-  border-radius: 0.75rem;
-  font-weight: 600;
-  color: #fff;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+.rd-td-subject {
+  min-width: 160px;
 }
 
+/* Grade Badges */
+.rd-badge-grade {
+  display: inline-flex;
+  min-width: 2rem;
+  justify-content: center;
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.375rem;
+  font-weight: 800;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.rd-badge-a {
+  background: #059669;
+  color: #ffffff;
+}
+
+.rd-badge-b {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.rd-badge-c {
+  background: #d97706;
+  color: #ffffff;
+}
+
+.rd-badge-d {
+  background: #ea580c;
+  color: #ffffff;
+}
+
+.rd-badge-e {
+  background: #7c3aed;
+  color: #ffffff;
+}
+
+.rd-badge-f {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+/* Overlay & Modal Container */
 .rd-overlay {
   position: fixed;
   inset: 0;
@@ -231,35 +192,30 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.75rem;
-  background: rgba(2, 6, 23, 0.55);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  /* clip page behind modal only; inner .rd-root scrolls */
+  padding: 1rem;
+  background: rgba(2, 6, 23, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   overflow: hidden;
   min-width: 0;
 }
 
 .rd-root {
-  /* Flex item in .rd-overlay: allow panel to shrink to viewport so table can scroll inside */
   min-width: 0;
-  width: min(1100px, 100%);
+  width: min(1200px, 100%);
   max-width: 100%;
-  max-height: min(92dvh, 100%);
+  max-height: min(94dvh, 100%);
   overflow: auto;
   border-radius: 1.25rem;
   background: var(--rd-bg);
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  box-shadow:
-    0 24px 80px rgba(0, 0, 0, 0.55),
-    0 0 0 1px rgba(168, 85, 247, 0.08);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.65);
 }
 
 .rd-close-btn {
   position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
-  z-index: 5;
+  top: 1rem;
+  right: 1rem;
+  z-index: 20;
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 0.5rem;
@@ -269,75 +225,27 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 1.5rem;
+  line-height: 1;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
 
 .rd-close-btn:hover {
   color: #fff;
-  border-color: rgba(168, 85, 247, 0.5);
+  border-color: #10b981;
 }
 
-@media print {
-  .rd-close-btn,
-  .rd-no-print {
-    display: none !important;
-  }
-
-  .rd-overlay {
-    position: static;
-    display: block;
-    padding: 0;
-    background: transparent;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    overflow: visible;
-  }
-
-  .rd-root {
-    width: 100%;
-    max-height: none;
-    overflow: visible;
-    border-radius: 0;
-    border: none;
-    box-shadow: none;
-  }
-
-  .rd-root::before,
-  .rd-root::after {
-    display: none;
-  }
-}
-
+/* Responsive adjustments */
 @media (max-width: 767px) {
-  .rd-table-scroll-hint {
-    display: block;
-    margin: 0 0 0.5rem;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: #94a3b8;
-    text-align: center;
-  }
-
-  /* Keep subject name visible while swiping scores */
   .rd-table thead th:first-child,
   .rd-table tbody td:first-child {
     position: sticky;
     left: 0;
     z-index: 3;
-    min-width: 7.5rem;
-    max-width: 10rem;
-    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.35);
-  }
-
-  .rd-table thead th:first-child {
     background: #0f172a;
-  }
-
-  .rd-table tbody td:first-child {
-    background: #060b18;
-    white-space: normal;
-    word-break: break-word;
+    min-width: 140px;
+    box-shadow: 4px 0 10px rgba(0, 0, 0, 0.4);
   }
 
   .rd-table tbody td {
@@ -345,23 +253,185 @@
   }
 }
 
-.rd-table-scroll-hint {
-  display: none;
-}
+/* =========================================
+   OFFICIAL PRINT STYLES (A4 Document Format)
+   ========================================= */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm 8mm;
+  }
 
-@media (max-width: 480px) {
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  .rd-close-btn,
+  .rd-no-print {
+    display: none !important;
+  }
+
   .rd-overlay {
-    padding: 0.5rem;
-    align-items: flex-end;
+    position: static !important;
+    display: block !important;
+    padding: 0 !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    overflow: visible !important;
   }
 
   .rd-root {
-    border-radius: 1rem;
-    max-height: min(94dvh, 100%);
+    width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
   }
 
   .rd-inner {
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .rd-sheet-container {
+    background: #ffffff !important;
+    border: 2px solid #0f172a !important;
+    border-radius: 0 !important;
+    padding: 12px !important;
+    box-shadow: none !important;
+    color: #0f172a !important;
+  }
+
+  .rd-school-header {
+    border-bottom: 2px solid #0f172a !important;
+  }
+
+  .rd-school-header h1 {
+    color: #0f172a !important;
+  }
+
+  .rd-school-header p {
+    color: #334155 !important;
+  }
+
+  .rd-student-bio {
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #0f172a !important;
+  }
+
+  .rd-student-bio strong {
+    color: #0f172a !important;
+  }
+
+  .rd-student-bio span {
+    color: #475569 !important;
+  }
+
+  .rd-stat-card {
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #0f172a !important;
+    box-shadow: none !important;
+  }
+
+  .rd-stat-card p {
+    color: #0f172a !important;
+  }
+
+  .rd-table-wrap {
+    border: 1px solid #0f172a !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+  }
+
+  .rd-table {
+    min-width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 8pt !important;
+  }
+
+  .rd-table thead th {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    border: 1px solid #0f172a !important;
+    font-size: 7.5pt !important;
+  }
+
+  .rd-thead-row-2 th {
+    background: #e2e8f0 !important;
+    color: #0f172a !important;
+  }
+
+  .rd-table tbody td {
+    color: #0f172a !important;
+    border: 1px solid #64748b !important;
+    padding: 3px 5px !important;
+  }
+
+  .rd-table tfoot td {
+    color: #0f172a !important;
+    background: #e2e8f0 !important;
+    border: 1px solid #0f172a !important;
+    font-weight: bold !important;
+    padding: 4px 6px !important;
+  }
+
+  .rd-tr-even,
+  .rd-tr-odd {
+    background: transparent !important;
+  }
+
+  .rd-badge-grade {
+    border: 1px solid #0f172a !important;
+    color: #0f172a !important;
+    background: transparent !important;
+    font-size: 8pt !important;
+  }
+
+  .rd-glass {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: none !important;
+    color: #0f172a !important;
+  }
+
+  .rd-glass h3 {
+    color: #0f172a !important;
+  }
+
+  .rd-glass span {
+    color: #334155 !important;
+  }
+
+  .rd-remarks-grid div {
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #0f172a !important;
+  }
+
+  .rd-remarks-grid p {
+    color: #0f172a !important;
+  }
+
+  .rd-sheet-footer {
+    border-top: 1px solid #0f172a !important;
+    color: #0f172a !important;
+  }
+
+  .rd-sheet-footer strong {
+    color: #0f172a !important;
+  }
+
+  .rd-table-section,
+  .rd-student-bio,
+  .rd-remarks-grid,
+  .rd-sheet-footer {
+    page-break-inside: avoid;
   }
 }

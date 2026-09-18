@@ -3,7 +3,7 @@ import { signOut } from "/js/shared/auth.js";
 import { supabase } from "/js/shared/supabaseClient.js";
 import { getLatestAppSettings } from "/js/shared/appSettings.js";
 import { getStudentCurrentInvoice, formatCurrency } from "/js/shared/schoolFinance.js";
-import { GRADING_CONFIG, normalizeBreakdown, calculateStudentResult } from "/shared/gradingEngine.js";
+import { GRADING_CONFIG, normalizeBreakdown, calculateStudentResult, isSeniorClass } from "/shared/gradingEngine.js";
 import { openResultDashboard } from "/js/student/resultDashboard/mount.js";
 
 const authLoader = document.getElementById("authLoader");
@@ -227,7 +227,8 @@ function openBreakdownModal(subjectName, row) {
   if (!breakdownModal || !modalBody || !modalTitle) return;
 
   const raw = normalizeBreakdown(row);
-  const computed = calculateStudentResult(raw);
+  const isSenior = isSeniorClass(currentStudent?.classes?.name);
+  const computed = calculateStudentResult(raw, undefined, { isSenior });
 
   modalTitle.textContent = `${subjectName} — Score Breakdown`;
   modalBody.innerHTML = `

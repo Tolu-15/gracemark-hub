@@ -99,7 +99,7 @@ function hideFormError() {
 }
 
 function normalizeAdmissionToEmail(admNo) {
-  const clean = normalizeAdmissionNo(admNo).replace(/\//g, "");
+  const clean = normalizeAdmissionNo(admNo).replace(/[\/\-_]/g, "");
   if (!clean) return "";
   return `${clean}@student.gracemark.edu.ng`.toLowerCase();
 }
@@ -110,8 +110,9 @@ function normalizeAdmissionNo(admNo) {
 
 function validateAdmissionNo(admNo) {
   const normalized = normalizeAdmissionNo(admNo);
-  if (!/^GMA\d{4,}$/i.test(normalized)) {
-    throw new Error("Admission number must look like GMA1701.");
+  // Accepts GMA1701, GMA202501, or slashed/hyphenated formats like GMA/2025/001, GM/2025/001, GMA-1701
+  if (!/^GMA\d{3,}$/i.test(normalized) && !/^(GMA|GM)[\/-]?\w+[\/-]?\w*$/i.test(normalized)) {
+    throw new Error("Admission number must look like GMA1701 or GMA/2025/001.");
   }
   return normalized;
 }
@@ -344,11 +345,18 @@ bulkUploadInput?.addEventListener("change", async (e) => {
 
       let successCount = 0;
       let failCount = 0;
+      const errorSamples = [];
 
       for (const row of rows) {
-        const name = row["Name"] || row["name"];
+        const name = row["Name"] || row["name"] || row["Student Name"] || row["student name"];
         const className = row["Class"] || row["class"] || "Unassigned";
-        const rawAdmNo = row["Admission Number"] || row["admission number"];
+        const rawAdmNo =
+          row["Admission Number"] ||
+          row["admission number"] ||
+          row["Admission No"] ||
+          row["admission no"] ||
+          row["Adm No"] ||
+          row["adm no"];
 
         if (!name) continue;
 
@@ -387,11 +395,15 @@ bulkUploadInput?.addEventListener("change", async (e) => {
         } catch (err) {
           console.warn("Skipped row:", name, err?.message);
           failCount++;
+          if (errorSamples.length < 3) {
+            errorSamples.push(`${name} (${rawAdmNo ?? "no adm"}): ${err?.message || "Failed"}`);
+          }
         }
       }
 
       authLoader.style.display = "none";
-      alert(`Bulk upload complete!\nSuccessfully added: ${successCount}\nFailed: ${failCount}`);
+      const errorDetail = errorSamples.length ? `\n\nSample errors:\n- ${errorSamples.join("\n- ")}` : "";
+      alert(`Bulk upload complete!\nSuccessfully added: ${successCount}\nFailed: ${failCount}${errorDetail}`);
       await loadStudents();
     } catch (parseError) {
       console.error("Error parsing Excel file:", parseError);

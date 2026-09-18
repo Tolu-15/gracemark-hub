@@ -143,7 +143,8 @@ function recalcPanel(panel) {
   const validation = validateRawScores(raw);
   applyInputValidation(panel, validation);
 
-  const result = calculateStudentResult(raw);
+  const className = classSelect?.value || "";
+  const result = calculateStudentResult(raw, undefined, { className });
   const stored = toStoredScores(result);
 
   panel.querySelector('[data-out="cw"]').textContent = String(stored.cw);
@@ -260,8 +261,9 @@ function buildMobileCard(student, existing, rowIndex) {
   card.dataset.resultId = existing?.id ?? "";
   card.dataset.status = existing?.status ?? "draft";
 
+  const className = classSelect?.value || "";
   const raw = normalizeBreakdown(existing);
-  const preview = calculateStudentResult(raw);
+  const preview = calculateStudentResult(raw, undefined, { className });
   const stored = toStoredScores(preview);
   const status = card.dataset.status;
 
@@ -440,52 +442,39 @@ async function saveAll({ teacherAuthId, status }) {
   saveStatus.textContent = status === "published" ? "Publishing..." : "Saving draft...";
   saveStatus.classList.remove("text-red-600");
 
+  const currentSession = settings?.current_session || "2025/2026";
+  const cls = await getClassByName(className);
+
   const payload = panels.map((panel) => {
     const raw = readRawScoresFromPanel(panel);
-    const validation = validateRawScores(raw);
-    if (!validation.valid) {
-      throw new Error("Some scores exceed the maximum. Fix red cells before saving.");
-    }
+    const result = calculateStudentResult(raw, undefined, { className });
+    const stored = toStoredScores(result);
 
-    const settings = await getAppSettings();
-    const currentSession = settings?.current_session || "2025/2026";
-    const cls = await getClassByName(className);
+    return {
+      student_id: panel.dataset.studentId,
+      subject_id: subjectId,
+      class_id: cls?.id || null,
+      session: currentSession,
+      term,
+      submitted_by: teacherAuthId,
+      status,
+      score_breakdown: raw,
+      cw: stored.cw,
+      hw: stored.hw,
+      test: stored.test,
+      project: stored.project,
+      exam: stored.exam,
+      total: stored.total,
+      grade: stored.grade,
+    };
+  });
 
-    const payload = items.map((panel) => {
-      const raw = getRawScoresFromInputs(panel);
-      const validation = validateRawScores(raw);
-      if (!validation.valid) {
-        throw new Error("Some scores exceed the maximum. Fix red cells before saving.");
-      }
-
-      const result = calculateStudentResult(raw);
-      const stored = toStoredScores(result);
-
-      return {
-        student_id: panel.dataset.studentId,
-        subject_id: subjectId,
-        class_id: cls?.id || null,
-        session: currentSession,
-        term,
-        submitted_by: teacherAuthId,
-        status,
-        score_breakdown: raw,
-        cw: stored.cw,
-        hw: stored.hw,
-        test: stored.test,
-        project: stored.project,
-        exam: stored.exam,
-        total: stored.total,
-        grade: stored.grade,
-      };
-    });
-
-    let { error } = await supabase.from("results").upsert(payload, { onConflict: "student_id,subject_id,term,session" });
-    if (error && /session|score_breakdown/i.test(error.message || "")) {
-      const fallbackPayload = payload.map(({ session, class_id, score_breakdown, ...rest }) => rest);
-      ({ error } = await supabase.from("results").upsert(fallbackPayload, { onConflict: "student_id,subject_id,term" }));
-    }
-    if (error) throw error;
+  let { error } = await supabase.from("results").upsert(payload, { onConflict: "student_id,subject_id,term,session" });
+  if (error && /session|score_breakdown/i.test(error.message || "")) {
+    const fallbackPayload = payload.map(({ session, class_id, score_breakdown, ...rest }) => rest);
+    ({ error } = await supabase.from("results").upsert(fallbackPayload, { onConflict: "student_id,subject_id,term" }));
+  }
+  if (error) throw error;
 
   const publishedMsg =
     status === "published"

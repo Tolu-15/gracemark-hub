@@ -25,12 +25,20 @@ const PUBLIC_ASSET_PREFIXES = [
   { urlPrefix: "/shared/", diskPrefix: "shared/" },
 ];
 
+let wsTransport;
+try {
+  wsTransport = require("ws");
+} catch (_) {
+  wsTransport = class DummyWebSocket {};
+}
+
 let serviceClient = null;
 function getServiceClient() {
   if (!SUPABASE_SERVICE_ROLE_KEY) return null;
   if (!serviceClient) {
     serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
+      realtime: { transport: wsTransport },
     });
   }
   return serviceClient;

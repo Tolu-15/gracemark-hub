@@ -20,8 +20,8 @@ export function generateAiInsight(report) {
   let intro = `${name} is enrolled in ${className || "their class"} for ${term}${sessionText}. `;
   intro += `With an overall average of ${percentage}%, `;
   intro += position && classSize
-    ? `they currently rank ${position} out of ${classSize} learners in cumulative performance. `
-    : `their cumulative performance reflects steady engagement across approved subjects. `;
+    ? `they currently rank ${position} out of ${classSize} learners in academic performance. `
+    : `their academic performance reflects steady engagement across approved subjects. `;
 
   let attendance = "";
   if (attendancePct >= 90) {
@@ -37,100 +37,102 @@ export function generateAiInsight(report) {
 
   let subjectsText = "";
   if (strengths?.length) {
-    subjectsText += `Standout strengths appear in ${strengths.join(", ")}. `;
+    subjectsText += `Notable strengths appear in ${strengths.join(", ")}. `;
   }
   if (weaknesses?.length) {
-    subjectsText += `Additional focus is recommended in ${weaknesses.join(", ")} to balance the overall profile. `;
+    subjectsText += `Additional focus is recommended in ${weaknesses.join(", ")} to improve overall academic standing. `;
   }
 
   const consistency =
     subjects.length >= 4 && percentage >= 70
-      ? "Performance shows good consistency across multiple subjects."
+      ? "Performance shows commendable consistency across multiple subjects."
       : subjects.length >= 2
-        ? "Results show mixed consistency; targeted revision will help stabilise grades."
+        ? "Results show varying performance; targeted revision will help stabilise grades."
         : "Limited approved results are available; more published scores will refine this analysis.";
 
   const suggestion =
     percentage >= 75
-      ? "Continue excellent study habits, practice past questions weekly, and mentor peers where possible."
+      ? "Continue excellent study habits, practice past questions weekly, and maintain momentum."
       : percentage >= 50
-        ? "Increase weekly revision time, complete all assignments on schedule, and seek teacher feedback after tests."
-        : "Adopt a structured study plan, attend remedial sessions, and prioritise weak topics with daily practice.";
+        ? "Increase weekly revision time, complete all assignments on schedule, and seek teacher guidance after tests."
+        : "Adopt a structured study plan, attend remedial sessions, and prioritise weak topics with regular practice.";
 
   return `${intro}${attendance}${subjectsText}${consistency} ${suggestion}`;
 }
 
 export function gradeToRemark(grade) {
   const g = String(grade || "").toUpperCase();
-  if (g === "A") return "EXCELLENT";
-  if (g === "B") return "VERY GOOD";
-  if (g === "C") return "GOOD";
-  if (g === "D") return "FAIR";
+  if (g === "A1" || g === "A") return "EXCELLENT";
+  if (g === "B2") return "VERY GOOD";
+  if (g === "B3" || g === "B") return "GOOD";
+  if (g === "C4" || g === "C5" || g === "C6") return "CREDIT";
+  if (g === "C") return "SATISFACTORY";
+  if (g === "D7" || g === "E8") return "PASS";
+  if (g === "D") return "WEAK";
+  if (g === "F9" || g === "F") return "FAIL";
   return "NEEDS IMPROVEMENT";
 }
 
-export function gradeToGpaPoint(grade) {
-  const g = String(grade || "").toUpperCase();
-  if (g === "A") return 4;
-  if (g === "B") return 3;
-  if (g === "C") return 2;
-  if (g === "D") return 1;
-  return 0;
-}
-
 export function buildPrincipalRemark(report) {
-  const score = report.gpa !== undefined && report.gpa !== null ? report.gpa : (report.percentage / 20);
-  if (score >= 4.5) return "THIS IS AN OUTSTANDING RESULT. KEEP IT UP!";
-  if (score >= 3.5) return "THIS IS A VERY GOOD RESULT. KEEP IT UP!";
-  if (score >= 3.0) return "THIS IS A GOOD RESULT. THERE IS STILL ROOM FOR IMPROVEMENT.";
-  if (score >= 2.5) return "THIS IS AN AVERAGE RESULT. THERE IS A PRESSING NEED FOR IMPROVEMENT.";
-  return "THIS IS A POOR RESULT. THERE IS A PRESSING NEED FOR IMPROVEMENT.";
+  const pct = Number(report.percentage ?? report.totalScore ?? 0);
+  if (pct >= 80) return "THIS IS AN OUTSTANDING RESULT. KEEP IT UP!";
+  if (pct >= 70) return "THIS IS A VERY GOOD RESULT. KEEP IT UP!";
+  if (pct >= 60) return "THIS IS A GOOD RESULT. THERE IS STILL ROOM FOR IMPROVEMENT.";
+  if (pct >= 50) return "A FAIR RESULT. MORE EFFORT IS REQUIRED FOR BETTER PERFORMANCE.";
+  if (pct >= 40) return "THIS IS A WEAK RESULT. THERE IS A PRESSING NEED FOR IMPROVEMENT.";
+  return "POOR PERFORMANCE. SERIOUS DEDICATION AND INTERVENTION REQUIRED.";
 }
 
 export function getPromotionStatus(report) {
-  const { className, percentage, gpa } = report;
+  const { className, percentage } = report;
   const cName = String(className || "").trim().toUpperCase();
-  const isSenior = (cName.includes("SSS") || cName.includes("SS ")) && !cName.includes("JSS");
+  const isSenior = (cName.includes("SSS") || cName.includes("SS ") || cName.includes("SS1") || cName.includes("SS2") || cName.includes("SS3") || cName.includes("SENIOR")) &&
+    !cName.includes("JSS") &&
+    !cName.includes("JUNIOR");
+
+  const pct = Number(percentage) || 0;
 
   if (isSenior) {
     const nextClass = cName.includes("1") ? "SSS 2" : cName.includes("2") ? "SSS 3" : "GRADUATED";
     const currentClass = cName.includes("1") ? "SSS 1" : cName.includes("2") ? "SSS 2" : "SSS 3";
-    const g = Number(gpa) || 0;
-    if (g >= 2.5) return { status: "PROMOTED", text: `PROMOTED TO ${nextClass}`, code: "success" };
-    if (g >= 2.0) return { status: "TRIAL", text: `PROMOTED TO ${nextClass} ON TRIAL`, code: "warning" };
+    if (pct >= 50) return { status: "PROMOTED", text: `PROMOTED TO ${nextClass}`, code: "success" };
+    if (pct >= 45) return { status: "TRIAL", text: `PROMOTED TO ${nextClass} ON TRIAL`, code: "warning" };
     return { status: "REPEAT", text: `TO REPEAT ${currentClass}`, code: "danger" };
   } else {
     const nextClass = cName.includes("1") ? "JSS 2" : cName.includes("2") ? "JSS 3" : "SSS 1";
     const currentClass = cName.includes("1") ? "JSS 1" : cName.includes("2") ? "JSS 2" : "JSS 3";
-    const pct = Number(percentage) || 0;
     if (pct >= 50) return { status: "PROMOTED", text: `PROMOTED TO ${nextClass}`, code: "success" };
     if (pct >= 40) return { status: "TRIAL", text: `PROMOTED TO ${nextClass} ON TRIAL, BUT MUST ATTEND INTERVENTION CLASS.`, code: "warning" };
     return { status: "REPEAT", text: `TO REPEAT ${currentClass}`, code: "danger" };
   }
 }
 
-const TRAIT_NAMES = [
+export const EXCEL_PERSONAL_SKILLS = [
   "Punctuality",
-  "Neatness",
-  "Leadership",
-  "Teamwork",
-  "Concentration",
+  "Concentration in Class",
+  "Contribution in Class",
+  "Organisational Skill",
   "Handwriting",
-  "Interpersonal Skills",
   "Fluency",
+  "Games/Sports",
+  "Neatness",
+  "Teamwork",
+  "Leadership",
+  "Interpersonal Skills",
   "Initiative",
-  "Honesty",
 ];
 
 export function buildTraits(report) {
+  const pct = Number(report.percentage) || 0;
   const base = report.attendancePct >= 85 ? 5 : report.attendancePct >= 70 ? 4 : 3;
-  const perfBoost = report.gpa >= 3.5 ? 1 : report.gpa >= 2.5 ? 0 : -1;
+  const perfBoost = pct >= 70 ? 1 : pct >= 50 ? 0 : -1;
 
-  return TRAIT_NAMES.map((name, i) => {
+  return EXCEL_PERSONAL_SKILLS.map((name, i) => {
     let score = base + (i % 3 === 0 ? perfBoost : 0);
-    if (name === "Handwriting" && report.gpa < 2.5) score -= 1;
-    if (name === "Leadership" && report.gpa >= 3) score += 1;
+    if (name === "Handwriting" && pct < 50) score -= 1;
+    if (name === "Leadership" && pct >= 65) score += 1;
     score = Math.max(2, Math.min(5, score));
     return { name, score, max: 5 };
   });
 }
+
