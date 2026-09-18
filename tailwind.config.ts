@@ -2,19 +2,24 @@ import type { Config } from "tailwindcss";
 
 const config: Config = {
   content: [
-    "./src/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
-      fontFamily: {
-        sans: ["var(--font-dm-sans)", "system-ui", "sans-serif"],
-        serif: ["var(--font-dm-serif)", "Georgia", "serif"],
-      },
       colors: {
         gold: {
           DEFAULT: "#c9a84c",
-          lt: "#e8c97a",
+          light: "#e8c97a",
+          dark: "#a68735",
         },
+        ink: "#f1f5f9",
+        cream: "#020617",
+      },
+      fontFamily: {
+        sans: ["var(--font-dm-sans)", "DM Sans", "sans-serif"],
+        serif: ["var(--font-dm-serif)", "DM Serif Display", "serif"],
       },
     },
   },

@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const { snapshots = [], resultIds = [], statusCol = {} } = body;
+  const { snapshots = [], resultIds = [], statusCol = {} } = body || {};
 
   const service = getServiceClient();
   if (!service) {
@@ -41,6 +41,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, publishedCount: snapshots.length });
   } catch (err: any) {
     console.error("handleBatchPublishResults exception:", err);
-    return NextResponse.json({ error: err.message || "Failed to publish." }, { status: 500 });
+    return NextResponse.json(
+      { error: err.message || "Failed to publish." },
+      { status: 500 }
+    );
   }
 }

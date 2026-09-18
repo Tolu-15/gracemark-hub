@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase/server";
-import { setTermEditOverride } from "@/lib/termsHelper";
+import { setTermEditOverride } from "@/lib/termPermissions";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const { session, term, allow_edit } = body;
+    const body = await req.json();
+    const { session, term, allow_edit } = body || {};
+
     if (!session || !term) {
       return NextResponse.json(
         { error: "session and term are required." },
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
           },
           { onConflict: "session,term" }
         );
-      } catch (_) {
+      } catch {
         try {
           await service.from("terms").upsert(
             {
@@ -38,15 +39,21 @@ export async function POST(req: NextRequest) {
             },
             { onConflict: "session,term" }
           );
-        } catch (_) {}
+        } catch {
+          // Ignore fallback upsert failures
+        }
       }
     }
 
-    return NextResponse.json({ ok: true, session, term, allow_edit: boolAllow });
-  } catch (err: any) {
-    console.error("Toggle term edit error:", err);
+    return NextResponse.json({
+      ok: true,
+      session,
+      term,
+      allow_edit: boolAllow,
+    });
+  } catch (error: any) {
     return NextResponse.json(
-      { error: err.message || "Internal server error" },
+      { error: error?.message || "Internal server error." },
       { status: 500 }
     );
   }

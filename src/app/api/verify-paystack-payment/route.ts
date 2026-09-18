@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const { reference, invoice_id: raw_invoice_id, student_id, amount, invoice: invoice_context } = body;
+  const { reference, invoice_id: raw_invoice_id, student_id, amount, invoice: invoice_context } = body || {};
   let resolvedInvoiceId = raw_invoice_id;
 
   const service = getServiceClient();
@@ -18,7 +18,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // 1. Ensure payment_invoices row exists using Service Role key
     let { data: targetInvoice } = resolvedInvoiceId
       ? await service.from("payment_invoices").select("*").eq("id", resolvedInvoiceId).maybeSingle()
       : { data: null };
@@ -52,7 +51,7 @@ export async function POST(req: NextRequest) {
           .from("payment_invoices")
           .insert([
             {
-              student_id: student_id,
+              student_id,
               fee_structure_id: invoiceContext.fee_structure_id || null,
               class_id: invoiceContext.class_id || null,
               total_amount: Number(invoiceContext.total_amount || amount || 0),
@@ -75,7 +74,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Check if reference has already been processed
+    // 1. Check if reference has already been processed
     const { data: existingRec } = await service
       .from("payment_records")
       .select("id, status, receipt_number")
@@ -96,11 +95,11 @@ export async function POST(req: NextRequest) {
       throw new Error("Could not resolve or create a payment invoice.");
     }
 
-    // 3. Generate unique receipt number
+    // 2. Generate unique receipt number
     const year = new Date().getFullYear();
     const receiptNumber = `REC-${year}-${Math.floor(100000 + Math.random() * 900000)}`;
 
-    // 4. Upsert payment record as verified successful
+    // 3. Upsert payment record as verified successful
     const { error: recErr } = await service
       .from("payment_records")
       .upsert(
@@ -122,7 +121,7 @@ export async function POST(req: NextRequest) {
 
     if (recErr) throw recErr;
 
-    // 5. Recalculate invoice total verified paid & status
+    // 4. Recalculate invoice total verified paid & status
     const { data: records } = await service
       .from("payment_records")
       .select("amount")
@@ -148,7 +147,7 @@ export async function POST(req: NextRequest) {
       .update({ amount_paid: totalPaid, status: newStatus })
       .eq("id", invoice_id);
 
-    // 6. Evaluate portal access if student fully paid
+    // 5. Evaluate portal access if student fully paid
     if (student_id && newStatus === "FULLY PAID") {
       const { data: policy } = await service
         .from("portal_access_settings")
@@ -157,13 +156,10 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (policy?.auto_unlock_on_full_payment !== false) {
-        await service
-          .from("students")
-          .update({
-            portal_access_status: "ACTIVE",
-            portal_lock_reason: null,
-          })
-          .eq("id", student_id);
+        await service.from("students").update({
+          portal_access_status: "ACTIVE",
+          portal_lock_reason: null,
+        }).eq("id", student_id);
       }
     }
 

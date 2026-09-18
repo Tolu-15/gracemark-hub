@@ -13,6 +13,7 @@ async function verifyAdminAccessToken(accessToken: string) {
     .select("role")
     .eq("auth_id", userData.user.id)
     .maybeSingle();
+
   if (profileError || profile?.role !== "admin") return null;
 
   return userData.user;
@@ -22,7 +23,10 @@ export async function POST(req: NextRequest) {
   const service = getServiceClient();
   if (!service) {
     return NextResponse.json(
-      { error: "Admin user creation API is not configured. Add SUPABASE_SERVICE_ROLE_KEY to .env." },
+      {
+        error:
+          "Admin user creation API is not configured. Add SUPABASE_SERVICE_ROLE_KEY to .env and restart the server.",
+      },
       { status: 503 }
     );
   }
@@ -30,12 +34,18 @@ export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
   if (!token) {
-    return NextResponse.json({ error: "Missing admin access token." }, { status: 401 });
+    return NextResponse.json(
+      { error: "Missing admin access token." },
+      { status: 401 }
+    );
   }
 
   const adminUser = await verifyAdminAccessToken(token);
   if (!adminUser) {
-    return NextResponse.json({ error: "Admin access required." }, { status: 403 });
+    return NextResponse.json(
+      { error: "Admin access required." },
+      { status: 403 }
+    );
   }
 
   let body: any;
@@ -48,7 +58,10 @@ export async function POST(req: NextRequest) {
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
   if (!email || !password) {
-    return NextResponse.json({ error: "Email and password are required." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Email and password are required." },
+      { status: 400 }
+    );
   }
 
   const { data, error } = await service.auth.admin.createUser({
@@ -64,7 +77,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (!data?.user?.id) {
-    return NextResponse.json({ error: "Supabase did not return a new user id." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Supabase did not return a new user id." },
+      { status: 500 }
+    );
   }
 
   return NextResponse.json({

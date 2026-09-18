@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase/server";
-import { isTermEditable } from "@/lib/termsHelper";
+import { isTermEditable } from "@/lib/termPermissions";
 
 export async function POST(req: NextRequest) {
   let body: any;
@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
     .select("current_term, current_session")
     .limit(1)
     .maybeSingle();
+
   const currentTerm = settings?.current_term || "term1";
 
   for (const r of records) {
@@ -71,6 +72,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, count: records.length });
   } catch (err: any) {
     console.error("handleSaveResults exception:", err);
-    return NextResponse.json({ error: err.message || "Failed to save results." }, { status: 500 });
+    return NextResponse.json(
+      { error: err.message || "Failed to save results." },
+      { status: 500 }
+    );
   }
 }

@@ -1,12 +1,54 @@
-import {
-  RawScores,
-  ValidationResult,
-  ScoreValidationIssue,
-  GradeRemark,
-  PRCheckpointResult,
-  TRResult,
-  StoredResultScores,
-} from "@/types/result";
+/**
+ * Gracemark Academy — Grading Engine (TypeScript Port)
+ * Aligned with Gracemark Master Spreadsheet Logic:
+ * - CW: Weeks 1–10 (each scored /10 -> scaled avg /10)
+ * - HW: Weeks 1–10 (each scored /10 -> scaled avg /5)
+ * - Regular Tests: Test 1 (/15), Test 2 (/15), Test 3 (/30)
+ * - Project: /5
+ * - Exam: /70
+ * 
+ * Checkpoint Progress Reports (PR):
+ * - PR1 (Week 4): Avg(CW1-4)/10 + Avg(HW1-4)/5 + Test1/15 = CA/30 (Pct = CA*10/3)
+ * - PR2 (Week 7): Cumulative Avg(CW1-7)/10 + Avg(HW1-7)/5 + Avg(Test1-2)/15 = CA/30
+ * - PR3 (Week 10): Cumulative Avg(CW1-10)/10 + Avg(HW1-10)/5 + Scaled Tests(T1/15, T2/15, T3/30)/15 = CA/30
+ * - TR (Terminal Result): CW(/10) + HW(/5) + Tests(/10) + Project(/5) = CA/30 + Exam(/70) = Total/100
+ */
+
+export interface RawScores {
+  cw: (number | string)[];
+  hw: (number | string)[];
+  tests: (number | string)[];
+  project: number | string;
+  exam: number | string;
+}
+
+export interface PRResult {
+  interval: "pr1" | "pr2" | "pr3";
+  label: string;
+  cw: number;
+  hw: number;
+  test: number;
+  totalCA: number;
+  percentage: number;
+  grade: string;
+  remark: string;
+  hasData: boolean;
+}
+
+export interface TRResult {
+  scaled: {
+    cw: number;
+    hw: number;
+    tests: number;
+    project: number;
+    exam: number;
+  };
+  caTotal: number;
+  totalScore: number;
+  grade: string;
+  remark: string;
+  hasData: boolean;
+}
 
 export const GRADING_CONFIG = {
   cw: { count: 10, itemMax: 10, weight: 10 },
@@ -16,11 +58,11 @@ export const GRADING_CONFIG = {
   exam: { max: 70, weight: 70 },
 };
 
-export function isFilled(val: any): boolean {
+export function isFilled(val: unknown): boolean {
   return val !== null && val !== undefined && String(val).trim() !== "";
 }
 
-export function toNumber(val: any): number {
+export function toNumber(val: unknown): number {
   const n = Number(val);
   return Number.isFinite(n) ? n : NaN;
 }
@@ -35,7 +77,7 @@ export function emptyRawScores(): RawScores {
   };
 }
 
-function padArray<T>(arr: T[], len: number, fill: T): T[] {
+function padArray(arr: any[], len: number, fill: any): any[] {
   const out = Array.isArray(arr) ? [...arr] : [];
   while (out.length < len) out.push(fill);
   return out.slice(0, len);
@@ -45,9 +87,9 @@ export function normalizeBreakdown(existing: any): RawScores {
   if (existing?.score_breakdown && typeof existing.score_breakdown === "object") {
     const b = existing.score_breakdown;
     return {
-      cw: padArray(b.cw || [], GRADING_CONFIG.cw.count, ""),
-      hw: padArray(b.hw || [], GRADING_CONFIG.hw.count, ""),
-      tests: padArray(b.tests || [], GRADING_CONFIG.tests.maxes.length, ""),
+      cw: padArray(b.cw, GRADING_CONFIG.cw.count, ""),
+      hw: padArray(b.hw, GRADING_CONFIG.hw.count, ""),
+      tests: padArray(b.tests, GRADING_CONFIG.tests.maxes.length, ""),
       project: b.project ?? "",
       exam: b.exam ?? "",
     };
@@ -62,38 +104,48 @@ export function normalizeBreakdown(existing: any): RawScores {
   return raw;
 }
 
-export function validateRawScores(rawScores: Partial<RawScores> = {}): ValidationResult {
-  const issues: ScoreValidationIssue[] = [];
+export function validateRawScores(rawScores: Partial<RawScores> = {}) {
+  const issues: { field: string; index: number; value: any; max: number }[] = [];
 
   const checkList = (
-    values: (number | string)[] | undefined,
-    { field, itemMax, maxes }: { field: string; itemMax: number; maxes?: number[] }
+    values: any[] | undefined,
+    { field, itemMax, maxes }: { field: string; itemMax?: number; maxes?: number[] }
   ) => {
     (values || []).forEach((val, index) => {
       if (!isFilled(val)) return;
       const num = toNumber(val);
-      const max = maxes ? maxes[index] || itemMax : itemMax;
+      const max = maxes ? maxes[index] || itemMax || 10 : itemMax || 10;
       if (!Number.isFinite(num) || num < 0 || num > max) {
         issues.push({ field, index, value: val, max });
       }
     });
   };
 
-  checkList(rawScores.cw as any, { field: "cw", itemMax: GRADING_CONFIG.cw.itemMax });
-  checkList(rawScores.hw as any, { field: "hw", itemMax: GRADING_CONFIG.hw.itemMax });
-  checkList(rawScores.tests as any, { field: "tests", itemMax: 15, maxes: GRADING_CONFIG.tests.maxes });
+  checkList(rawScores.cw, { field: "cw", itemMax: GRADING_CONFIG.cw.itemMax });
+  checkList(rawScores.hw, { field: "hw", itemMax: GRADING_CONFIG.hw.itemMax });
+  checkList(rawScores.tests, { field: "tests", maxes: GRADING_CONFIG.tests.maxes });
 
   if (isFilled(rawScores.project)) {
     const num = toNumber(rawScores.project);
     if (!Number.isFinite(num) || num < 0 || num > GRADING_CONFIG.project.max) {
-      issues.push({ field: "project", index: 0, value: rawScores.project, max: GRADING_CONFIG.project.max });
+      issues.push({
+        field: "project",
+        index: 0,
+        value: rawScores.project,
+        max: GRADING_CONFIG.project.max,
+      });
     }
   }
 
   if (isFilled(rawScores.exam)) {
     const num = toNumber(rawScores.exam);
     if (!Number.isFinite(num) || num < 0 || num > GRADING_CONFIG.exam.max) {
-      issues.push({ field: "exam", index: 0, value: rawScores.exam, max: GRADING_CONFIG.exam.max });
+      issues.push({
+        field: "exam",
+        index: 0,
+        value: rawScores.exam,
+        max: GRADING_CONFIG.exam.max,
+      });
     }
   }
 
@@ -103,13 +155,18 @@ export function validateRawScores(rawScores: Partial<RawScores> = {}): Validatio
 export function isSeniorClass(className?: string): boolean {
   const c = String(className || "").trim().toUpperCase();
   return (
-    (c.includes("SSS") || c.includes("SS ") || c.includes("SS1") || c.includes("SS2") || c.includes("SS3") || c.includes("SENIOR")) &&
+    (c.includes("SSS") ||
+      c.includes("SS ") ||
+      c.includes("SS1") ||
+      c.includes("SS2") ||
+      c.includes("SS3") ||
+      c.includes("SENIOR")) &&
     !c.includes("JSS") &&
     !c.includes("JUNIOR")
   );
 }
 
-export function getSeniorGradeAndRemark(score: number): GradeRemark {
+export function getSeniorGradeAndRemark(score: number | string): { grade: string; remark: string } {
   const s = Number(score) || 0;
   if (s >= 75) return { grade: "A1", remark: "EXCELLENT" };
   if (s >= 70) return { grade: "B2", remark: "VERY GOOD" };
@@ -122,7 +179,7 @@ export function getSeniorGradeAndRemark(score: number): GradeRemark {
   return { grade: "F9", remark: "FAIL" };
 }
 
-export function getJuniorGradeAndRemark(score: number): GradeRemark {
+export function getJuniorGradeAndRemark(score: number | string): { grade: string; remark: string } {
   const s = Number(score) || 0;
   if (s >= 70) return { grade: "A", remark: "EXCELLENT" };
   if (s >= 55) return { grade: "B", remark: "VERY GOOD" };
@@ -132,11 +189,11 @@ export function getJuniorGradeAndRemark(score: number): GradeRemark {
   return { grade: "F", remark: "FAIL" };
 }
 
-export function getGradeAndRemark(score: number, isSenior = false): GradeRemark {
+export function getGradeAndRemark(score: number | string, isSenior = false) {
   return isSenior ? getSeniorGradeAndRemark(score) : getJuniorGradeAndRemark(score);
 }
 
-function sliceAverage(arr: (number | string)[] | undefined, maxItems: number) {
+function sliceAverage(arr?: any[], maxItems = 10) {
   if (!Array.isArray(arr)) return { avg: 0, count: 0, sum: 0 };
   let sum = 0;
   let count = 0;
@@ -158,7 +215,7 @@ function sliceAverage(arr: (number | string)[] | undefined, maxItems: number) {
   };
 }
 
-export function calculatePR1(rawScores: RawScores, isSenior = false): PRCheckpointResult {
+export function calculatePR1(rawScores: RawScores, isSenior = false): PRResult {
   const cwStats = sliceAverage(rawScores.cw, 4);
   const hwStats = sliceAverage(rawScores.hw, 4);
   const cwScore = cwStats.avg;
@@ -184,7 +241,7 @@ export function calculatePR1(rawScores: RawScores, isSenior = false): PRCheckpoi
   };
 }
 
-export function calculatePR2(rawScores: RawScores, isSenior = false): PRCheckpointResult {
+export function calculatePR2(rawScores: RawScores, isSenior = false): PRResult {
   const cwStats = sliceAverage(rawScores.cw, 7);
   const hwStats = sliceAverage(rawScores.hw, 7);
   const cwScore = cwStats.avg;
@@ -226,7 +283,7 @@ export function calculatePR2(rawScores: RawScores, isSenior = false): PRCheckpoi
   };
 }
 
-export function calculatePR3(rawScores: RawScores, isSenior = false): PRCheckpointResult {
+export function calculatePR3(rawScores: RawScores, isSenior = false): PRResult {
   const cwStats = sliceAverage(rawScores.cw, 10);
   const hwStats = sliceAverage(rawScores.hw, 10);
   const cwScore = cwStats.avg;
@@ -303,7 +360,8 @@ export function calculateTR(
   const caTotal = +(cwScore + hwScore + testScore + projectScore).toFixed(2);
   const totalScore = +(caTotal + examScore).toFixed(2);
 
-  const isSenior = options?.isSenior ?? (options?.className ? isSeniorClass(options.className) : false);
+  const isSenior =
+    options?.isSenior ?? (options?.className ? isSeniorClass(options.className) : false);
   const { grade, remark } = getGradeAndRemark(totalScore, isSenior);
 
   return {
@@ -327,11 +385,15 @@ export function calculateTR(
   };
 }
 
-export function calculateStudentResult(rawScores: RawScores, config = GRADING_CONFIG, options = {}) {
+export function calculateStudentResult(
+  rawScores: RawScores,
+  _config = GRADING_CONFIG,
+  options = {}
+) {
   return calculateTR(rawScores, options);
 }
 
-export function toStoredScores(result: TRResult, rawScores?: RawScores): StoredResultScores {
+export function toStoredScores(result: TRResult) {
   return {
     cw: Math.round(result.scaled.cw),
     hw: Math.round(result.scaled.hw),
@@ -340,33 +402,53 @@ export function toStoredScores(result: TRResult, rawScores?: RawScores): StoredR
     exam: Math.round(result.scaled.exam),
     total: Math.round(result.totalScore),
     grade: result.grade,
-    remark: result.remark,
-    score_breakdown: rawScores || {
-      cw: [],
-      hw: [],
-      tests: [],
-      project: "",
-      exam: "",
-    },
   };
 }
 
-export function computeClassSubjectStats(resultsList: any[] = []) {
-  if (!resultsList.length) {
-    return { classAvg: 0, highest: 0, lowest: 0 };
+export function computeClassSubjectStats(
+  classResults: any[] = [],
+  milestone = "TR"
+): Record<string, { avg: number; lowest: number; highest: number; count: number }> {
+  const bySubject: Record<string, number[]> = {};
+
+  (classResults || []).forEach((row) => {
+    const subjId = row.subject_id;
+    if (!subjId) return;
+
+    let score = 0;
+    if (milestone === "PR1") {
+      const raw = normalizeBreakdown(row);
+      score = calculatePR1(raw).percentage;
+    } else if (milestone === "PR2") {
+      const raw = normalizeBreakdown(row);
+      score = calculatePR2(raw).percentage;
+    } else if (milestone === "PR3") {
+      const raw = normalizeBreakdown(row);
+      score = calculatePR3(raw).percentage;
+    } else {
+      score = Number(row.total) || 0;
+    }
+
+    if (!bySubject[subjId]) {
+      bySubject[subjId] = [];
+    }
+    bySubject[subjId].push(score);
+  });
+
+  const stats: Record<string, { avg: number; lowest: number; highest: number; count: number }> = {};
+  for (const [subjId, scores] of Object.entries(bySubject)) {
+    if (!scores.length) continue;
+    const sum = scores.reduce((a, b) => a + b, 0);
+    const avg = +(sum / scores.length).toFixed(1);
+    const lowest = Math.min(...scores);
+    const highest = Math.max(...scores);
+    stats[subjId] = {
+      avg,
+      lowest,
+      highest,
+      count: scores.length,
+    };
   }
-  const scores = resultsList
-    .map((r) => Number(r.total))
-    .filter((n) => Number.isFinite(n) && n > 0);
 
-  if (!scores.length) {
-    return { classAvg: 0, highest: 0, lowest: 0 };
-  }
-
-  const sum = scores.reduce((acc, curr) => acc + curr, 0);
-  const classAvg = +(sum / scores.length).toFixed(1);
-  const highest = Math.max(...scores);
-  const lowest = Math.min(...scores);
-
-  return { classAvg, highest, lowest };
+  return stats;
 }

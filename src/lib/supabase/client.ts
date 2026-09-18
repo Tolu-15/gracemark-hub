@@ -1,28 +1,33 @@
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 
-let clientInstance: SupabaseClient | null = null;
+export const SUPABASE_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.SUPABASE_URL ||
+  "https://kfdfplxidvgoffqrfipw.supabase.co";
 
-export function getSupabaseClient(): SupabaseClient {
-  if (clientInstance) return clientInstance;
+export const SUPABASE_ANON_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtmZGZwbHhpZHZnb2ZmcXJmaXB3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk2MzE4ODQsImV4cCI6MjA5NTIwNzg4NH0.c5gqs2uGpxOrIzyOZiQQ26_Aipk2n7KCSe1q5NtFlnM";
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+let browserClient: ReturnType<typeof createClient> | null = null;
 
-  if (!url || !anonKey) {
-    console.warn(
-      "Supabase environment variables (NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY) are missing."
-    );
+export function getSupabaseBrowserClient() {
+  if (typeof window === "undefined") {
+    return createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   }
-
-  clientInstance = createClient(url, anonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  });
-
-  return clientInstance;
+  if (!browserClient) {
+    browserClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    });
+  }
+  return browserClient;
 }
 
-export const supabase = getSupabaseClient();
+export const getSupabaseClient = getSupabaseBrowserClient;
+export const supabase = getSupabaseBrowserClient();
+

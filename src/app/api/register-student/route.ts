@@ -22,7 +22,10 @@ export async function POST(req: NextRequest) {
   const displayName = String(body.display_name || "").trim();
 
   if (!email || !password) {
-    return NextResponse.json({ error: "Email and password are required." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Email and password are required." },
+      { status: 400 }
+    );
   }
 
   const { data, error } = await service.auth.admin.createUser({
@@ -44,7 +47,9 @@ export async function POST(req: NextRequest) {
             already_exists: true,
           });
         }
-      } catch (_) {}
+      } catch {
+        // Fall through
+      }
       return NextResponse.json(
         { error: "Account already registered. Please login instead." },
         { status: 409 }
@@ -54,7 +59,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (!data?.user?.id) {
-    return NextResponse.json({ error: "Supabase did not return a user id." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Supabase did not return a user id." },
+      { status: 500 }
+    );
   }
 
   return NextResponse.json({

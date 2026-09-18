@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase/server";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { supabase as fallbackClient } from "@/lib/supabase/client";
 
 export async function GET(req: NextRequest) {
-  const classId = req.nextUrl.searchParams.get("class_id");
-  const term = req.nextUrl.searchParams.get("term") || "term1";
-  const session = req.nextUrl.searchParams.get("session") || "";
-  const studentId = req.nextUrl.searchParams.get("student_id") || "";
+  const searchParams = req.nextUrl.searchParams;
+  const classId = searchParams.get("class_id");
+  const term = searchParams.get("term") || "term1";
+  const session = searchParams.get("session") || "";
+  const studentId = searchParams.get("student_id") || "";
 
   if (!classId) {
     return NextResponse.json({ error: "class_id is required" }, { status: 400 });
   }
 
-  const client = getServiceClient() || getSupabaseClient();
+  const client = getServiceClient() || fallbackClient;
 
   // 1. Fetch all students in this class
   const { data: students, error: sErr } = await client
@@ -29,7 +30,12 @@ export async function GET(req: NextRequest) {
   const studentIds = allStudents.map((s) => s.id);
 
   if (!studentIds.length) {
-    return NextResponse.json({ ok: true, classSize: 0, position: 1, subjectBenchmarks: {} });
+    return NextResponse.json({
+      ok: true,
+      classSize: 0,
+      position: 1,
+      subjectBenchmarks: {},
+    });
   }
 
   // 2. Fetch results for this class cohort in this term & session
@@ -61,7 +67,10 @@ export async function GET(req: NextRequest) {
     bySubject[r.subject_id].scores.push(Number(r.total) || 0);
   });
 
-  const subjectBenchmarks: Record<string, any> = {};
+  const subjectBenchmarks: Record<
+    string,
+    { avg: number; lowest: number; highest: number; count: number }
+  > = {};
   for (const [subjId, info] of Object.entries(bySubject)) {
     const scores = info.scores;
     if (!scores.length) continue;

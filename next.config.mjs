@@ -1,8 +1,24 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: false,
+  reactStrictMode: true,
+  trailingSlash: false,
+  transpilePackages: [
+    "@supabase/supabase-js",
+    "@supabase/auth-js",
+    "@supabase/functions-js",
+    "@supabase/postgrest-js",
+    "@supabase/realtime-js",
+    "@supabase/storage-js",
+  ],
   images: {
-    unoptimized: true,
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'kfdfplxidvgoffqrfipw.supabase.co',
+        port: '',
+        pathname: '/**',
+      },
+    ],
   },
 };
 

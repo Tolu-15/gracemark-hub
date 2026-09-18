@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const { classId, milestone, term, session } = body;
+  const { classId, milestone, term, session } = body || {};
   const service = getServiceClient();
   if (!service) {
     return NextResponse.json({ error: "Server service role not configured." }, { status: 503 });
@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
       .delete()
       .eq("class_id", classId)
       .eq("report_type", milestone);
+
     if (term) q = q.eq("term", term);
     if (session) q = q.eq("session", session);
     await q;
@@ -52,6 +53,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     console.error("handleUnpublishResults exception:", err);
-    return NextResponse.json({ error: err.message || "Failed to unpublish." }, { status: 500 });
+    return NextResponse.json(
+      { error: err.message || "Failed to unpublish." },
+      { status: 500 }
+    );
   }
 }
