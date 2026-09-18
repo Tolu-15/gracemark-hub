@@ -6,21 +6,24 @@ import { verifyRoleAccess, GuardResult } from "@/lib/guard";
 import { UserRole } from "@/types/database";
 
 interface AuthGuardProps {
-  requiredRole: UserRole;
+  requiredRole?: UserRole;
+  allowedRoles?: UserRole[] | string[];
   children: React.ReactNode;
 }
 
-export default function AuthGuard({ requiredRole, children }: AuthGuardProps) {
+export default function AuthGuard({ requiredRole, allowedRoles, children }: AuthGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [authorized, setAuthorized] = useState(false);
   const [authData, setAuthData] = useState<GuardResult | null>(null);
 
+  const effectiveRole = (requiredRole || (allowedRoles && allowedRoles[0]) || "admin") as UserRole;
+
   useEffect(() => {
     let isMounted = true;
 
     async function check() {
-      const { redirect, result } = await verifyRoleAccess(requiredRole, pathname || "");
+      const { redirect, result } = await verifyRoleAccess(effectiveRole, pathname || "");
       if (!isMounted) return;
 
       if (redirect) {
@@ -36,7 +39,7 @@ export default function AuthGuard({ requiredRole, children }: AuthGuardProps) {
     return () => {
       isMounted = false;
     };
-  }, [requiredRole, pathname, router]);
+  }, [effectiveRole, pathname, router]);
 
   if (!authorized) {
     return (
