@@ -1,0 +1,51 @@
+.tdev-site-footer {
+  flex-shrink: 0;
+  width: 100%;
+  text-align: center;
+  padding: 0.75rem 1rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.tdev-site-footer p {
+  margin: 0;
+}
+
+.tdev-site-footer strong {
+  color: #64748b;
+  font-weight: 700;
+}
+
+/* Sidebar portal pages — footer pinned to bottom of main column */
+main.tdev-main-with-footer {
+  min-height: 0;
+}
+
+main.tdev-main-with-footer > .tdev-site-footer {
+  margin-top: auto;
+}
+
+/* Login, redirect, and simple pages */
+body.tdev-body-footer {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+body.tdev-body-footer > .tdev-site-footer {
+  margin-top: auto;
+}
+
+/* Dark login pages */
+body.bg-slate-950 .tdev-site-footer {
+  background: #0f172a;
+  border-top-color: #1e293b;
+  color: #64748b;
+}
+
+body.bg-slate-950 .tdev-site-footer strong {
+  color: #c9a84c;
+}
