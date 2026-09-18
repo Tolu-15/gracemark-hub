@@ -196,13 +196,12 @@ export default function AdminPaymentStatusPage() {
                     </td>
                     <td className="px-6 py-3.5 text-right">
                       <span
-                        className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${
-                          item.status === "FULLY PAID"
+                        className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${item.status === "FULLY PAID"
                             ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                             : item.status === "PARTIALLY PAID"
-                            ? "bg-amber-50 text-amber-700 border-amber-200"
-                            : "bg-rose-50 text-rose-700 border-rose-200"
-                        }`}
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                              : "bg-rose-50 text-rose-700 border-rose-200"
+                          }`}
                       >
                         {item.status}
                       </span>
