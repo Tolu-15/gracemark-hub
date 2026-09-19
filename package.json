@@ -2,6 +2,7 @@
   "name": "gracemark",
   "version": "1.0.0",
   "private": true,
+  "main": "server.js",
   "description": "Gracemark school portal with extensionless routes",
   "scripts": {
     "dev": "next dev -p 3000",
