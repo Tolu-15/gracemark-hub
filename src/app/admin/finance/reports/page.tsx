@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase/client";
 import { getAppSettings } from "@/lib/appSettings";
+import { getAcademicSessions } from "@/lib/academicSessions";
 import { ClassRecord } from "@/types/database";
 
 interface ClassFinancialSummary {
@@ -22,31 +23,33 @@ export default function AdminFinanceReportsPage() {
   const [loading, setLoading] = useState(true);
 
   // Filters
-  const [session, setSession] = useState("2025/2026");
+  const [session, setSession] = useState("");
   const [term, setTerm] = useState("term1");
-  const [sessionsList, setSessionsList] = useState<string[]>([
-    "2024/2025",
-    "2025/2026",
-    "2026/2027",
-  ]);
+  const [sessionsList, setSessionsList] = useState<string[]>([]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: classesData }, settings, { data: invoicesData, error: iErr }, { data: studentsData }] =
+      const [{ data: classesData }, settings, { data: invoicesData, error: iErr }, { data: studentsData }, dbSessions] =
         await Promise.all([
           supabase.from("classes").select("id, name").order("name"),
           getAppSettings(),
           supabase.from("payment_invoices").select("*"),
           supabase.from("students").select("id, class_id"),
+          getAcademicSessions(),
         ]);
 
-      if (settings?.current_session) {
+      const names = dbSessions.map((s) => s.name);
+      setSessionsList(names);
+
+      if (settings?.current_session && names.includes(settings.current_session)) {
         setSession(settings.current_session);
-        setSessionsList((prev) =>
-          prev.includes(settings.current_session!) ? prev : [...prev, settings.current_session!]
-        );
+      } else if (names.length > 0) {
+        setSession(names[0]);
+      } else {
+        setSession("");
       }
+
       if (settings?.current_term) {
         setTerm(settings.current_term);
       }
@@ -171,11 +174,15 @@ export default function AdminFinanceReportsPage() {
             onChange={(e) => setSession(e.target.value)}
             className="px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none"
           >
-            {sessionsList.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
+            {sessionsList.length === 0 ? (
+              <option value="">No sessions</option>
+            ) : (
+              sessionsList.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))
+            )}
           </select>
         </div>
 

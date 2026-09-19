@@ -19,7 +19,7 @@ export default function AdminApprovalsPage() {
   const [subjects, setSubjects] = useState<SubjectRecord[]>([]);
   const [selectedSubject, setSelectedSubject] = useState("");
   const [currentTerm, setCurrentTerm] = useState("term1");
-  const [currentSession, setCurrentSession] = useState("2025/2026");
+  const [currentSession, setCurrentSession] = useState("");
 
   const [results, setResults] = useState<ResultRecord[]>([]);
   const [loading, setLoading] = useState(false);

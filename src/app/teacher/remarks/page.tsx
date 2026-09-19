@@ -27,7 +27,7 @@ export default function TeacherRemarksPage() {
   const [classes, setClasses] = useState<ClassRecord[]>([]);
   const [selectedClass, setSelectedClass] = useState("");
   const [term, setTerm] = useState("term1");
-  const [session, setSession] = useState("2025/2026");
+  const [session, setSession] = useState("");
 
   const [rows, setRows] = useState<EvaluationRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -52,8 +52,10 @@ export default function TeacherRemarksPage() {
       setTeacherId(teacherUid);
 
       const settings = await getAppSettings();
-      if (settings?.current_session) setSession(settings.current_session);
-      if (settings?.current_term) setTerm(settings.current_term);
+      const curSess = settings?.current_session || settings?.active_session;
+      if (curSess) setSession(curSess);
+      const curTerm = settings?.current_term || settings?.active_term;
+      if (curTerm) setTerm(curTerm);
 
       // Fetch teacher assignments
       const { data: assignments, error } = await supabase

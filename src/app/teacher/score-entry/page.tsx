@@ -34,7 +34,7 @@ export default function TeacherScoreEntryPage() {
   const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
   const [selectedSubject, setSelectedSubject] = useState("");
   const [selectedTerm, setSelectedTerm] = useState("term1");
-  const [currentSession, setCurrentSession] = useState("2025/2026");
+  const [currentSession, setCurrentSession] = useState("");
 
   const [termList, setTermList] = useState<any[]>([]);
   const [isEditable, setIsEditable] = useState(true);

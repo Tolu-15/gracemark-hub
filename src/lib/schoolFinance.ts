@@ -31,7 +31,7 @@ export function calculatePaymentStatus(totalAmount: number, amountPaid: number):
 
 export async function getCurrentAcademicSessionAndTerm() {
   const settings = await getAppSettings();
-  const session = settings?.current_session || "2026/2027";
+  const session = settings?.current_session || "";
   const termCode = settings?.current_term || "term1";
   const termName =
     termCode === "term1" ? "First Term" : termCode === "term2" ? "Second Term" : "Third Term";

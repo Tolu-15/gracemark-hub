@@ -6,14 +6,15 @@ import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getAppSettings } from "@/lib/appSettings";
 import { normalizeBreakdown, calculateStudentResult, isSeniorClass } from "@/lib/gradingEngine";
+import { getAcademicSessions } from "@/lib/academicSessions";
 import ResultDashboardApp from "@/components/student/ResultDashboardApp";
 
 interface StudentProfile {
   id: string;
   admission_no: string;
   name: string;
-  class_id?: string;
-  classes?: { id?: string; name: string } | null;
+  class_id: string;
+  classes?: { id: string; name: string } | null;
 }
 
 interface FeeSummary {
@@ -24,7 +25,8 @@ interface FeeSummary {
 export default function StudentDashboardPage() {
   const router = useRouter();
   const [student, setStudent] = useState<StudentProfile | null>(null);
-  const [session, setSession] = useState("2025/2026");
+  const [session, setSession] = useState("");
+  const [sessionsList, setSessionsList] = useState<string[]>([]);
   const [term, setTerm] = useState("term1");
   const [feeSummary, setFeeSummary] = useState<FeeSummary>({
     outstandingBalance: 0,
@@ -76,8 +78,14 @@ export default function StudentDashboardPage() {
         setStudent(std as any);
       }
 
-      const settings = await getAppSettings();
-      if (settings?.current_session) setSession(settings.current_session);
+      const [settings, dbSessions] = await Promise.all([
+        getAppSettings(),
+        getAcademicSessions(),
+      ]);
+      const names = dbSessions.map((s) => s.name);
+      setSessionsList(names);
+      const cur = settings?.current_session || (names.length > 0 ? names[0] : "");
+      setSession(cur);
       if (settings?.current_term) setTerm(settings.current_term);
 
       // Fee Summary
@@ -310,9 +318,15 @@ export default function StudentDashboardPage() {
               onChange={(e) => setSession(e.target.value)}
               className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:border-indigo-500"
             >
-              <option value="2026/2027">2026/2027</option>
-              <option value="2025/2026">2025/2026</option>
-              <option value="2024/2025">2024/2025</option>
+              {sessionsList.length === 0 ? (
+                <option value="">No sessions</option>
+              ) : (
+                sessionsList.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))
+              )}
             </select>
 
             <button

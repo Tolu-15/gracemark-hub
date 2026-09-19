@@ -27,7 +27,7 @@ export default function AdminRemarksPage() {
   const [classes, setClasses] = useState<ClassRecord[]>([]);
   const [selectedClass, setSelectedClass] = useState("");
   const [term, setTerm] = useState("term1");
-  const [session, setSession] = useState("2025/2026");
+  const [session, setSession] = useState("");
 
   const [rows, setRows] = useState<EvaluationRow[]>([]);
   const [loading, setLoading] = useState(false);

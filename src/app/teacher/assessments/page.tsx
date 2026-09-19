@@ -82,7 +82,7 @@ export default function TeacherAssessmentsPage() {
   const [teacherClasses, setTeacherClasses] = useState<{ id: string; name: string }[]>([]);
   const [teacherSubjects, setTeacherSubjects] = useState<{ id: string; name: string }[]>([]);
   const [assessments, setAssessments] = useState<AssessmentItem[]>([]);
-  const [currentSession, setCurrentSession] = useState("2025/2026");
+  const [currentSession, setCurrentSession] = useState("");
   const [currentTerm, setCurrentTerm] = useState("term1");
 
   // Stats
@@ -142,7 +142,7 @@ export default function TeacherAssessmentsPage() {
       setTeacherId(user.id);
 
       const settings = await getAppSettings();
-      setCurrentSession(settings?.current_session || "2025/2026");
+      setCurrentSession(settings?.current_session || "");
       setCurrentTerm(settings?.current_term || "term1");
 
       // Fetch teacher assignments

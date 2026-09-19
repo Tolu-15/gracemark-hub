@@ -9,7 +9,7 @@ import ResultDashboardApp from "@/components/student/ResultDashboardApp";
 export default function StudentResultPage() {
   const router = useRouter();
   const [student, setStudent] = useState<any>(null);
-  const [session, setSession] = useState("2025/2026");
+  const [session, setSession] = useState("");
   const [term, setTerm] = useState("term1");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

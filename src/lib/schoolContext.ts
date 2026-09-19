@@ -25,7 +25,7 @@ export async function getDefaultSchool({ name = "Gracemark Academy" } = {}) {
   if (!data) {
     // If no school exists at all, auto create one with default session
     const settings = await getAppSettings();
-    const session = settings?.current_session || "2025/2026";
+    const session = settings?.current_session || "";
     const { data: created, error: insErr } = await supabase
       .from("schools")
       .insert({ name, session })
@@ -49,7 +49,7 @@ export async function ensureClassByName(className: string) {
   if (!name) throw new Error("Class name is required");
 
   const settings = await getAppSettings();
-  const session = settings?.current_session || "2025/2026";
+  const session = settings?.current_session || "";
 
   const { data: existing, error } = await supabase
     .from("classes")

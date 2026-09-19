@@ -8,6 +8,7 @@ import {
   PR_INTERVALS,
   termLabel,
 } from "@/lib/studentReport";
+import { getAcademicSessions } from "@/lib/academicSessions";
 
 interface ResultDashboardAppProps {
   student: {
@@ -80,15 +81,32 @@ function StatCard({
 export default function ResultDashboardApp({
   student,
   initialTerm = "term1",
-  initialSession = "2025/2026",
+  initialSession = "",
   onClose,
 }: ResultDashboardAppProps) {
   const [term, setTerm] = useState(initialTerm);
   const [session, setSession] = useState(initialSession);
+  const [sessionsList, setSessionsList] = useState<string[]>([]);
   const [tab, setTab] = useState<"all" | "pr1" | "pr2" | "pr3" | "tr">("all");
   const [report, setReport] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadSessions() {
+      try {
+        const list = await getAcademicSessions();
+        const names = list.map((s) => s.name);
+        setSessionsList(names);
+        if (!initialSession && names.length > 0) {
+          setSession((prev) => prev || names[0]);
+        }
+      } catch (e) {
+        console.warn("Could not load sessions in ResultDashboardApp", e);
+      }
+    }
+    loadSessions();
+  }, [initialSession]);
 
   const loadReport = useCallback(async () => {
     if (!student?.id) return;
@@ -173,9 +191,15 @@ export default function ResultDashboardApp({
                 onChange={(e) => setSession(e.target.value)}
                 className="rd-select text-xs font-semibold px-3 py-1.5 border border-slate-300 rounded-lg"
               >
-                <option value="2026/2027">2026/2027</option>
-                <option value="2025/2026">2025/2026</option>
-                <option value="2024/2025">2024/2025</option>
+                {sessionsList.length === 0 ? (
+                  <option value={session || ""}>{session || "No session"}</option>
+                ) : (
+                  sessionsList.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
           </div>

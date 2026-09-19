@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { getAppSettings } from "@/lib/appSettings";
+import { getAcademicSessions } from "@/lib/academicSessions";
 import { ClassRecord } from "@/types/database";
 
 interface FeeStructure {
@@ -25,6 +26,7 @@ interface FeeStructure {
 export default function AdminFinanceFeesPage() {
   const [fees, setFees] = useState<FeeStructure[]>([]);
   const [classes, setClasses] = useState<ClassRecord[]>([]);
+  const [sessionsList, setSessionsList] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
@@ -40,7 +42,7 @@ export default function AdminFinanceFeesPage() {
   const [schoolId, setSchoolId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
-    academic_session: "2025/2026",
+    academic_session: "",
     term: "term1",
     class_id: "",
     tuition_amount: 0,
@@ -56,7 +58,7 @@ export default function AdminFinanceFeesPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: schoolData }, settings, { data: classesData }, { data: feesData, error: fErr }] =
+      const [{ data: schoolData }, settings, { data: classesData }, { data: feesData, error: fErr }, dbSessions] =
         await Promise.all([
           supabase.from("schools").select("id").limit(1).maybeSingle(),
           getAppSettings(),
@@ -65,12 +67,16 @@ export default function AdminFinanceFeesPage() {
             .from("fee_structures")
             .select("*, classes(id, name)")
             .order("created_at", { ascending: false }),
+          getAcademicSessions(),
         ]);
 
+      const names = dbSessions.map((s) => s.name);
+      setSessionsList(names);
+
       if (schoolData?.id) setSchoolId(schoolData.id);
-      if (settings?.current_session) {
-        setFormData((prev) => ({ ...prev, academic_session: settings.current_session || "2025/2026" }));
-      }
+      const activeSession = settings?.current_session || (names.length > 0 ? names[0] : "");
+      setFormData((prev) => ({ ...prev, academic_session: activeSession }));
+
       setClasses(classesData || []);
       if (fErr) throw fErr;
       setFees((feesData as any[]) || []);
@@ -103,7 +109,7 @@ export default function AdminFinanceFeesPage() {
     } else {
       setEditingFee(null);
       setFormData({
-        academic_session: "2025/2026",
+        academic_session: sessionsList.length > 0 ? sessionsList[0] : "",
         term: "term1",
         class_id: classes.length ? classes[0].id : "",
         tuition_amount: 0,
@@ -247,9 +253,11 @@ export default function AdminFinanceFeesPage() {
           className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none"
         >
           <option value="">All Sessions</option>
-          <option value="2024/2025">2024/2025</option>
-          <option value="2025/2026">2025/2026</option>
-          <option value="2026/2027">2026/2027</option>
+          {sessionsList.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
         </select>
 
         <select
@@ -360,13 +368,30 @@ export default function AdminFinanceFeesPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-500 font-semibold mb-1">Session</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.academic_session}
-                    onChange={(e) => setFormData({ ...formData, academic_session: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none"
-                  />
+                  {sessionsList.length > 0 ? (
+                    <select
+                      required
+                      value={formData.academic_session}
+                      onChange={(e) => setFormData({ ...formData, academic_session: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none"
+                    >
+                      <option value="">Select Session</option>
+                      {sessionsList.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 2026/2027"
+                      value={formData.academic_session}
+                      onChange={(e) => setFormData({ ...formData, academic_session: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none"
+                    />
+                  )}
                 </div>
                 <div>
                   <label className="block text-slate-500 font-semibold mb-1">Term</label>

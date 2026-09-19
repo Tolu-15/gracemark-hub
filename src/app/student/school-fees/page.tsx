@@ -171,7 +171,7 @@ export default function StudentSchoolFeesPage() {
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-5">
               <div>
                 <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">
-                  {financeData?.session || "2025/2026"} • {financeData?.termName || "First Term"}
+                  {financeData?.session ? `${financeData.session} • ` : ""}{financeData?.termName || "First Term"}
                 </span>
                 <h2 className="text-xl font-extrabold text-slate-900 mt-0.5">
                   {financeData?.className || "Class"} Fee Breakdown

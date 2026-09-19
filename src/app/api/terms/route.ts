@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 
   const currentTerm = settings?.current_term || "term1";
   const currentSession =
-    searchParams.get("session") || settings?.current_session || "2025/2026";
+    searchParams.get("session") || settings?.current_session || "";
 
   const termKeys = [
     { term: "term1", label: "1st Term" },

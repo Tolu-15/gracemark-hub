@@ -4,6 +4,12 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 import { getAppSettings, setAppSettings } from "@/lib/appSettings";
+import {
+  getAcademicSessions,
+  createAcademicSession,
+  deleteAcademicSession,
+  deleteAllAcademicSessions,
+} from "@/lib/academicSessions";
 
 interface TermStatus {
   term: string;
@@ -25,12 +31,13 @@ export default function AdminDashboardPage() {
   });
 
   const [term, setTerm] = useState("1st Term");
-  const [session, setSession] = useState("2025/2026");
-  const [sessionsList, setSessionsList] = useState<string[]>(["2024/2025", "2025/2026", "2026/2027"]);
+  const [session, setSession] = useState("");
+  const [sessionsList, setSessionsList] = useState<string[]>([]);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [newSessionInput, setNewSessionInput] = useState("");
   const [termsList, setTermsList] = useState<TermStatus[]>([]);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [deletingSession, setDeletingSession] = useState(false);
   const [updatingTerm, setUpdatingTerm] = useState<string | null>(null);
 
   function termDbToUi(t?: string) {
@@ -45,6 +52,21 @@ export default function AdminDashboardPage() {
     if (t === "2nd Term") return "term2";
     if (t === "3rd Term") return "term3";
     return "term1";
+  }
+
+  async function loadSessions(activeFromSettings?: string) {
+    const dbSessions = await getAcademicSessions();
+    const names = dbSessions.map((s) => s.name);
+    setSessionsList(names);
+
+    if (activeFromSettings && names.includes(activeFromSettings)) {
+      setSession(activeFromSettings);
+    } else if (names.length > 0) {
+      setSession(names[0]);
+    } else {
+      setSession("");
+    }
+    return names;
   }
 
   async function loadData() {
@@ -73,18 +95,14 @@ export default function AdminDashboardPage() {
         totalOutstanding: out,
       });
 
-      // 2. Settings
+      // 2. Settings & Sessions
       const appSettings = await getAppSettings();
-      if (appSettings) {
+      const currentActiveSession = String(appSettings?.current_session || "").trim();
+      if (appSettings?.current_term) {
         setTerm(termDbToUi(appSettings.current_term));
-        const sess = String(appSettings.current_session || "").trim();
-        if (sess) {
-          setSession(sess);
-          setSessionsList((prev) =>
-            prev.includes(sess) ? prev : [...prev, sess]
-          );
-        }
       }
+
+      await loadSessions(currentActiveSession);
 
       // 3. Term permissions
       await loadTermPermissions();
@@ -113,25 +131,70 @@ export default function AdminDashboardPage() {
     setSavingSettings(true);
     try {
       let targetSession = session;
-      if (isCreatingSession && newSessionInput.trim()) {
-        targetSession = newSessionInput.trim();
-        setSessionsList((prev) => (prev.includes(targetSession) ? prev : [...prev, targetSession]));
-        setSession(targetSession);
+      if (isCreatingSession) {
+        const trimmed = newSessionInput.trim();
+        if (!trimmed) {
+          alert("Please enter a valid session name (e.g. 2026/2027).");
+          setSavingSettings(false);
+          return;
+        }
+        await createAcademicSession(trimmed, true);
+        targetSession = trimmed;
         setIsCreatingSession(false);
         setNewSessionInput("");
+        await loadSessions(targetSession);
+      } else {
+        await setAppSettings({
+          current_term: termUiToDb(term),
+          current_session: targetSession,
+        });
       }
 
-      await setAppSettings({
-        current_term: termUiToDb(term),
-        current_session: targetSession,
-      });
-
-      alert(`Global academic settings updated! Active Session is now: ${targetSession}`);
+      alert(`Global academic settings updated! Active Session is now: ${targetSession || "(None)"}`);
       await loadTermPermissions();
     } catch (error: any) {
       alert("Failed to save global settings: " + error.message);
     } finally {
       setSavingSettings(false);
+    }
+  }
+
+  async function handleDeleteCurrentSession() {
+    if (!session) return;
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete session "${session}"?\nThis will remove it from the system.`
+    );
+    if (!confirmDelete) return;
+
+    setDeletingSession(true);
+    try {
+      await deleteAcademicSession(session);
+      alert(`Session "${session}" deleted successfully.`);
+      await loadSessions();
+      await loadTermPermissions();
+    } catch (err: any) {
+      alert("Failed to delete session: " + err.message);
+    } finally {
+      setDeletingSession(false);
+    }
+  }
+
+  async function handleDeleteAllSessions() {
+    const confirmDelete = window.confirm(
+      "WARNING: Are you sure you want to delete ALL academic sessions?\nThis will remove all created sessions from the database."
+    );
+    if (!confirmDelete) return;
+
+    setDeletingSession(true);
+    try {
+      await deleteAllAcademicSessions();
+      alert("All academic sessions have been wiped successfully.");
+      await loadSessions();
+      await loadTermPermissions();
+    } catch (err: any) {
+      alert("Failed to delete all sessions: " + err.message);
+    } finally {
+      setDeletingSession(false);
     }
   }
 
@@ -329,17 +392,54 @@ export default function AdminDashboardPage() {
               </div>
 
               {!isCreatingSession ? (
-                <select
-                  value={session}
-                  onChange={(e) => setSession(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900"
-                >
-                  {sessionsList.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+                sessionsList.length === 0 ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex flex-col gap-1">
+                    <div className="font-semibold flex items-center gap-1.5">
+                      <svg className="w-4 h-4 text-amber-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      No academic sessions created yet.
+                    </div>
+                    <p className="text-slate-600">Click &apos;+ Create New&apos; above to add your first session.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={session}
+                        onChange={(e) => setSession(e.target.value)}
+                        className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                      >
+                        {sessionsList.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleDeleteCurrentSession}
+                        disabled={deletingSession || !session}
+                        title={`Delete session ${session}`}
+                        className="p-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl transition disabled:opacity-40"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleDeleteAllSessions}
+                        disabled={deletingSession}
+                        className="text-xs text-rose-500 hover:text-rose-700 underline font-medium"
+                      >
+                        Delete All Sessions
+                      </button>
+                    </div>
+                  </div>
+                )
               ) : (
                 <input
                   type="text"
@@ -353,7 +453,7 @@ export default function AdminDashboardPage() {
 
             <button
               type="button"
-              disabled={savingSettings}
+              disabled={savingSettings || (!isCreatingSession && !session)}
               onClick={handleSaveSettings}
               className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl transition shadow-sm mt-2 disabled:opacity-50"
             >

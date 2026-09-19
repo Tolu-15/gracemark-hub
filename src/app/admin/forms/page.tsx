@@ -340,7 +340,7 @@ export default function AdminFormsPage() {
                     value={formTitle}
                     onChange={(e) => setFormTitle(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:border-amber-500"
-                    placeholder="e.g. 2026/2027 JSS1 Entrance Admission"
+                    placeholder="e.g. JSS1 Entrance Admission Form"
                   />
                 </div>
 

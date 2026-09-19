@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { getAppSettings } from "@/lib/appSettings";
+import { getAcademicSessions } from "@/lib/academicSessions";
 import { ClassRecord, StudentRecord } from "@/types/database";
 
 interface PaymentRecordItem {
@@ -30,6 +32,7 @@ export default function AdminFinancePaymentsPage() {
   const [payments, setPayments] = useState<PaymentRecordItem[]>([]);
   const [classes, setClasses] = useState<ClassRecord[]>([]);
   const [students, setStudents] = useState<StudentRecord[]>([]);
+  const [sessionsList, setSessionsList] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
@@ -55,6 +58,7 @@ export default function AdminFinancePaymentsPage() {
         { data: classesData },
         { data: studentsData },
         { data: recordsData, error: rErr },
+        dbSessions,
       ] = await Promise.all([
         supabase.from("classes").select("id, name").order("name"),
         supabase.from("students").select("id, name, admission_no, class_id").order("name"),
@@ -62,10 +66,12 @@ export default function AdminFinancePaymentsPage() {
           .from("payment_records")
           .select("*, students(id, name, admission_no, classes(name)), payment_invoices(academic_session, term, class_id)")
           .order("payment_date", { ascending: false }),
+        getAcademicSessions(),
       ]);
 
       setClasses(classesData || []);
       setStudents((studentsData as any[]) || []);
+      setSessionsList(dbSessions.map((s) => s.name));
       if (rErr) throw rErr;
       setPayments((recordsData as any[]) || []);
     } catch (err) {
@@ -102,6 +108,9 @@ export default function AdminFinancePaymentsPage() {
         .maybeSingle();
 
       if (!invoice) {
+        const settings = await getAppSettings();
+        const activeSession = settings?.current_session || (sessionsList[0] || "");
+        const activeTerm = settings?.current_term || "term1";
         const invNumber = `INV-${Date.now()}`;
         const { data: newInv, error: invErr } = await supabase
           .from("payment_invoices")
@@ -111,8 +120,8 @@ export default function AdminFinancePaymentsPage() {
               class_id: student.class_id,
               total_amount: amt,
               amount_paid: 0,
-              academic_session: "2025/2026",
-              term: "term1",
+              academic_session: activeSession,
+              term: activeTerm,
               status: "UNPAID",
               invoice_number: invNumber,
             },
@@ -255,9 +264,11 @@ export default function AdminFinancePaymentsPage() {
             className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none"
           >
             <option value="">All Sessions</option>
-            <option value="2024/2025">2024/2025</option>
-            <option value="2025/2026">2025/2026</option>
-            <option value="2026/2027">2026/2027</option>
+            {sessionsList.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
           </select>
         </div>
 

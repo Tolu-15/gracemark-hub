@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase/client";
 import { UserProfile, ClassRecord, SubjectRecord } from "@/types/database";
 
@@ -14,6 +15,11 @@ export default function AdminTeachersPage() {
   const [classes, setClasses] = useState<ClassRecord[]>([]);
   const [subjects, setSubjects] = useState<SubjectRecord[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Bulk upload & template
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -241,6 +247,178 @@ export default function AdminTeachersPage() {
     }
   }
 
+  function handleDownloadTemplate() {
+    const templateData = [
+      {
+        "Teacher Name": "Mr. Babatunde Adeyemi",
+        "Email": "adeyemi.maths@gracemark.sch.ng",
+        "Assigned Class": "JSS 1, SSS 2 Science",
+        "Assigned Subject": "Mathematics",
+        "Default Password": "gracemark2026!"
+      },
+      {
+        "Teacher Name": "Mrs. Ngozi Okonjo-Eze",
+        "Email": "okonjo.english@gracemark.sch.ng",
+        "Assigned Class": "JSS 1, SSS 2 Arts",
+        "Assigned Subject": "English Language",
+        "Default Password": "gracemark2026!"
+      },
+      {
+        "Teacher Name": "Dr. Aisha Mohammed",
+        "Email": "mohammed.physics@gracemark.sch.ng",
+        "Assigned Class": "SSS 2 Science, SSS 3 Science",
+        "Assigned Subject": "Physics",
+        "Default Password": "gracemark2026!"
+      },
+      {
+        "Teacher Name": "Mr. Emeka Chukwu",
+        "Email": "chukwu.science@gracemark.sch.ng",
+        "Assigned Class": "SSS 1 Science, SSS 2 Science",
+        "Assigned Subject": "Chemistry, Biology",
+        "Default Password": "gracemark2026!"
+      },
+      {
+        "Teacher Name": "Mr. Oluwaseun Davies",
+        "Email": "davies.commercial@gracemark.sch.ng",
+        "Assigned Class": "SSS 2 Commercial",
+        "Assigned Subject": "Economics, Commerce",
+        "Default Password": "gracemark2026!"
+      },
+      {
+        "Teacher Name": "Mrs. Funmilayo Adeleke",
+        "Email": "adeleke.basic@gracemark.sch.ng",
+        "Assigned Class": "JSS 1, JSS 2",
+        "Assigned Subject": "Basic Science, Basic Technology",
+        "Default Password": "gracemark2026!"
+      }
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(templateData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Teachers");
+    XLSX.writeFile(workbook, "Gracemark_Teachers_Template.xlsx");
+  }
+
+  async function handleBulkUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setBulkUploading(true);
+    setBulkMsg(null);
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: "array" });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const rows: any[] = XLSX.utils.sheet_to_json(worksheet);
+
+      if (!rows.length) {
+        throw new Error("Uploaded spreadsheet is empty.");
+      }
+
+      const teachersList = [];
+      for (const row of rows) {
+        const name =
+          row["Teacher Name"] ||
+          row["Name"] ||
+          row["Full Name"] ||
+          row["name"] ||
+          "";
+        const email =
+          row["Email"] ||
+          row["Teacher Email"] ||
+          row["email"] ||
+          "";
+        const rawClass =
+          row["Assigned Class"] ||
+          row["Assigned Classes"] ||
+          row["Class"] ||
+          row["Classes"] ||
+          "";
+        const rawSubject =
+          row["Assigned Subject"] ||
+          row["Assigned Subjects"] ||
+          row["Subject"] ||
+          row["Subjects"] ||
+          "";
+        const password =
+          row["Default Password"] ||
+          row["Password"] ||
+          row["password"] ||
+          "gracemark2026!";
+
+        if (name && email) {
+          teachersList.push({
+            name: String(name).trim(),
+            email: String(email).trim().toLowerCase(),
+            password: String(password).trim(),
+            classes: String(rawClass)
+              .split(",")
+              .map((c) => c.trim())
+              .filter(Boolean),
+            subjects: String(rawSubject)
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+          });
+        }
+      }
+
+      if (teachersList.length === 0) {
+        throw new Error("No valid teacher rows found. Expected columns: 'Teacher Name', 'Email', 'Assigned Class', 'Assigned Subject'.");
+      }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) throw new Error("Authentication session not found. Please refresh the page.");
+
+      const res = await fetch("/api/admin/bulk-import-teachers", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ teachers: teachersList }),
+      });
+
+      const resJson = await res.json();
+      if (!res.ok) {
+        throw new Error(resJson.error || "Failed to bulk import teachers.");
+      }
+
+      setBulkMsg({
+        type: "success",
+        text: `Successfully imported ${resJson.count} teacher(s)${resJson.errors?.length ? ` (${resJson.errors.length} warnings)` : ""}!`,
+      });
+      loadData();
+    } catch (err: any) {
+      console.error("Bulk teacher import error:", err);
+      setBulkMsg({
+        type: "error",
+        text: `Import failed: ${err.message || "Unknown error"}`,
+      });
+    } finally {
+      setBulkUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setTimeout(() => setBulkMsg(null), 8000);
+    }
+  }
+
+  async function handleQuickAddSubject() {
+    const newName = prompt("Enter new subject name to add to curriculum:");
+    if (!newName || !newName.trim()) return;
+    const clean = newName.trim();
+    try {
+      const { data, error } = await supabase.from("subjects").insert([{ name: clean }]).select().single();
+      if (error) throw error;
+      setSubjects((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
+      setFormData((prev) => ({ ...prev, subjectIds: [...prev.subjectIds, data.id] }));
+    } catch (err: any) {
+      alert("Failed to add subject: " + err.message);
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -253,17 +431,72 @@ export default function AdminTeachersPage() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => handleOpenModal()}
-          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-          </svg>
-          <span>Add Teacher</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Download Template */}
+          <button
+            type="button"
+            onClick={handleDownloadTemplate}
+            className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
+            title="Download Excel spreadsheet template for teachers"
+          >
+            <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            <span>Template</span>
+          </button>
+
+          {/* Hidden file input for bulk upload */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleBulkUpload}
+            accept=".xlsx, .xls, .csv"
+            className="hidden"
+          />
+
+          <button
+            type="button"
+            disabled={bulkUploading}
+            onClick={() => fileInputRef.current?.click()}
+            className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+          >
+            <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            <span>{bulkUploading ? "Importing…" : "Bulk Excel Upload"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleOpenModal()}
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+            </svg>
+            <span>Add Teacher</span>
+          </button>
+        </div>
       </div>
+
+      {bulkMsg && (
+        <div
+          className={`p-3.5 rounded-xl text-xs font-semibold flex items-center justify-between ${
+            bulkMsg.type === "error"
+              ? "bg-rose-50 text-rose-700 border border-rose-200"
+              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+          }`}
+        >
+          <span>{bulkMsg.text}</span>
+          <button
+            type="button"
+            onClick={() => setBulkMsg(null)}
+            className="text-slate-400 hover:text-slate-600 cursor-pointer ml-4"
+          >
+            &times;
+          </button>
+        </div>
+      )}
 
       {/* Teachers Table */}
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
@@ -465,9 +698,18 @@ export default function AdminTeachersPage() {
 
               {/* Subject delegations checkboxes */}
               <div>
-                <label className="block font-bold text-slate-700 uppercase tracking-wider text-[10px] mb-1.5">
-                  Assigned Subjects
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider text-[10px]">
+                    Assigned Subjects
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleQuickAddSubject}
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                  >
+                    + New Subject
+                  </button>
+                </div>
                 <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
                   {subjects.map((s) => {
                     const checked = formData.subjectIds.includes(s.id);

@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
   for (const r of records) {
     const rTerm = r.term || currentTerm;
-    const rSession = r.session || settings?.current_session || "2025/2026";
+    const rSession = r.session || settings?.current_session || "";
     const canEdit = await isTermEditable(rSession, rTerm, service, currentTerm);
     if (!canEdit) {
       return NextResponse.json(

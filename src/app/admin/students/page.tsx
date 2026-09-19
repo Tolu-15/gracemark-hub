@@ -148,12 +148,21 @@ export default function AdminStudentsPage() {
           }
         }
 
+        const fallbackUserId =
+          typeof crypto !== "undefined" && crypto.randomUUID
+            ? crypto.randomUUID()
+            : (typeof window !== "undefined" && window.crypto && window.crypto.randomUUID
+                ? window.crypto.randomUUID()
+                : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c: any) =>
+                    (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)
+                  ));
+
         const { error } = await supabase.from("students").insert([
           {
             name: name.trim(),
             admission_no: admission_no.trim(),
             class_id,
-            user_id: authUserId,
+            user_id: authUserId || fallbackUserId,
             portal_access_status: "ACTIVE",
           },
         ]);
@@ -186,6 +195,46 @@ export default function AdminStudentsPage() {
     }
   }
 
+  function handleDownloadTemplate() {
+    const templateData = [
+      {
+        "Name": "Chinedu David Eze",
+        "Class": "JSS 1",
+        "Admission Number": "GMA202501"
+      },
+      {
+        "Name": "Amina Fatima Bello",
+        "Class": "JSS 1",
+        "Admission Number": "GMA202502"
+      },
+      {
+        "Name": "Oluwaseun Michael Adeyemi",
+        "Class": "JSS 2",
+        "Admission Number": "GMA202411"
+      },
+      {
+        "Name": "Godwin Ifeanyi Nwosu",
+        "Class": "SSS 1 Science",
+        "Admission Number": "GMA202301"
+      },
+      {
+        "Name": "Grace Chiamaka Peters",
+        "Class": "SSS 2 Arts",
+        "Admission Number": "GMA202212"
+      },
+      {
+        "Name": "Ayomide Temitope Olatunji",
+        "Class": "SSS 2 Commercial",
+        "Admission Number": "GMA202221"
+      }
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(templateData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Students");
+    XLSX.writeFile(workbook, "Gracemark_Students_Template.xlsx");
+  }
+
   async function handleBulkUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -204,29 +253,103 @@ export default function AdminStudentsPage() {
         throw new Error("Uploaded spreadsheet is empty.");
       }
 
-      // Find class map
-      const classMap = new Map<string, string>();
-      classes.forEach((c) => classMap.set(c.name.trim().toLowerCase(), c.id));
+      // 1. Fetch existing students' admission_no -> user_id to preserve existing accounts
+      const { data: existingStudents } = await supabase
+        .from("students")
+        .select("admission_no, user_id");
+      const existingUserMap = new Map<string, string>();
+      if (existingStudents) {
+        existingStudents.forEach((s) => {
+          if (s.admission_no && s.user_id) {
+            existingUserMap.set(s.admission_no.trim().toLowerCase(), s.user_id);
+          }
+        });
+      }
 
-      const newStudents = [];
-      for (const row of rows) {
-        const name = row["Name"] || row["Student Name"] || row["Full Name"] || "";
-        const admission_no = row["Admission No"] || row["Admission Number"] || row["Reg No"] || "";
-        const className = row["Class"] || row["Class Name"] || "";
+      // 2. Normalization map for classes (e.g. "JSS 1", "JSS1", "SS 1 Science", "SSS 1 Science")
+      const normalizeClassName = (str: string) =>
+        str
+          .toLowerCase()
+          .replace(/\./g, "")
+          .replace(/\s+/g, "")
+          .replace(/^ss([123])/, "sss$1")
+          .replace(/^js([123])/, "jss$1");
+
+      const classMap = new Map<string, string>();
+      classes.forEach((c) => {
+        classMap.set(c.name.trim().toLowerCase(), c.id);
+        classMap.set(normalizeClassName(c.name), c.id);
+      });
+
+      const newStudents: any[] = [];
+      const unmappedRows: string[] = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const name =
+          row["Name"] ||
+          row["Student Name"] ||
+          row["Full Name"] ||
+          row["name"] ||
+          "";
+        const admission_no =
+          row["Admission Number"] ||
+          row["Admission No"] ||
+          row["Reg No"] ||
+          row["admission_no"] ||
+          row["Registration Number"] ||
+          "";
+        const className =
+          row["Class"] ||
+          row["Class Name"] ||
+          row["class"] ||
+          "";
 
         if (name && admission_no) {
-          const classId = classMap.get(String(className).trim().toLowerCase()) || null;
+          const cleanAdm = String(admission_no).trim();
+          const cleanName = String(name).trim();
+          const cleanClassRaw = String(className).trim();
+
+          const classId =
+            classMap.get(cleanClassRaw.toLowerCase()) ||
+            classMap.get(normalizeClassName(cleanClassRaw)) ||
+            null;
+
+          if (!classId && cleanClassRaw) {
+            unmappedRows.push(`Row ${i + 2}: "${cleanClassRaw}"`);
+          }
+
+          const existingUserId = existingUserMap.get(cleanAdm.toLowerCase());
+          const userId =
+            existingUserId ||
+            (typeof crypto !== "undefined" && crypto.randomUUID
+              ? crypto.randomUUID()
+              : (typeof window !== "undefined" && window.crypto && window.crypto.randomUUID
+                  ? window.crypto.randomUUID()
+                  : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c: any) =>
+                      (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)
+                    )));
+
           newStudents.push({
-            name: String(name).trim(),
-            admission_no: String(admission_no).trim(),
+            name: cleanName,
+            admission_no: cleanAdm,
             class_id: classId,
+            user_id: userId,
             portal_access_status: "ACTIVE",
           });
         }
       }
 
       if (!newStudents.length) {
-        throw new Error("No valid student rows found. Expected columns: Name, Admission No, Class.");
+        throw new Error("No valid student rows found. Expected columns: Name, Class, Admission Number.");
+      }
+
+      const missingClasses = newStudents.filter((s) => !s.class_id);
+      if (missingClasses.length > 0) {
+        const sampleErrors = unmappedRows.slice(0, 3).join(", ");
+        throw new Error(
+          `${missingClasses.length} student(s) have unassigned or unrecognized class names (${sampleErrors}). Available classes: ${classes.map((c) => c.name).join(", ")}`
+        );
       }
 
       const { error } = await supabase
@@ -243,7 +366,7 @@ export default function AdminStudentsPage() {
     } finally {
       setBulkUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      setTimeout(() => setBulkMsg(""), 5000);
+      setTimeout(() => setBulkMsg(""), 6000);
     }
   }
 
@@ -272,6 +395,19 @@ export default function AdminStudentsPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Download Template */}
+          <button
+            type="button"
+            onClick={handleDownloadTemplate}
+            className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
+            title="Download Excel spreadsheet template"
+          >
+            <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            <span>Template</span>
+          </button>
+
           {/* Hidden file input for bulk upload */}
           <input
             type="file"

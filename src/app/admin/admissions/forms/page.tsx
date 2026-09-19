@@ -5,13 +5,14 @@ import AuthGuard from "@/components/shared/AuthGuard";
 import { supabase } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/schoolFinance";
 import { getAppSettings } from "@/lib/appSettings";
+import { getAcademicSessions } from "@/lib/academicSessions";
 
 interface AdmissionFormPackage {
   id: string;
   name: string;
   academic_session: string;
   amount: number;
-  status: string;
+  status: "active" | "inactive";
   description?: string | null;
   created_at: string;
 }
@@ -19,18 +20,13 @@ interface AdmissionFormPackage {
 export default function AdminAdmissionsFormsPage() {
   const [loading, setLoading] = useState(true);
   const [forms, setForms] = useState<AdmissionFormPackage[]>([]);
-  const [sessions, setSessions] = useState<string[]>([
-    "2024/2025",
-    "2025/2026",
-    "2026/2027",
-    "2027/2028",
-  ]);
+  const [sessions, setSessions] = useState<string[]>([]);
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [formName, setFormName] = useState("");
-  const [formSession, setFormSession] = useState("2026/2027");
+  const [formSession, setFormSession] = useState("");
   const [formAmount, setFormAmount] = useState(10000);
   const [formStatus, setFormStatus] = useState("active");
   const [formDesc, setFormDesc] = useState("");
@@ -39,12 +35,15 @@ export default function AdminAdmissionsFormsPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const settings = await getAppSettings();
-      const currentSession = settings?.current_session || "2026/2027";
-      setSessions((prev) => {
-        if (!prev.includes(currentSession)) return [...prev, currentSession];
-        return prev;
-      });
+      const [settings, dbSessions] = await Promise.all([
+        getAppSettings(),
+        getAcademicSessions(),
+      ]);
+
+      const names = dbSessions.map((s) => s.name);
+      setSessions(names);
+
+      const currentSession = settings?.current_session || (names.length > 0 ? names[0] : "");
       setFormSession(currentSession);
 
       const { data, error } = await supabase
@@ -257,7 +256,7 @@ export default function AdminAdmissionsFormsPage() {
                     required
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    placeholder="e.g. 2026/2027 Admission Form"
+                    placeholder="e.g. Entrance Admission Form"
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs outline-none focus:border-slate-500"
                   />
                 </div>
@@ -267,18 +266,30 @@ export default function AdminAdmissionsFormsPage() {
                     <label className="block text-xs font-semibold text-slate-500 mb-1">
                       Academic Session *
                     </label>
-                    <select
-                      value={formSession}
-                      onChange={(e) => setFormSession(e.target.value)}
-                      required
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white outline-none"
-                    >
-                      {sessions.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
+                    {sessions.length > 0 ? (
+                      <select
+                        value={formSession}
+                        onChange={(e) => setFormSession(e.target.value)}
+                        required
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white outline-none"
+                      >
+                        <option value="">Select Session</option>
+                        {sessions.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={formSession}
+                        onChange={(e) => setFormSession(e.target.value)}
+                        required
+                        placeholder="e.g. 2026/2027"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white outline-none"
+                      />
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 mb-1">
