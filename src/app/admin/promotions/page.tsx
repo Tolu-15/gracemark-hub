@@ -124,6 +124,14 @@ export default function AdminPromotionsPage() {
       const classMap = new Map<string, ClassItem>();
       classList.forEach((c) => classMap.set(c.name.trim().toUpperCase(), c));
 
+      // Resolve current academic session id
+      const { data: sessRow } = await supabase
+        .from("academic_sessions")
+        .select("id, name")
+        .eq("name", currentSession)
+        .maybeSingle();
+      const currentSessionId = sessRow?.id;
+
       for (const student of students) {
         const currentClassName = student.classes?.name || "";
         const nextClassName = getNextClassLogical(currentClassName);
@@ -134,6 +142,15 @@ export default function AdminPromotionsPage() {
             .update({ is_alumni: true })
             .eq("id", student.id);
           if (updErr) throw updErr;
+
+          // Update current enrollment status to graduated
+          if (currentSessionId) {
+            await supabase
+              .from("student_enrollments")
+              .update({ status: "graduated" })
+              .eq("student_id", student.id)
+              .eq("academic_session_id", currentSessionId);
+          }
 
           summary.push({
             student_id: student.id,
@@ -149,6 +166,16 @@ export default function AdminPromotionsPage() {
             classMap.set(nextClassName.toUpperCase(), targetClass as ClassItem);
           }
 
+          // 1. Mark previous enrollment as promoted
+          if (currentSessionId) {
+            await supabase
+              .from("student_enrollments")
+              .update({ status: "promoted" })
+              .eq("student_id", student.id)
+              .eq("academic_session_id", currentSessionId);
+          }
+
+          // 2. Update current placement cache
           const { error: updErr } = await supabase
             .from("students")
             .update({ class_id: targetClass.id })
@@ -164,6 +191,7 @@ export default function AdminPromotionsPage() {
           });
         }
       }
+
 
       // Record promotion event
       const { data: promotionRow, error: logErr } = await supabase

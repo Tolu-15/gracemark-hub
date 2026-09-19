@@ -36,10 +36,21 @@ export async function GET(req: NextRequest) {
     })
   );
 
+  let activeSessionId: string | null = null;
+  if (service) {
+    try {
+      const { data: actSess } = await service.from("academic_sessions").select("id").eq("is_active", true).maybeSingle();
+      if (actSess?.id) activeSessionId = actSess.id;
+    } catch {
+      // table might not exist yet
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     current_term: currentTerm,
     current_session: currentSession,
+    active_session_id: activeSessionId,
     terms: resultTerms,
   });
 }

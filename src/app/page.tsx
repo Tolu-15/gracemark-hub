@@ -74,6 +74,29 @@ export default function LoginPage() {
         return;
       }
 
+      // Check if user must change password
+      let mustChange = Boolean((profile as any)?.must_change_password);
+      if (!mustChange && profile.role === "student") {
+        try {
+          const { data: std } = await supabase
+            .from("students")
+            .select("must_change_password")
+            .or(`user_id.eq.${user.id},id.eq.${user.id}`)
+            .limit(1)
+            .maybeSingle();
+          if (std?.must_change_password) {
+            mustChange = true;
+          }
+        } catch {
+          // fallback
+        }
+      }
+
+      if (mustChange) {
+        router.replace("/change-password");
+        return;
+      }
+
       router.replace(destinationForRole(String(profile.role).trim()));
     } catch (err: any) {
       console.error("[Auth Error]", err?.code, err?.message);

@@ -94,19 +94,56 @@ export default function ResultDashboardApp({
 
   useEffect(() => {
     async function loadSessions() {
+      if (!student?.id) return;
       try {
-        const list = await getAcademicSessions();
-        const names = list.map((s) => s.name);
+        const supabase = (await import("@/lib/supabase/client")).getSupabaseBrowserClient();
+
+        // 1. Fetch sessions from student's enrollments
+        const { data: enrollments } = await supabase
+          .from("student_enrollments")
+          .select("session")
+          .eq("student_id", student.id)
+          .order("created_at", { ascending: true });
+
+        // 2. Also check if student has any results with a session
+        const { data: resultsData } = await supabase
+          .from("results")
+          .select("session")
+          .eq("student_id", student.id);
+
+        const sessionSet = new Set<string>();
+        (enrollments || []).forEach((e: any) => {
+          if (e.session?.trim()) sessionSet.add(e.session.trim());
+        });
+        (resultsData || []).forEach((r: any) => {
+          if (r.session?.trim()) sessionSet.add(r.session.trim());
+        });
+
+        let names = Array.from(sessionSet);
+
+        // Fallback if no enrollment record exists yet for student
+        if (names.length === 0) {
+          if (initialSession) {
+            names = [initialSession];
+          } else {
+            const list = await getAcademicSessions();
+            names = list.filter((s) => s.is_current).map((s) => s.name);
+            if (names.length === 0 && list.length > 0) names = [list[0].name];
+          }
+        }
+
         setSessionsList(names);
-        if (!initialSession && names.length > 0) {
-          setSession((prev) => prev || names[0]);
+        if (names.length > 0) {
+          // If current selected session is not in student's allowed sessions, set to latest
+          setSession((prev) => (prev && names.includes(prev) ? prev : names[names.length - 1]));
         }
       } catch (e) {
-        console.warn("Could not load sessions in ResultDashboardApp", e);
+        console.warn("Could not load student enrolled sessions in ResultDashboardApp", e);
       }
     }
     loadSessions();
-  }, [initialSession]);
+  }, [student?.id, initialSession]);
+
 
   const loadReport = useCallback(async () => {
     if (!student?.id) return;

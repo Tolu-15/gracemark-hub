@@ -27,10 +27,48 @@ export default function AdminStudentsPage() {
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Password reset states
+  const [resetModalStudent, setResetModalStudent] = useState<StudentRecord | null>(null);
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [resetResult, setResetResult] = useState<{
+    temporaryPassword: string;
+    studentName: string;
+    admissionNo: string;
+    email?: string;
+  } | null>(null);
+  const [copiedPass, setCopiedPass] = useState(false);
+
   // Bulk upload
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkMsg, setBulkMsg] = useState("");
+
+  async function handleConfirmPasswordReset() {
+    if (!resetModalStudent) return;
+    setResettingPassword(true);
+    try {
+      const res = await fetch("/api/admin/students/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ student_id: resetModalStudent.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Failed to reset password.");
+      }
+      setResetResult({
+        temporaryPassword: data.temporary_password,
+        studentName: resetModalStudent.name,
+        admissionNo: resetModalStudent.admission_no,
+        email: data.email,
+      });
+      setResetModalStudent(null);
+    } catch (err: any) {
+      alert("Error resetting password: " + err.message);
+    } finally {
+      setResettingPassword(false);
+    }
+  }
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -545,6 +583,18 @@ export default function AdminStudentsPage() {
                     <td className="px-6 py-3.5 text-right space-x-2">
                       <button
                         type="button"
+                        onClick={() => {
+                          setResetModalStudent(s);
+                          setResetResult(null);
+                          setCopiedPass(false);
+                        }}
+                        className="text-amber-600 hover:text-amber-800 font-semibold cursor-pointer"
+                        title="Generate temporary password"
+                      >
+                        Reset Pass
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleOpenModal(s)}
                         className="text-indigo-600 hover:text-indigo-900 font-semibold cursor-pointer"
                       >
@@ -674,6 +724,120 @@ export default function AdminStudentsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Password Reset Confirmation Modal */}
+      {resetModalStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 border border-slate-200">
+            <div className="flex items-center gap-3 text-amber-600 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center font-bold text-lg">
+                🔑
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900 tracking-tight">Reset Password</h3>
+                <p className="text-xs text-slate-500 font-medium">Issue temporary credentials</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              Reset password for <strong className="text-slate-900">{resetModalStudent.name}</strong> (Adm No:{" "}
+              <strong className="font-mono text-slate-900">{resetModalStudent.admission_no}</strong>)?
+              <br /><br />
+              This will generate a randomized temporary password and require the student to set their own personal password on next login.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setResetModalStudent(null)}
+                disabled={resettingPassword}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmPasswordReset}
+                disabled={resettingPassword}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                {resettingPassword ? "Generating…" : "Generate New Password"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Temporary Password Result Modal */}
+      {resetResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 border border-slate-200">
+            <div className="flex items-center gap-3 text-emerald-600 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center font-bold text-lg">
+                ✅
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900 tracking-tight">Password Reset Complete</h3>
+                <p className="text-xs text-slate-500 font-medium">Share credentials with student / parent</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2 mb-4 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Student:</span>
+                <span className="font-bold text-slate-900">{resetResult.studentName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Admission / Login ID:</span>
+                <span className="font-mono font-bold text-slate-900">{resetResult.admissionNo}</span>
+              </div>
+              {resetResult.email && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Auth Email:</span>
+                  <span className="font-mono text-slate-700">{resetResult.email}</span>
+                </div>
+              )}
+              <div className="pt-2 border-t border-slate-200">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                  Temporary Password
+                </span>
+                <div className="flex items-center justify-between bg-white border border-amber-300 rounded-lg p-2 px-3">
+                  <span className="font-mono font-bold text-amber-700 text-sm tracking-wider">
+                    {resetResult.temporaryPassword}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        `Gracemark Academy Portal Login:\nLogin ID: ${resetResult.admissionNo}\nTemporary Password: ${resetResult.temporaryPassword}\nNote: You will be asked to change this password upon logging in.`
+                      );
+                      setCopiedPass(true);
+                      setTimeout(() => setCopiedPass(false), 2500);
+                    }}
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer ml-2"
+                  >
+                    {copiedPass ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-4">
+              🔒 <strong>Forced Change:</strong> The student must set their own secure password immediately upon logging in with this temporary code.
+            </p>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setResetResult(null)}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs"
+              >
+                Close & Done
+              </button>
+            </div>
           </div>
         </div>
       )}

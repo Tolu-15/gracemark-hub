@@ -31,21 +31,49 @@ export default function TeacherAttendancePage() {
       const user = sessionData?.session?.user;
       if (!user) return;
 
-      const { data: assignments } = await supabase
-        .from("teacher_assignments")
-        .select("class_id, classes(id, name)")
-        .eq("teacher_user_id", user.id);
+      // 1. Check class_teacher_assignments for active class teacher duties
+      let list: { id: string; name: string }[] = [];
+      try {
+        const { data: ctaData } = await supabase
+          .from("class_teacher_assignments")
+          .select("class_id, classes(id, name)")
+          .eq("teacher_user_id", user.id)
+          .eq("status", "active");
 
-      const map = new Map<string, { id: string; name: string }>();
-      (assignments || []).forEach((a: any) => {
-        if (a.classes?.name) map.set(a.classes.id, a.classes);
-      });
+        if (ctaData && ctaData.length > 0) {
+          const map = new Map<string, { id: string; name: string }>();
+          ctaData.forEach((a: any) => {
+            if (a.classes?.name) map.set(a.classes.id, a.classes);
+          });
+          list = Array.from(map.values());
+        }
+      } catch (ctaErr) {
+        console.warn("Could not query class_teacher_assignments, checking fallback:", ctaErr);
+      }
 
-      let list = Array.from(map.values());
+      // 2. Fallback to classes where class_teacher_id is this user
       if (!list.length) {
-        // Fallback: load all classes
-        const { data: all } = await supabase.from("classes").select("id, name").order("name");
-        list = all || [];
+        const { data: ctClasses } = await supabase
+          .from("classes")
+          .select("id, name")
+          .eq("class_teacher_id", user.id);
+        if (ctClasses && ctClasses.length > 0) {
+          list = ctClasses;
+        }
+      }
+
+      // 3. Fallback to teacher_assignments
+      if (!list.length) {
+        const { data: assignments } = await supabase
+          .from("teacher_assignments")
+          .select("class_id, classes(id, name)")
+          .eq("teacher_user_id", user.id);
+
+        const map = new Map<string, { id: string; name: string }>();
+        (assignments || []).forEach((a: any) => {
+          if (a.classes?.name) map.set(a.classes.id, a.classes);
+        });
+        list = Array.from(map.values());
       }
 
       setClasses(list);
@@ -61,12 +89,33 @@ export default function TeacherAttendancePage() {
     if (!selectedClass) return;
     setLoading(true);
     try {
-      // 1. Fetch students in class
-      const { data: stdData } = await supabase
-        .from("students")
-        .select("id, name, admission_no")
-        .eq("class_id", selectedClass)
-        .order("name");
+      // 1. Fetch students from student_enrollments (or fallback to students)
+      let stdData: any[] = [];
+      try {
+        const { data: enrollments } = await supabase
+          .from("student_enrollments")
+          .select("student_id, students(id, name, admission_no)")
+          .eq("class_id", selectedClass)
+          .eq("status", "active");
+
+        if (enrollments && enrollments.length > 0) {
+          stdData = enrollments
+            .map((e: any) => e.students)
+            .filter(Boolean)
+            .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
+        }
+      } catch (eErr) {
+        console.warn("Could not query student_enrollments, falling back to students table:", eErr);
+      }
+
+      if (!stdData.length) {
+        const { data: fallbackStudents } = await supabase
+          .from("students")
+          .select("id, name, admission_no")
+          .eq("class_id", selectedClass)
+          .order("name");
+        stdData = fallbackStudents || [];
+      }
 
       if (!stdData || !stdData.length) {
         setStudents([]);

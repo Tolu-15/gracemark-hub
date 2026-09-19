@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/lib/supabase/client";
 import {
   GRADING_CONFIG,
@@ -31,10 +31,15 @@ interface StudentScoreRow {
 export default function TeacherScoreEntryPage() {
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
   const [selectedClass, setSelectedClass] = useState("");
-  const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
   const [selectedSubject, setSelectedSubject] = useState("");
   const [selectedTerm, setSelectedTerm] = useState("term1");
   const [currentSession, setCurrentSession] = useState("");
+  const [currentSessionId, setCurrentSessionId] = useState("");
+
+  const [teacherAssignments, setTeacherAssignments] = useState<
+    Array<{ class_id: string; class_name: string; subject_id: string; subject_name: string }>
+  >([]);
+  const [allSubjects, setAllSubjects] = useState<{ id: string; name: string }[]>([]);
 
   const [termList, setTermList] = useState<any[]>([]);
   const [isEditable, setIsEditable] = useState(true);
@@ -48,16 +53,48 @@ export default function TeacherScoreEntryPage() {
   const selectedClassName = classes.find((c) => c.id === selectedClass)?.name || "";
   const isSenior = isSeniorClass(selectedClassName);
 
+  // Dynamically compute subjects assigned to teacher for the selected class
+  const subjects = useMemo<{ id: string; name: string }[]>(() => {
+    if (!selectedClass) return [];
+    const assigned = teacherAssignments.filter((a) => a.class_id === selectedClass);
+    if (assigned.length > 0) {
+      const map = new Map<string, { id: string; name: string }>();
+      assigned.forEach((a) => {
+        if (a.subject_id) {
+          map.set(a.subject_id, { id: a.subject_id, name: a.subject_name || "Unknown Subject" });
+        }
+      });
+      return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return allSubjects;
+  }, [selectedClass, teacherAssignments, allSubjects]);
+
+  // Keep selectedSubject in sync with available subjects
+  useEffect(() => {
+    if (subjects.length > 0) {
+      if (!selectedSubject || !subjects.some((s: { id: string; name: string }) => s.id === selectedSubject)) {
+        setSelectedSubject(subjects[0].id);
+      }
+    } else {
+      setSelectedSubject("");
+    }
+  }, [subjects, selectedSubject]);
+
   const loadMetadata = useCallback(async () => {
     try {
-      // 1. Fetch term permissions
+      // 1. Fetch term permissions & session info
       const res = await fetch("/api/terms");
+      let activeSessionId = "";
       if (res.ok) {
         const data = await res.json();
         if (data.ok) {
           setTermList(data.terms || []);
           if (data.current_term) setSelectedTerm(data.current_term);
           if (data.current_session) setCurrentSession(data.current_session);
+          if (data.active_session_id) {
+            activeSessionId = data.active_session_id;
+            setCurrentSessionId(data.active_session_id);
+          }
         }
       }
 
@@ -66,39 +103,74 @@ export default function TeacherScoreEntryPage() {
       const user = sessionData?.session?.user;
       if (!user) return;
 
-      const { data: assignments } = await supabase
-        .from("teacher_assignments")
-        .select("class_id, subject_id, classes(id, name), subjects(id, name)")
-        .eq("teacher_user_id", user.id);
+      let parsedAssignments: Array<{ class_id: string; class_name: string; subject_id: string; subject_name: string }> = [];
+      try {
+        let q = supabase
+          .from("subject_teacher_assignments")
+          .select("class_id, subject_id, classes(id, name), subjects(id, name)")
+          .eq("teacher_user_id", user.id)
+          .eq("status", "active");
+        if (activeSessionId) {
+          q = q.eq("academic_session_id", activeSessionId);
+        }
+        const { data: subAssigns, error: subErr } = await q;
+        if (!subErr && subAssigns && subAssigns.length > 0) {
+          parsedAssignments = subAssigns.map((a: any) => ({
+            class_id: a.class_id,
+            class_name: a.classes?.name || "",
+            subject_id: a.subject_id,
+            subject_name: a.subjects?.name || "",
+          }));
+        }
+      } catch {
+        // Table not ready yet
+      }
 
+      // Fallback to legacy teacher_assignments
+      if (!parsedAssignments.length) {
+        const { data: legAssigns } = await supabase
+          .from("teacher_assignments")
+          .select("class_id, subject_id, classes(id, name), subjects(id, name)")
+          .eq("teacher_user_id", user.id);
+
+        if (legAssigns && legAssigns.length > 0) {
+          parsedAssignments = legAssigns.map((a: any) => ({
+            class_id: a.class_id,
+            class_name: a.classes?.name || "",
+            subject_id: a.subject_id,
+            subject_name: a.subjects?.name || "",
+          }));
+        }
+      }
+
+      setTeacherAssignments(parsedAssignments);
+
+      // Extract unique classes
       const classMap = new Map<string, { id: string; name: string }>();
-      const subjectMap = new Map<string, { id: string; name: string }>();
-
-      (assignments || []).forEach((a: any) => {
-        if (a.classes?.name) classMap.set(a.classes.id, a.classes);
-        if (a.subjects?.name) subjectMap.set(a.subjects.id, a.subjects);
+      parsedAssignments.forEach((a) => {
+        if (a.class_id) classMap.set(a.class_id, { id: a.class_id, name: a.class_name });
       });
 
-      let cList = Array.from(classMap.values());
-      let sList = Array.from(subjectMap.values());
+      let cList = Array.from(classMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 
-      if (!cList.length) {
-        const { data: allCl } = await supabase.from("classes").select("id, name").order("name");
-        cList = allCl || [];
-      }
-      if (!sList.length) {
-        const { data: allSub } = await supabase.from("subjects").select("id, name").order("name");
-        sList = allSub || [];
+      // Load all subjects and classes as fallback
+      const { data: allCl } = await supabase.from("classes").select("id, name").order("name");
+      const { data: allSub } = await supabase.from("subjects").select("id, name").order("name");
+
+      if (allSub) setAllSubjects(allSub);
+
+      if (!cList.length && allCl) {
+        cList = allCl;
       }
 
       setClasses(cList);
-      setSubjects(sList);
-      if (cList.length > 0 && !selectedClass) setSelectedClass(cList[0].id);
-      if (sList.length > 0 && !selectedSubject) setSelectedSubject(sList[0].id);
+      if (cList.length > 0 && (!selectedClass || !cList.some((c) => c.id === selectedClass))) {
+        setSelectedClass(cList[0].id);
+      }
     } catch (err) {
       console.error("Load score entry metadata error:", err);
     }
-  }, [selectedClass, selectedSubject]);
+  }, [selectedClass]);
 
   useEffect(() => {
     loadMetadata();
@@ -121,21 +193,46 @@ export default function TeacherScoreEntryPage() {
     setStatusMsg("");
 
     try {
-      // 1. Fetch all students in class
-      const { data: students, error: sErr } = await supabase
-        .from("students")
-        .select("id, name, admission_no")
-        .eq("class_id", selectedClass)
-        .order("name", { ascending: true });
+      // 1. Fetch students: Try student_enrollments first if currentSessionId is known
+      let studentList: { id: string; name: string; admission_no: string }[] = [];
+      if (currentSessionId) {
+        try {
+          const { data: enrollments, error: eErr } = await supabase
+            .from("student_enrollments")
+            .select("student_id, students(id, name, admission_no)")
+            .eq("class_id", selectedClass)
+            .eq("academic_session_id", currentSessionId)
+            .eq("status", "active");
 
-      if (sErr) throw sErr;
-      if (!students || !students.length) {
+          if (!eErr && enrollments && enrollments.length > 0) {
+            studentList = enrollments
+              .map((e: any) => e.students)
+              .filter(Boolean)
+              .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
+          }
+        } catch {
+          // fallback
+        }
+      }
+
+      if (!studentList.length) {
+        const { data: students, error: sErr } = await supabase
+          .from("students")
+          .select("id, name, admission_no")
+          .eq("class_id", selectedClass)
+          .order("name", { ascending: true });
+
+        if (sErr) throw sErr;
+        studentList = students || [];
+      }
+
+      if (!studentList.length) {
         setRows([]);
         setLoading(false);
         return;
       }
 
-      const sIds = students.map((s) => s.id);
+      const sIds = studentList.map((s) => s.id);
 
       // 2. Fetch existing results
       const { data: results, error: rErr } = await supabase
@@ -150,7 +247,7 @@ export default function TeacherScoreEntryPage() {
       const resultMap = new Map<string, any>();
       (results || []).forEach((r) => resultMap.set(r.student_id, r));
 
-      const newRows: StudentScoreRow[] = students.map((s) => {
+      const newRows: StudentScoreRow[] = studentList.map((s) => {
         const existing = resultMap.get(s.id);
         const raw = normalizeBreakdown(existing);
         return {
@@ -171,7 +268,7 @@ export default function TeacherScoreEntryPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedClass, selectedSubject, selectedTerm]);
+  }, [selectedClass, selectedSubject, selectedTerm, currentSessionId]);
 
   useEffect(() => {
     loadScores();
@@ -219,6 +316,7 @@ export default function TeacherScoreEntryPage() {
           class_id: selectedClass,
           term: selectedTerm,
           session: currentSession,
+          academic_session_id: currentSessionId || undefined,
           ...stored,
           status: submit ? "submitted" : r.status || "draft",
           submitted_at: submit ? new Date().toISOString() : undefined,
@@ -342,7 +440,7 @@ export default function TeacherScoreEntryPage() {
               onChange={(e) => setSelectedSubject(e.target.value)}
               className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
             >
-              {subjects.map((s) => (
+              {subjects.map((s: { id: string; name: string }) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
                 </option>

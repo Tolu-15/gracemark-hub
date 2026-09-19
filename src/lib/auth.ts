@@ -94,7 +94,23 @@ export async function resolveUserLoginEmail(rawId: string): Promise<string> {
 
   const cleanRef = trimmed.replace(/^PAY-/i, "").replace(/\s+/g, "").toUpperCase();
 
-  // 1. Check students table by admission_no
+  // 1. Check users table by staff_id (for teachers and staff)
+  try {
+    const { data: staffUser } = await supabase
+      .from("users")
+      .select("email, staff_id")
+      .ilike("staff_id", cleanRef)
+      .limit(1)
+      .maybeSingle();
+
+    if (staffUser?.email) {
+      return staffUser.email;
+    }
+  } catch {
+    /* RLS unauthenticated fallback */
+  }
+
+  // 2. Check students table by admission_no
   try {
     const { data: student } = await supabase
       .from("students")
@@ -111,7 +127,7 @@ export async function resolveUserLoginEmail(rawId: string): Promise<string> {
     /* RLS unauthenticated fallback */
   }
 
-  // 2. Check admissions table by admission_number
+  // 3. Check admissions table by admission_number
   try {
     const { data: adm } = await supabase
       .from("admissions")
@@ -127,8 +143,11 @@ export async function resolveUserLoginEmail(rawId: string): Promise<string> {
     /* RLS unauthenticated fallback */
   }
 
-  // 3. Fallback synthetic student email format
+  // 4. Fallback synthetic email format
   const clean = cleanRef.replace(/\//g, "").replace(/-/g, "").toLowerCase();
+  if (/^gmat|^t\d+/i.test(cleanRef)) {
+    return `${clean}@teacher.gracemark.edu.ng`;
+  }
   return `${clean}@student.gracemark.edu.ng`;
 }
 

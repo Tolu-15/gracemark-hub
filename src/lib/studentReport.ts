@@ -264,9 +264,33 @@ export async function fetchStudentReport({
   if (!student?.id) throw new Error("Student profile not loaded.");
 
   const supabase = getSupabaseBrowserClient();
-  const classId = student.class_id;
-  const className = student.classes?.name ?? "—";
+
+  // 1. Resolve true session-specific class from student_enrollments
+  let classId = student.class_id;
+  let className = student.classes?.name ?? "—";
+
+  if (session) {
+    try {
+      const { data: enrollment } = await supabase
+        .from("student_enrollments")
+        .select("class_id, classes(id, name)")
+        .eq("student_id", student.id)
+        .eq("session", session)
+        .maybeSingle();
+
+      if (enrollment?.class_id) {
+        classId = enrollment.class_id;
+        if ((enrollment as any).classes?.name) {
+          className = (enrollment as any).classes.name;
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load session enrollment for report, using default class:", e);
+    }
+  }
+
   const isSenior = isSeniorClass(className);
+
 
   let resultsQuery = supabase
     .from("results")
