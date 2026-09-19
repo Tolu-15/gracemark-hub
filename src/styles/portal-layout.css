@@ -1,16 +1,11 @@
 /* Portal shell — mobile sidebar, hamburger, responsive layout */
 
-html, body.portal-app {
+.portal-app {
   height: 100vh;
   height: 100dvh;
   max-height: 100vh;
   max-height: 100dvh;
   overflow: hidden;
-}
-
-.portal-app {
-  height: 100vh;
-  height: 100dvh;
 }
 
 .portal-nav-backdrop {

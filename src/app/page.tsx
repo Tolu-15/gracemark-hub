@@ -83,16 +83,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="login-page min-h-screen flex flex-col justify-between bg-[#020617] text-slate-100 relative overflow-x-hidden">
+    <div className="login-page min-h-[100dvh] flex flex-col justify-between bg-[#020617] text-slate-100 relative overflow-x-hidden">
       {/* Decorative Radial Gradients */}
       <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(ellipse_80%_60%_at_15%_10%,rgba(148,163,184,0.05)_0%,transparent_65%),radial-gradient(ellipse_60%_50%_at_88%_85%,rgba(201,168,76,0.08)_0%,transparent_60%)]" />
       <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle,rgba(148,163,184,0.08)_1px,transparent_1px)] bg-[size:28px_28px]" />
 
-      <main className="flex-1 flex items-center justify-center p-4 sm:p-6 z-10">
-        <div className="card w-full max-w-[440px] bg-[#0f172a] border border-slate-700/50 rounded-[20px] shadow-2xl p-8 sm:p-12 relative animate-fade-in">
+      <main className="flex-1 flex items-center justify-center p-3.5 sm:p-6 py-8 sm:py-12 z-10">
+        <div className="card w-full max-w-[420px] bg-[#0f172a]/95 backdrop-blur-md border border-slate-700/60 rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-8 md:p-10 relative animate-fade-in">
           {/* Logo & School Crest */}
-          <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 rounded-2xl bg-slate-800/80 p-2 shadow-inner border border-slate-700/60 flex items-center justify-center">
+          <div className="flex justify-center mb-4 sm:mb-5">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-800/90 p-2 shadow-inner border border-slate-700/70 flex items-center justify-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/assets/icons/logo.jpg"
@@ -102,19 +102,26 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <h1 className="font-serif text-center text-2xl sm:text-3xl text-slate-100 mb-1">
+          <h1 className="font-serif text-center text-xl sm:text-2xl md:text-3xl font-bold text-slate-100 mb-1 tracking-tight">
             Gracemark Academy
           </h1>
-          <p className="text-center text-xs font-semibold uppercase tracking-widest text-[#c9a84c] mb-5">
-            Result Hub &amp; Student Portal
+          <p className="text-center text-[11px] sm:text-xs font-semibold uppercase tracking-widest text-[#c9a84c] mb-4">
+            Result Hub &amp; Academic Portal
           </p>
 
-          <div className="w-12 h-[3px] bg-gradient-to-r from-[#c9a84c] to-[#e8c97a] rounded-sm mx-auto mb-7" />
+          <div className="w-12 h-[3px] bg-gradient-to-r from-[#c9a84c] to-[#e8c97a] rounded-full mx-auto mb-6" />
+
+          {/* Quick Helper Badge */}
+          <div className="mb-5 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/40 text-[11px] text-slate-300 text-center flex items-center justify-center gap-1.5 flex-wrap">
+            <span className="text-[#e8c97a] font-semibold">Student:</span> Admission No
+            <span className="text-slate-600">•</span>
+            <span className="text-blue-400 font-semibold">Staff:</span> Email Address
+          </div>
 
           {error && (
-            <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm flex items-start gap-3">
+            <div className="mb-5 p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs sm:text-sm flex items-start gap-2.5 leading-relaxed">
               <svg
-                className="w-5 h-5 text-red-400 shrink-0 mt-0.5"
+                className="w-4 h-4 text-red-400 shrink-0 mt-0.5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -130,11 +137,11 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label
                 htmlFor="email"
-                className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2"
+                className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5"
               >
                 Email or Admission Number
               </label>
@@ -146,16 +153,16 @@ export default function LoginPage() {
                   setIdentifier(e.target.value);
                   setError(null);
                 }}
-                placeholder="e.g. GMA/2024/001 or admin@example.com"
+                placeholder="e.g. GMA202501 or admin@gracemark.sch.ng"
                 required
-                className="w-full px-4 py-3 bg-slate-900/90 border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[#c9a84c] focus:ring-1 focus:ring-[#c9a84c] transition"
+                className="w-full px-3.5 py-2.5 sm:py-3 bg-slate-900/90 border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-base sm:text-xs focus:outline-none focus:border-[#c9a84c] focus:ring-1 focus:ring-[#c9a84c] transition"
               />
             </div>
 
             <div>
               <label
                 htmlFor="password"
-                className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2"
+                className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5"
               >
                 Password
               </label>
@@ -170,16 +177,16 @@ export default function LoginPage() {
                   }}
                   placeholder="••••••••"
                   required
-                  className="w-full px-4 py-3 bg-slate-900/90 border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[#c9a84c] focus:ring-1 focus:ring-[#c9a84c] transition pr-11"
+                  className="w-full px-3.5 py-2.5 sm:py-3 bg-slate-900/90 border border-slate-700/80 rounded-xl text-slate-100 placeholder-slate-500 text-base sm:text-xs focus:outline-none focus:border-[#c9a84c] focus:ring-1 focus:ring-[#c9a84c] transition pr-11"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition p-1"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition p-1.5 cursor-pointer"
                 >
                   {showPassword ? (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -188,7 +195,7 @@ export default function LoginPage() {
                       />
                     </svg>
                   ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -211,11 +218,11 @@ export default function LoginPage() {
               id="signInBtn"
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 px-4 bg-gradient-to-r from-[#c9a84c] to-[#e8c97a] hover:from-[#d8b75b] hover:to-[#f0d58f] text-slate-950 font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-2 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3 px-4 bg-gradient-to-r from-[#c9a84c] to-[#e8c97a] hover:from-[#d8b75b] hover:to-[#f0d58f] text-slate-950 font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-2 mt-3 cursor-pointer active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
             >
               {loading ? (
                 <>
-                  <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
                   <span>Signing In…</span>
                 </>
               ) : (
@@ -234,8 +241,8 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-slate-800 text-center text-xs text-slate-400">
-            Prospective student?{" "}
+          <div className="mt-6 pt-5 border-t border-slate-800/80 text-center text-xs text-slate-400 flex flex-col sm:flex-row items-center justify-center gap-2">
+            <span>Prospective student?</span>
             <a
               href="/admission-form"
               className="text-[#c9a84c] hover:text-[#e8c97a] font-semibold underline underline-offset-2"

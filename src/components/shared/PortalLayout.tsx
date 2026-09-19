@@ -86,42 +86,42 @@ export default function PortalLayout({
       {/* Mobile Drawer Backdrop */}
       <div
         id="portalNavBackdrop"
-        className="portal-nav-backdrop"
-        hidden={!navOpen}
-        style={{ display: navOpen ? "block" : "none" }}
+        className={`portal-nav-backdrop fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-xs transition-opacity duration-200 ${
+          navOpen ? "block opacity-100" : "hidden opacity-0 pointer-events-none"
+        }`}
         onClick={() => setNavOpen(false)}
       />
 
       {/* Sidebar Navigation */}
       <aside
         id="portalSidebar"
-        className="portal-sidebar w-64 bg-slate-950 text-slate-300 flex flex-col shrink-0"
+        className={`portal-sidebar fixed md:static inset-y-0 left-0 z-50 w-72 md:w-64 bg-slate-950 text-slate-300 flex flex-col shrink-0 transition-transform duration-200 ease-in-out ${
+          navOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full md:translate-x-0"
+        }`}
       >
-        <div className="p-6 border-b border-slate-800 flex items-center justify-between gap-2">
+        <div className="p-5 sm:p-6 border-b border-slate-800 flex items-center justify-between gap-2">
           <div className="portal-sidebar-brand flex items-center gap-3 min-w-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/assets/icons/logo.jpg"
               alt="Gracemark Logo"
-              className="w-9 h-9 rounded-lg object-cover shadow-sm flex-shrink-0"
+              className="w-9 h-9 rounded-xl object-cover shadow-sm flex-shrink-0"
             />
-            <h2 className="text-lg font-bold text-white tracking-tight">
-              Gracemark{" "}
-              {role === "admin" && (
-                <span className="text-xs text-yellow-500 align-top">V2</span>
-              )}
-              {role === "teacher" && (
-                <span className="text-xs text-blue-400 align-top">Teacher</span>
-              )}
-              {role === "student" && (
-                <span className="text-xs text-emerald-400 align-top">Student</span>
-              )}
-            </h2>
+            <div className="min-w-0">
+              <h2 className="text-base font-bold text-white tracking-tight leading-none">
+                Gracemark
+              </h2>
+              <p className="text-[10px] font-semibold text-slate-400 mt-1 uppercase tracking-wider">
+                {role === "admin" && "Admin Portal V2"}
+                {role === "teacher" && "Teacher Portal"}
+                {role === "student" && "Student Portal"}
+              </p>
+            </div>
           </div>
           <button
             type="button"
             id="portalMenuClose"
-            className="portal-sidebar-close md:hidden"
+            className="md:hidden p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
             aria-label="Close navigation menu"
             onClick={() => setNavOpen(false)}
           >
@@ -161,16 +161,17 @@ export default function PortalLayout({
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+                    onClick={() => setNavOpen(false)}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${
                       isActive
-                        ? "bg-slate-800 text-white font-semibold"
+                        ? "bg-slate-800 text-white font-semibold shadow-xs"
                         : "text-slate-300 hover:bg-slate-800/50 hover:text-white"
                     }`}
                   >
                     {item.icon}
                     <span className="truncate">{item.label}</span>
                     {item.badge && (
-                      <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
+                      <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-bold">
                         {item.badge}
                       </span>
                     )}
@@ -186,10 +187,10 @@ export default function PortalLayout({
             id="logoutBtn"
             type="button"
             onClick={handleSignOut}
-            className="flex items-center gap-3 w-full px-3 py-2.5 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors"
+            className="flex items-center gap-3 w-full px-3 py-2.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800/50 rounded-xl transition-colors cursor-pointer text-xs font-semibold"
           >
             <svg
-              className="w-5 h-5"
+              className="w-4 h-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -208,32 +209,59 @@ export default function PortalLayout({
 
       {/* Main Content Area */}
       <main className="portal-main flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto">
-        {(title || headerActions) && (
-          <header className="portal-header bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-20 shrink-0">
-            <div className="portal-header-start flex items-center gap-3">
-              <button
-                type="button"
-                id="portalMenuBtn"
-                className="portal-menu-btn md:hidden"
-                aria-label="Open navigation menu"
-                aria-expanded={navOpen}
-                aria-controls="portalSidebar"
-                onClick={() => setNavOpen(true)}
+        {/* Mobile Header Bar - Always visible on small screens (< md) */}
+        <div className="md:hidden sticky top-0 z-30 flex items-center justify-between px-3.5 py-2.5 bg-slate-950 border-b border-slate-800 text-white shrink-0 shadow-md">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <button
+              type="button"
+              id="portalMobileHamburgerBtn"
+              onClick={() => setNavOpen(true)}
+              aria-label="Open navigation menu"
+              className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white transition border border-slate-800 shrink-0 cursor-pointer active:scale-95"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <div className="flex items-center gap-2 min-w-0">
+              <img
+                src="/assets/icons/logo.jpg"
+                alt="Gracemark Logo"
+                className="w-7 h-7 rounded-lg object-cover shrink-0 shadow-xs"
+              />
+              <span className="font-bold text-sm tracking-tight text-white truncate">
+                Gracemark
+              </span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider shrink-0 ${
+                  role === "admin"
+                    ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                    : role === "teacher"
+                    ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                    : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                }`}
               >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M4 6h16M4 12h16M4 18h16"
-                  />
-                </svg>
-              </button>
+                {role}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-900 rounded-xl transition text-xs flex items-center gap-1 cursor-pointer shrink-0"
+            title="Sign Out"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Desktop / Page-Specific Header */}
+        {(title || headerActions) && (
+          <header className="portal-header hidden md:flex bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 items-center justify-between gap-3 sticky top-0 z-20 shrink-0">
+            <div className="portal-header-start flex items-center gap-3">
               <div className="portal-header-title min-w-0">
                 {title && (
                   <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight truncate">
@@ -251,7 +279,7 @@ export default function PortalLayout({
           </header>
         )}
 
-        <div className="portal-content flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+        <div className="portal-content flex-1 p-3.5 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
           {children}
         </div>
 
