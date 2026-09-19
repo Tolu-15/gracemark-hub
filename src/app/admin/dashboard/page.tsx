@@ -113,13 +113,50 @@ export default function AdminDashboardPage() {
 
   async function loadTermPermissions() {
     try {
-      const res = await fetch("/api/terms");
-      if (res.ok) {
-        const data = await res.json();
-        setTermsList(data.terms || []);
-      }
+      const appSettings = await getAppSettings();
+      const currentTermDb = appSettings?.current_term || termUiToDb(term);
+      const currentSessionDb = session || appSettings?.current_session || "";
+
+      // 1. Read terms rows directly from Supabase
+      const { data: termsRows } = await supabase
+        .from("terms")
+        .select("*")
+        .eq("session", currentSessionDb);
+
+      const termMap = new Map<string, any>();
+      (termsRows || []).forEach((r) => termMap.set(r.term, r));
+
+      const termKeys = [
+        { term: "term1", label: "1st Term" },
+        { term: "term2", label: "2nd Term" },
+        { term: "term3", label: "3rd Term" },
+      ];
+
+      const computedTerms: TermStatus[] = termKeys.map(({ term: tKey, label }) => {
+        const isCurrent = tKey === currentTermDb;
+        const row = termMap.get(tKey);
+        const allowEdit = isCurrent || (row ? (typeof row.allow_teacher_edit === "boolean" ? row.allow_teacher_edit : row.status === "open") : false);
+        return {
+          term: tKey,
+          label,
+          is_current: isCurrent,
+          allow_edit: allowEdit,
+          status: isCurrent ? "current" : allowEdit ? "unlocked" : "locked",
+        };
+      });
+
+      setTermsList(computedTerms);
     } catch (err) {
-      console.error("Failed to load term permissions:", err);
+      console.error("Failed to load term permissions directly, querying API fallback:", err);
+      try {
+        const res = await fetch(`/api/terms?session=${encodeURIComponent(session)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setTermsList(data.terms || []);
+        }
+      } catch (apiErr) {
+        console.error("API term fetch error:", apiErr);
+      }
     }
   }
 
@@ -201,16 +238,45 @@ export default function AdminDashboardPage() {
   async function handleToggleTerm(t: TermStatus) {
     setUpdatingTerm(t.term);
     try {
-      const res = await fetch("/api/admin/terms/toggle-edit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session,
+      const effectiveSession = session || (await getAppSettings())?.current_session || "";
+      if (!effectiveSession) {
+        alert("Please select or save an active academic session first.");
+        return;
+      }
+
+      const newAllow = !t.allow_edit;
+
+      // 1. Direct persistence in Supabase
+      const { error: dbError } = await supabase.from("terms").upsert(
+        {
+          session: effectiveSession,
           term: t.term,
-          allow_edit: !t.allow_edit,
+          allow_teacher_edit: newAllow,
+          status: newAllow ? "open" : "closed",
+        },
+        { onConflict: "session,term" }
+      );
+
+      if (dbError) {
+        console.warn("Direct terms upsert note:", dbError.message);
+      }
+
+      // 2. Also notify API
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      await fetch("/api/admin/terms/toggle-edit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          session: effectiveSession,
+          term: t.term,
+          allow_edit: newAllow,
         }),
       });
-      if (!res.ok) throw new Error("Failed to update term edit permission");
+
       await loadTermPermissions();
     } catch (err: any) {
       alert("Error: " + err.message);
