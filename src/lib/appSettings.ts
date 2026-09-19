@@ -11,6 +11,20 @@ export interface AppSettings {
 }
 
 export async function getAppSettings(): Promise<AppSettings | null> {
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/admin/settings");
+      if (res.ok) {
+        const json = await res.json();
+        if (json.ok && json.settings) {
+          return json.settings;
+        }
+      }
+    } catch (apiErr) {
+      console.warn("Could not fetch /api/admin/settings, falling back to direct client:", apiErr);
+    }
+  }
+
   const { data, error } = await supabase
     .from("app_settings")
     .select("*")
@@ -31,6 +45,24 @@ export async function setAppSettings({
   current_term: string;
   current_session: string;
 }): Promise<AppSettings> {
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ current_term, current_session }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.ok && json.settings) {
+          return json.settings;
+        }
+      }
+    } catch (apiErr) {
+      console.warn("API /api/admin/settings update failed, trying direct client:", apiErr);
+    }
+  }
+
   const { data: existing } = await supabase
     .from("app_settings")
     .select("id")
@@ -49,3 +81,4 @@ export async function setAppSettings({
   if (error) throw error;
   return data;
 }
+

@@ -95,8 +95,8 @@ export default function PortalLayout({
       {/* Sidebar Navigation */}
       <aside
         id="portalSidebar"
-        className={`portal-sidebar fixed md:static inset-y-0 left-0 z-50 w-72 md:w-64 bg-slate-950 text-slate-300 flex flex-col shrink-0 transition-transform duration-200 ease-in-out ${
-          navOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full md:translate-x-0"
+        className={`portal-sidebar fixed lg:static inset-y-0 left-0 z-50 w-72 lg:w-64 bg-slate-950 text-slate-300 flex flex-col shrink-0 transition-transform duration-200 ease-in-out ${
+          navOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full lg:translate-x-0"
         }`}
       >
         <div className="p-5 sm:p-6 border-b border-slate-800 flex items-center justify-between gap-2">
@@ -121,7 +121,7 @@ export default function PortalLayout({
           <button
             type="button"
             id="portalMenuClose"
-            className="md:hidden p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            className="lg:hidden p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
             aria-label="Close navigation menu"
             onClick={() => setNavOpen(false)}
           >
@@ -209,8 +209,8 @@ export default function PortalLayout({
 
       {/* Main Content Area */}
       <main className="portal-main flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto">
-        {/* Mobile Header Bar - Always visible on small screens (< md) */}
-        <div className="md:hidden sticky top-0 z-30 flex items-center justify-between px-3.5 py-2.5 bg-slate-950 border-b border-slate-800 text-white shrink-0 shadow-md">
+        {/* Mobile Header Bar - Always visible on screens < lg (mobile & tablets) */}
+        <div className="lg:hidden sticky top-0 z-30 flex items-center justify-between px-3.5 py-2.5 bg-slate-950 border-b border-slate-800 text-white shrink-0 shadow-md">
           <div className="flex items-center gap-2.5 min-w-0">
             <button
               type="button"
@@ -219,7 +219,7 @@ export default function PortalLayout({
               aria-label="Open navigation menu"
               className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white transition border border-slate-800 shrink-0 cursor-pointer active:scale-95"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
@@ -260,7 +260,7 @@ export default function PortalLayout({
 
         {/* Desktop / Page-Specific Header */}
         {(title || headerActions) && (
-          <header className="portal-header hidden md:flex bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 items-center justify-between gap-3 sticky top-0 z-20 shrink-0">
+          <header className="portal-header hidden lg:flex bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 items-center justify-between gap-3 sticky top-0 z-20 shrink-0">
             <div className="portal-header-start flex items-center gap-3">
               <div className="portal-header-title min-w-0">
                 {title && (

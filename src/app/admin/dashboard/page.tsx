@@ -111,11 +111,11 @@ export default function AdminDashboardPage() {
     }
   }
 
-  async function loadTermPermissions() {
+  async function loadTermPermissions(overrideTermDb?: string, overrideSessionDb?: string) {
     try {
-      const appSettings = await getAppSettings();
-      const currentTermDb = appSettings?.current_term || termUiToDb(term);
-      const currentSessionDb = session || appSettings?.current_session || "";
+      const appSettings = overrideTermDb ? null : await getAppSettings();
+      const currentTermDb = overrideTermDb || appSettings?.current_term || termUiToDb(term);
+      const currentSessionDb = overrideSessionDb || session || appSettings?.current_session || "";
 
       // 1. Read terms rows directly from Supabase
       const { data: termsRows } = await supabase
@@ -149,7 +149,8 @@ export default function AdminDashboardPage() {
     } catch (err) {
       console.error("Failed to load term permissions directly, querying API fallback:", err);
       try {
-        const res = await fetch(`/api/terms?session=${encodeURIComponent(session)}`);
+        const currentSessionDb = overrideSessionDb || session || "";
+        const res = await fetch(`/api/terms?session=${encodeURIComponent(currentSessionDb)}`);
         if (res.ok) {
           const data = await res.json();
           setTermsList(data.terms || []);
@@ -168,6 +169,8 @@ export default function AdminDashboardPage() {
     setSavingSettings(true);
     try {
       let targetSession = session;
+      const targetTermDb = termUiToDb(term);
+
       if (isCreatingSession) {
         const trimmed = newSessionInput.trim();
         if (!trimmed) {
@@ -182,13 +185,13 @@ export default function AdminDashboardPage() {
         await loadSessions(targetSession);
       } else {
         await setAppSettings({
-          current_term: termUiToDb(term),
+          current_term: targetTermDb,
           current_session: targetSession,
         });
       }
 
-      alert(`Global academic settings updated! Active Session is now: ${targetSession || "(None)"}`);
-      await loadTermPermissions();
+      alert(`Global academic settings updated! Active Term is now: ${term}, Session: ${targetSession || "(None)"}`);
+      await loadTermPermissions(targetTermDb, targetSession);
     } catch (error: any) {
       alert("Failed to save global settings: " + error.message);
     } finally {
