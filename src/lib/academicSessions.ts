@@ -15,6 +15,20 @@ export interface AcademicSession {
  * Fetch all academic sessions from Supabase.
  */
 export async function getAcademicSessions(): Promise<AcademicSession[]> {
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/admin/sessions");
+      if (res.ok) {
+        const json = await res.json();
+        if (json.ok && Array.isArray(json.sessions) && json.sessions.length > 0) {
+          return json.sessions;
+        }
+      }
+    } catch (apiErr) {
+      console.warn("Could not fetch /api/admin/sessions, falling back to direct client:", apiErr);
+    }
+  }
+
   try {
     const { data, error } = await supabase
       .from("academic_sessions")

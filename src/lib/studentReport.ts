@@ -292,12 +292,39 @@ export async function fetchStudentReport({
   const isSenior = isSeniorClass(className);
 
 
+  // 2. Fetch published snapshots for this student, term, and session
+  const publishedMilestones = {
+    pr1: false,
+    pr2: false,
+    pr3: false,
+    tr: false,
+  };
+
+  try {
+    let snapQuery = supabase
+      .from("published_snapshots")
+      .select("report_type")
+      .eq("student_id", student.id)
+      .eq("term", term);
+    if (session) snapQuery = snapQuery.eq("session", session);
+
+    const { data: snaps } = await snapQuery;
+    (snaps || []).forEach((s: any) => {
+      const type = String(s.report_type || "").toLowerCase();
+      if (type === "pr1") publishedMilestones.pr1 = true;
+      else if (type === "pr2") publishedMilestones.pr2 = true;
+      else if (type === "pr3") publishedMilestones.pr3 = true;
+      else if (type === "tr") publishedMilestones.tr = true;
+    });
+  } catch (snapErr) {
+    console.warn("Could not fetch published_snapshots:", snapErr);
+  }
+
   let resultsQuery = supabase
     .from("results")
-    .select("id, subject_id, cw, hw, test, project, exam, total, grade, score_breakdown, subjects(name)")
+    .select("id, subject_id, cw, hw, test, project, exam, total, grade, status, pr1_status, pr2_status, pr3_status, tr_status, score_breakdown, subjects(name)")
     .eq("student_id", student.id)
-    .eq("term", term)
-    .eq("status", "approved");
+    .eq("term", term);
 
   if (session) {
     resultsQuery = resultsQuery.eq("session", session);
@@ -309,19 +336,32 @@ export async function fetchStudentReport({
   results = resQueryResult.data;
   error = resQueryResult.error;
 
-  if (error && /score_breakdown|session/i.test(error.message || "")) {
+  if (error && /score_breakdown|session|pr1_status|pr2_status|pr3_status|tr_status/i.test(error.message || "")) {
     let fallbackQuery = supabase
       .from("results")
-      .select("id, subject_id, cw, hw, test, project, exam, total, grade, subjects(name)")
+      .select("id, subject_id, cw, hw, test, project, exam, total, grade, status, subjects(name)")
       .eq("student_id", student.id)
-      .eq("term", term)
-      .eq("status", "approved");
+      .eq("term", term);
     if (session) fallbackQuery = fallbackQuery.eq("session", session);
     const fbRes = await fallbackQuery;
     results = fbRes.data;
     error = fbRes.error;
   }
   if (error) throw error;
+
+  // Also check if results rows have explicit published statuses
+  (results || []).forEach((r: any) => {
+    if (r.pr1_status === "published") publishedMilestones.pr1 = true;
+    if (r.pr2_status === "published") publishedMilestones.pr2 = true;
+    if (r.pr3_status === "published") publishedMilestones.pr3 = true;
+    if (r.tr_status === "published" || r.status === "published") publishedMilestones.tr = true;
+  });
+
+  // If TR is published or if any results are approved without milestone gating, allow TR
+  const hasApprovedOrPublished = (results || []).some((r: any) => r.status === "approved" || r.status === "published");
+  if (hasApprovedOrPublished && !publishedMilestones.pr1 && !publishedMilestones.pr2 && !publishedMilestones.pr3 && !publishedMilestones.tr) {
+    publishedMilestones.tr = true;
+  }
 
   // Fetch all approved results for the session for cumulative averages (Term 3)
   let allSessionQuery = supabase
@@ -512,6 +552,7 @@ export async function fetchStudentReport({
     principalSignatureUrl: schoolSettings?.principal_signature_url || "/assets/signatures/principal.png",
     resumptionDate: schoolSettings?.next_term_resumption_date || "To be announced",
     promotion: term === "term3" ? getPromotionStatus({ className, percentage }) : null,
+    publishedMilestones,
   };
 
   return {

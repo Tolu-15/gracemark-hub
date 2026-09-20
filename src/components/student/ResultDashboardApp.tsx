@@ -152,6 +152,20 @@ export default function ResultDashboardApp({
     try {
       const data = await fetchStudentReport({ student, term, session });
       setReport(data);
+
+      // Automatically select the active tab based on what is published
+      const ms = data?.publishedMilestones;
+      if (ms) {
+        if (ms.tr) {
+          setTab((prev) => (prev === "pr1" || prev === "pr2" || prev === "pr3" || prev === "tr" || prev === "all" ? prev : "all"));
+        } else if (ms.pr3) {
+          setTab("pr3");
+        } else if (ms.pr2) {
+          setTab("pr2");
+        } else if (ms.pr1) {
+          setTab("pr1");
+        }
+      }
     } catch (err: any) {
       console.error("Report fetch error:", err);
       setError(err.message || "Failed to load academic report sheet.");
@@ -201,6 +215,8 @@ export default function ResultDashboardApp({
     );
   }
 
+  const isPrView = tab === "pr1" || tab === "pr2" || tab === "pr3";
+
   return (
     <div className="rd-root bg-white text-slate-900 print:p-0">
       <div className="rd-inner max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
@@ -243,46 +259,57 @@ export default function ResultDashboardApp({
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex rounded-lg border border-slate-200 p-1 bg-slate-50 text-xs font-semibold">
-              <button
-                onClick={() => setTab("all")}
-                className={`px-3 py-1 rounded-md transition-colors ${
-                  tab === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                Overview
-              </button>
-              <button
-                onClick={() => setTab("pr1")}
-                className={`px-3 py-1 rounded-md transition-colors ${
-                  tab === "pr1" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                PR 1
-              </button>
-              <button
-                onClick={() => setTab("pr2")}
-                className={`px-3 py-1 rounded-md transition-colors ${
-                  tab === "pr2" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                PR 2
-              </button>
-              <button
-                onClick={() => setTab("pr3")}
-                className={`px-3 py-1 rounded-md transition-colors ${
-                  tab === "pr3" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                PR 3
-              </button>
-              <button
-                onClick={() => setTab("tr")}
-                className={`px-3 py-1 rounded-md transition-colors ${
-                  tab === "tr" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                Terminal
-              </button>
+              {/* If TR is published or if multiple are published, show Overview */}
+              {(report?.publishedMilestones?.tr || !report?.publishedMilestones || (Number(!!report?.publishedMilestones?.pr1) + Number(!!report?.publishedMilestones?.pr2) + Number(!!report?.publishedMilestones?.pr3) + Number(!!report?.publishedMilestones?.tr) > 1)) && (
+                <button
+                  onClick={() => setTab("all")}
+                  className={`px-3 py-1 rounded-md transition-colors ${
+                    tab === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  Overview
+                </button>
+              )}
+              {(!report?.publishedMilestones || report?.publishedMilestones?.pr1) && (
+                <button
+                  onClick={() => setTab("pr1")}
+                  className={`px-3 py-1 rounded-md transition-colors ${
+                    tab === "pr1" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  PR 1
+                </button>
+              )}
+              {(!report?.publishedMilestones || report?.publishedMilestones?.pr2) && (
+                <button
+                  onClick={() => setTab("pr2")}
+                  className={`px-3 py-1 rounded-md transition-colors ${
+                    tab === "pr2" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  PR 2
+                </button>
+              )}
+              {(!report?.publishedMilestones || report?.publishedMilestones?.pr3) && (
+                <button
+                  onClick={() => setTab("pr3")}
+                  className={`px-3 py-1 rounded-md transition-colors ${
+                    tab === "pr3" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  PR 3
+                </button>
+              )}
+              {(!report?.publishedMilestones || report?.publishedMilestones?.tr) && (
+                <button
+                  onClick={() => setTab("tr")}
+                  className={`px-3 py-1 rounded-md transition-colors ${
+                    tab === "tr" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  Terminal
+                </button>
+              )}
             </div>
 
             <button
@@ -371,35 +398,107 @@ export default function ResultDashboardApp({
         )}
 
         {/* Performance Stat Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <StatCard
-            label="Overall Average"
-            value={`${report.percentage}%`}
-            sub={`${report.overallTotal} Marks Total`}
-            accent="emerald"
-          />
-          <StatCard
-            label="Class Position"
-            value={report.position && report.classSize ? `${report.position} / ${report.classSize}` : "—"}
-            sub={report.classSize ? `Class Size: ${report.classSize}` : "Rank uncalculated"}
-            accent="violet"
-          />
-          <StatCard
-            label="Evaluated Subjects"
-            value={report.subjects.length}
-            sub="Approved records"
-            accent="blue"
-          />
-          <StatCard
-            label="Attendance Rate"
-            value={`${report.attendancePct}%`}
-            sub={`${report.attendance.daysPresent} of ${report.attendance.daysOpened} Days`}
-            accent="amber"
-          />
-        </div>
+        {isPrView ? (
+          /* PR Results: Show only Average and Subjects Evaluated */
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <StatCard
+              label="Overall Average"
+              value={`${report.percentage}%`}
+              sub={`${report.overallTotal} Marks Total`}
+              accent="emerald"
+            />
+            <StatCard
+              label="Evaluated Subjects"
+              value={report.subjects.length}
+              sub="Progress Assessment records"
+              accent="blue"
+            />
+          </div>
+        ) : (
+          /* Terminal / Overview Results: Full stats */
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <StatCard
+              label="Overall Average"
+              value={`${report.percentage}%`}
+              sub={`${report.overallTotal} Marks Total`}
+              accent="emerald"
+            />
+            <StatCard
+              label="Class Position"
+              value={report.position && report.classSize ? `${report.position} / ${report.classSize}` : "—"}
+              sub={report.classSize ? `Class Size: ${report.classSize}` : "Rank uncalculated"}
+              accent="violet"
+            />
+            <StatCard
+              label="Evaluated Subjects"
+              value={report.subjects.length}
+              sub="Approved records"
+              accent="blue"
+            />
+            <StatCard
+              label="Attendance Rate"
+              value={`${report.attendancePct}%`}
+              sub={`${report.attendance.daysPresent} of ${report.attendance.daysOpened} Days`}
+              accent="amber"
+            />
+          </div>
+        )}
 
-        {/* Academic Marks Table */}
-        <div className="rd-table-section mb-6 bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+        {/* Academic Marks: Mobile Responsive Cards (visible on small screens) */}
+        {isPrView && (
+          <div className="md:hidden space-y-3 mb-6">
+            {report.subjects.length === 0 ? (
+              <div className="p-6 text-center text-slate-500 bg-white rounded-xl border border-slate-200">
+                No approved scores found for this period.
+              </div>
+            ) : (
+              report.subjects.map((s: any) => {
+                const prData = tab === "pr1" ? s.prs.pr1 : tab === "pr2" ? s.prs.pr2 : s.prs.pr3;
+                return (
+                  <div
+                    key={s.subjectId}
+                    className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-2.5"
+                  >
+                    <div className="flex justify-between items-start gap-2">
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm">{s.subject}</h4>
+                        <span className="text-[11px] font-semibold text-slate-500">{prData.status}</span>
+                      </div>
+                      <GradeBadge grade={prData.grade} />
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-1.5 bg-slate-50 p-2 rounded-lg text-center text-xs border border-slate-100 font-mono">
+                      <div>
+                        <div className="text-[9px] uppercase font-bold text-slate-400">CW (10)</div>
+                        <div className="font-semibold text-slate-800">{prData.cw}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] uppercase font-bold text-slate-400">HW (5)</div>
+                        <div className="font-semibold text-slate-800">{prData.hw}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] uppercase font-bold text-slate-400">Test (15)</div>
+                        <div className="font-semibold text-slate-800">{prData.test}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] uppercase font-bold text-indigo-500">CA (30)</div>
+                        <div className="font-bold text-indigo-700">{prData.totalCa}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+                      <span className="text-slate-500 font-medium">Percentage</span>
+                      <span className="font-extrabold text-slate-900">{prData.percentage}%</span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {/* Academic Marks Table (Desktop / Tablet / Print, or Terminal report) */}
+        <div className={`rd-table-section mb-6 bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm ${isPrView ? "hidden md:block" : ""}`}>
           <div className="rd-table-wrap overflow-x-auto">
             <table className="rd-table w-full text-left text-xs border-collapse">
               <thead>
@@ -548,73 +647,75 @@ export default function ResultDashboardApp({
           </div>
         </div>
 
-        {/* Behavioral Traits & Psychomotor Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
-              Behavioral &amp; Affective Development (1–5)
-            </h3>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              {[
-                { label: "Punctuality", val: report.evaluations?.punctuality ?? 4 },
-                { label: "Neatness", val: report.evaluations?.neatness ?? 4 },
-                { label: "Honesty", val: report.evaluations?.honesty ?? 5 },
-                { label: "Politeness", val: report.evaluations?.politeness ?? 4 },
-                { label: "Cooperation", val: report.evaluations?.cooperation ?? 4 },
-                { label: "Leadership", val: report.evaluations?.leadership ?? 3 },
-              ].map((t) => (
-                <div key={t.label} className="flex justify-between items-center py-1 border-b border-slate-200">
-                  <span className="text-slate-600">{t.label}</span>
-                  <div className="flex gap-0.5">
-                    {[1, 2, 3, 4, 5].map((num) => (
-                      <span
-                        key={num}
-                        className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                          num <= Number(t.val) ? "bg-indigo-600 text-white" : "bg-slate-200 text-slate-400"
-                        }`}
-                      >
-                        {num}
-                      </span>
-                    ))}
+        {/* Behavioral Traits & Psychomotor Grid (Terminal / Overview only) */}
+        {!isPrView && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
+                Behavioral &amp; Affective Development (1–5)
+              </h3>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {[
+                  { label: "Punctuality", val: report.evaluations?.punctuality ?? 4 },
+                  { label: "Neatness", val: report.evaluations?.neatness ?? 4 },
+                  { label: "Honesty", val: report.evaluations?.honesty ?? 5 },
+                  { label: "Politeness", val: report.evaluations?.politeness ?? 4 },
+                  { label: "Cooperation", val: report.evaluations?.cooperation ?? 4 },
+                  { label: "Leadership", val: report.evaluations?.leadership ?? 3 },
+                ].map((t) => (
+                  <div key={t.label} className="flex justify-between items-center py-1 border-b border-slate-200">
+                    <span className="text-slate-600">{t.label}</span>
+                    <div className="flex gap-0.5">
+                      {[1, 2, 3, 4, 5].map((num) => (
+                        <span
+                          key={num}
+                          className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                            num <= Number(t.val) ? "bg-indigo-600 text-white" : "bg-slate-200 text-slate-400"
+                          }`}
+                        >
+                          {num}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
-              Psychomotor &amp; Applied Skills (1–5)
-            </h3>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              {[
-                { label: "Handwriting", val: report.evaluations?.handwriting ?? 4 },
-                { label: "Sports & Games", val: report.evaluations?.sports ?? 4 },
-                { label: "Crafts & Projects", val: report.evaluations?.crafts ?? 3 },
-                { label: "Music & Performing", val: report.evaluations?.music ?? 4 },
-              ].map((t) => (
-                <div key={t.label} className="flex justify-between items-center py-1 border-b border-slate-200">
-                  <span className="text-slate-600">{t.label}</span>
-                  <div className="flex gap-0.5">
-                    {[1, 2, 3, 4, 5].map((num) => (
-                      <span
-                        key={num}
-                        className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                          num <= Number(t.val) ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-400"
-                        }`}
-                      >
-                        {num}
-                      </span>
-                    ))}
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
+                Psychomotor &amp; Applied Skills (1–5)
+              </h3>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {[
+                  { label: "Handwriting", val: report.evaluations?.handwriting ?? 4 },
+                  { label: "Sports & Games", val: report.evaluations?.sports ?? 4 },
+                  { label: "Crafts & Projects", val: report.evaluations?.crafts ?? 3 },
+                  { label: "Music & Performing", val: report.evaluations?.music ?? 4 },
+                ].map((t) => (
+                  <div key={t.label} className="flex justify-between items-center py-1 border-b border-slate-200">
+                    <span className="text-slate-600">{t.label}</span>
+                    <div className="flex gap-0.5">
+                      {[1, 2, 3, 4, 5].map((num) => (
+                        <span
+                          key={num}
+                          className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                            num <= Number(t.val) ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-400"
+                          }`}
+                        >
+                          {num}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Remarks and Signatures */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div className={`grid grid-cols-1 ${isPrView ? "md:grid-cols-1" : "md:grid-cols-2"} gap-6 mb-6`}>
           <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
             <div>
               <div className="text-[10px] font-bold uppercase text-slate-400">Class Teacher's Remark</div>
@@ -630,27 +731,29 @@ export default function ResultDashboardApp({
             </div>
           </div>
 
-          <div className="p-4 rounded-xl border border-slate-200 bg-white flex flex-col justify-between">
-            <div className="flex justify-between items-center">
-              <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400 block">Next Term Resumes</span>
-                <span className="text-xs font-black text-slate-800">{report.resumptionDate}</span>
-              </div>
-              <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400 block text-right">Principal's Stamp</span>
-                <div className="mt-1 h-14 w-28 relative flex items-center justify-center">
-                  <img
-                    src={report.principalSignatureUrl}
-                    alt="Signature"
-                    className="max-h-full max-w-full object-contain"
-                  />
+          {!isPrView && (
+            <div className="p-4 rounded-xl border border-slate-200 bg-white flex flex-col justify-between">
+              <div className="flex justify-between items-center">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Next Term Resumes</span>
+                  <span className="text-xs font-black text-slate-800">{report.resumptionDate}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block text-right">Principal's Stamp</span>
+                  <div className="mt-1 h-14 w-28 relative flex items-center justify-center">
+                    <img
+                      src={report.principalSignatureUrl}
+                      alt="Signature"
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </div>
                 </div>
               </div>
+              <div className="text-[10px] text-slate-400 text-center border-t border-slate-100 pt-2 mt-4">
+                Generated by Gracemark Academy Educational Hub • Official Document
+              </div>
             </div>
-            <div className="text-[10px] text-slate-400 text-center border-t border-slate-100 pt-2 mt-4">
-              Generated by Gracemark Academy Educational Hub • Official Document
-            </div>
-          </div>
+          )}
         </div>
 
         {/* AI Insight Box */}

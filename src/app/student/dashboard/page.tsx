@@ -170,37 +170,125 @@ export default function StudentDashboardPage() {
       const supabase = getSupabaseBrowserClient();
 
       try {
-        const { data, error } = await supabase
-          .from("results")
-          .select("id, subject_id, cw, hw, test, project, exam, total, grade, status, score_breakdown, subjects(name)")
+        // 1. Check which milestones are published
+        let snapQuery = supabase
+          .from("published_snapshots")
+          .select("report_type")
           .eq("student_id", studentId)
-          .eq("term", term)
-          .eq("session", session)
-          .eq("status", "approved");
+          .eq("term", term);
+        if (session) snapQuery = snapQuery.eq("session", session);
+
+        const { data: snaps } = await snapQuery;
+        const publishedMilestones: Record<string, boolean> = { pr1: false, pr2: false, pr3: false, tr: false };
+        (snaps || []).forEach((s: any) => {
+          const type = String(s.report_type || "").toLowerCase();
+          if (publishedMilestones[type] !== undefined) publishedMilestones[type] = true;
+        });
+
+        // 2. Fetch results for this student
+        let rq = supabase
+          .from("results")
+          .select("id, subject_id, cw, hw, test, project, exam, total, grade, status, pr1_status, pr2_status, pr3_status, tr_status, score_breakdown, subjects(name)")
+          .eq("student_id", studentId)
+          .eq("term", term);
+
+        if (session) rq = rq.eq("session", session);
+
+        let { data, error } = await rq;
+
+        if (error && /score_breakdown|pr1_status|pr2_status|pr3_status|tr_status/i.test(error.message || "")) {
+          let fbQuery = supabase
+            .from("results")
+            .select("id, subject_id, cw, hw, test, project, exam, total, grade, status, subjects(name)")
+            .eq("student_id", studentId)
+            .eq("term", term);
+          if (session) fbQuery = fbQuery.eq("session", session);
+          const fbRes = await fbQuery;
+          data = fbRes.data as any;
+          error = fbRes.error;
+        }
 
         if (error) throw error;
 
-        const formatted = (data || []).map((r: any) => {
-          const raw = normalizeBreakdown(r);
-          const computed = calculateStudentResult(raw, undefined, {
-            isSenior,
-            className: currentClassName,
-          });
-
-          return {
-            id: r.id,
-            subject: r.subjects?.name || "Subject",
-            cw: r.cw ?? computed.scaled.cw,
-            hw: r.hw ?? computed.scaled.hw,
-            test: r.test ?? computed.scaled.tests,
-            project: r.project ?? computed.scaled.project,
-            exam: r.exam ?? computed.scaled.exam,
-            total: r.total ?? computed.totalScore,
-            grade: r.grade ?? computed.grade,
-            remark: computed.remark,
-            breakdown: raw,
-          };
+        // Check if any results rows have explicit published statuses
+        (data || []).forEach((r: any) => {
+          if (r.pr1_status === "published") publishedMilestones.pr1 = true;
+          if (r.pr2_status === "published") publishedMilestones.pr2 = true;
+          if (r.pr3_status === "published") publishedMilestones.pr3 = true;
+          if (r.tr_status === "published" || r.status === "published") publishedMilestones.tr = true;
         });
+
+        const hasAnyPublished = publishedMilestones.pr1 || publishedMilestones.pr2 || publishedMilestones.pr3 || publishedMilestones.tr;
+        const hasApproved = (data || []).some((r: any) => r.status === "approved");
+
+        // Filter results: If milestone gating is used, only show when at least one milestone is published or results are approved
+        if (!hasAnyPublished && !hasApproved) {
+          setResults([]);
+          return;
+        }
+
+        // Determine highest published milestone (TR > PR3 > PR2 > PR1)
+        const activeMilestone = publishedMilestones.tr || (!hasAnyPublished && hasApproved)
+          ? "tr"
+          : publishedMilestones.pr3
+          ? "pr3"
+          : publishedMilestones.pr2
+          ? "pr2"
+          : "pr1";
+
+        const formatted = (data || [])
+          .filter((r: any) => r.status === "approved" || r.status === "published" || r.pr1_status === "published" || r.pr2_status === "published" || r.pr3_status === "published" || r.tr_status === "published")
+          .map((r: any) => {
+            const raw = normalizeBreakdown(r);
+            const computed = calculateStudentResult(raw, undefined, {
+              isSenior,
+              className: currentClassName,
+            });
+
+            if (activeMilestone === "tr") {
+              return {
+                id: r.id,
+                subject: r.subjects?.name || "Subject",
+                milestoneLabel: "Terminal Exam",
+                cw: r.cw ?? computed.scaled.cw,
+                hw: r.hw ?? computed.scaled.hw,
+                test: r.test ?? computed.scaled.tests,
+                project: r.project ?? computed.scaled.project,
+                exam: r.exam ?? computed.scaled.exam,
+                total: r.total ?? computed.totalScore,
+                grade: r.grade ?? computed.grade,
+                remark: computed.remark,
+                breakdown: raw,
+                isPr: false,
+              };
+            }
+
+            // For PR milestones, compute PR score
+            const prIndex = activeMilestone === "pr1" ? 0 : activeMilestone === "pr2" ? 1 : 2;
+            const prCw = Math.min(10, Math.max(0, Number(r.cw ?? computed.scaled.cw)));
+            const prHw = Math.min(5, Math.max(0, Number(r.hw ?? computed.scaled.hw)));
+            const prTest = Math.min(15, Math.max(0, Number(r.test ?? computed.scaled.tests)));
+            const prTotal = +(prCw + prHw + prTest).toFixed(1);
+            const prPct = Math.min(100, +((prTotal / 30) * 100).toFixed(1));
+
+            return {
+              id: r.id,
+              subject: r.subjects?.name || "Subject",
+              milestoneLabel: activeMilestone.toUpperCase(),
+              cw: prCw,
+              hw: prHw,
+              test: prTest,
+              project: 0,
+              exam: 0,
+              total: prTotal,
+              maxScore: 30,
+              percentage: prPct,
+              grade: computed.grade,
+              remark: computed.remark,
+              breakdown: raw,
+              isPr: true,
+            };
+          });
 
         formatted.sort((a: any, b: any) => a.subject.localeCompare(b.subject));
         setResults(formatted);
@@ -371,26 +459,48 @@ export default function StudentDashboardPage() {
 
                   <div className="flex items-baseline gap-2 mb-4">
                     <span className="text-3xl font-black text-slate-900">{r.total}</span>
-                    <span className="text-xs text-slate-400 font-semibold">/ 100</span>
+                    <span className="text-xs text-slate-400 font-semibold">/ {r.isPr ? "30" : "100"}</span>
+                    {r.isPr && (
+                      <span className="text-xs font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+                        {r.percentage}%
+                      </span>
+                    )}
                     <span className="text-xs font-bold text-slate-500 ml-auto uppercase tracking-wide">
                       {r.remark}
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg text-center text-xs border border-slate-100">
-                    <div>
-                      <div className="text-[10px] uppercase font-bold text-slate-400">CA</div>
-                      <div className="font-bold text-slate-800">{Math.round(r.cw + r.hw + r.test + r.project)}</div>
+                  {r.isPr ? (
+                    <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg text-center text-xs border border-slate-100 font-mono">
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-slate-400">CW (10)</div>
+                        <div className="font-bold text-slate-800">{r.cw}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-slate-400">HW (5)</div>
+                        <div className="font-bold text-slate-800">{r.hw}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-slate-400">Test (15)</div>
+                        <div className="font-bold text-slate-800">{r.test}</div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="text-[10px] uppercase font-bold text-slate-400">Exam</div>
-                      <div className="font-bold text-slate-800">{r.exam}</div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg text-center text-xs border border-slate-100">
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-slate-400">CA</div>
+                        <div className="font-bold text-slate-800">{Math.round(r.cw + r.hw + r.test + r.project)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-slate-400">Exam</div>
+                        <div className="font-bold text-slate-800">{r.exam}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-slate-400">Total</div>
+                        <div className="font-bold text-indigo-600">{r.total}</div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="text-[10px] uppercase font-bold text-slate-400">Total</div>
-                      <div className="font-bold text-indigo-600">{r.total}</div>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 <button
