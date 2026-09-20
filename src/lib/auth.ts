@@ -96,10 +96,13 @@ export async function resolveUserLoginEmail(rawId: string): Promise<string> {
 
   // 1. Check users table by staff_id (for teachers and staff)
   try {
+    const hyphenated = cleanRef.includes("-") ? cleanRef : cleanRef.replace(/^(GMT)(\d+)/i, "$1-$2");
+    const unhyphenated = cleanRef.replace(/-/g, "");
+
     const { data: staffUser } = await supabase
       .from("users")
       .select("email, staff_id")
-      .ilike("staff_id", cleanRef)
+      .or(`staff_id.ilike.${cleanRef},staff_id.ilike.${hyphenated},staff_id.ilike.${unhyphenated}`)
       .limit(1)
       .maybeSingle();
 

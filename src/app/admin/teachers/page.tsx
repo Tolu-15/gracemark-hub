@@ -57,11 +57,9 @@ export default function AdminTeachersPage() {
   const [editingTeacher, setEditingTeacher] = useState<StaffProfile | null>(null);
   const [teacherFormData, setTeacherFormData] = useState({
     name: "",
-    email: "",
     staffId: "",
-    personalEmail: "",
     phone: "",
-    password: "",
+    password: "gracemark",
     mustChangePassword: true,
   });
   const [teacherFormError, setTeacherFormError] = useState("");
@@ -72,39 +70,7 @@ export default function AdminTeachersPage() {
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkMsg, setBulkMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Load Sessions & Base Data
-  const loadInitialData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [sessList, settings, clRes, subRes] = await Promise.all([
-        getAcademicSessions(),
-        getAppSettings(),
-        supabase.from("classes").select("id, name").order("name"),
-        supabase.from("subjects").select("id, name").order("name"),
-      ]);
-
-      const sessNames = sessList.map((s) => s.name);
-      setSessions(sessNames);
-
-      const activeSess = settings?.current_session || (sessNames.length > 0 ? sessNames[0] : "2026/2027");
-      setSelectedSession(activeSess);
-
-      const loadedClasses = clRes.data || [];
-      setClasses(loadedClasses);
-      if (loadedClasses.length > 0 && !selectedSubjectClass) {
-        setSelectedSubjectClass(loadedClasses[0].id);
-      }
-
-      setSubjects(subRes.data || []);
-      await loadTeachers();
-    } catch (err) {
-      console.error("Failed to load initial data:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const loadTeachers = async () => {
+  const loadTeachers = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/teachers");
       if (res.ok) {
@@ -120,7 +86,40 @@ export default function AdminTeachersPage() {
     } catch (err) {
       console.error("Load teachers error:", err);
     }
-  };
+  }, []);
+
+  // Load Sessions & Base Data
+  const loadInitialData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [sessList, settings, classesRes, subjectsRes] = await Promise.all([
+        getAcademicSessions(),
+        getAppSettings(),
+        supabase.from("classes").select("id, name").order("name", { ascending: true }),
+        supabase.from("subjects").select("id, name, code").order("name", { ascending: true }),
+      ]);
+
+      const sNames = (sessList || []).map((s: { name: string }) => s.name);
+      setSessions(sNames);
+
+      const activeSess = settings?.current_session || sNames[0] || "2026/2027";
+      setSelectedSession(activeSess);
+
+      if (classesRes.data) {
+        setClasses(classesRes.data as ClassRecord[]);
+        if (classesRes.data.length > 0) setSelectedSubjectClass(classesRes.data[0].id);
+      }
+      if (subjectsRes.data) {
+        setSubjects(subjectsRes.data as SubjectRecord[]);
+      }
+
+      await loadTeachers();
+    } catch (err) {
+      console.error("Failed to load initial data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [loadTeachers]);
 
   const loadAssignments = useCallback(async () => {
     if (!selectedSession) return;
@@ -148,32 +147,29 @@ export default function AdminTeachersPage() {
     }
   }, [selectedSession, loadAssignments]);
 
-  // Generate next staff ID: GMA-T-001, GMA-T-002...
+  // Generate next teacher ID: GMT001, GMT002...
   function generateNextStaffId() {
     let maxNum = 0;
     teachers.forEach((t) => {
       const sid = t.staff_id || "";
-      const match = sid.match(/GMA-T-(\d+)/i);
+      const match = sid.match(/GMT-?(\d+)/i) || sid.match(/GMA-T-(\d+)/i);
       if (match) {
         const n = parseInt(match[1], 10);
         if (n > maxNum) maxNum = n;
       }
     });
-    return `GMA-T-${String(maxNum + 1).padStart(3, "0")}`;
+    return `GMT${String(maxNum + 1).padStart(3, "0")}`;
   }
 
   function handleOpenAddTeacherModal() {
     setTeacherFormError("");
     setEditingTeacher(null);
     const nextId = generateNextStaffId();
-    const randomDigits = Math.floor(10000 + Math.random() * 90000);
     setTeacherFormData({
       name: "",
-      email: `${nextId.toLowerCase()}@portal.gracemark.local`,
       staffId: nextId,
-      personalEmail: "",
       phone: "",
-      password: `Gma@${randomDigits}`,
+      password: "gracemark",
       mustChangePassword: true,
     });
     setIsTeacherModalOpen(true);
@@ -184,9 +180,7 @@ export default function AdminTeachersPage() {
     setEditingTeacher(t);
     setTeacherFormData({
       name: t.display_name || "",
-      email: t.email || "",
       staffId: t.staff_id || "",
-      personalEmail: t.personal_email || "",
       phone: t.phone || "",
       password: "",
       mustChangePassword: Boolean(t.must_change_password),
@@ -201,55 +195,41 @@ export default function AdminTeachersPage() {
 
     try {
       if (!editingTeacher) {
-        // Create new teacher
-        const { data: sessionData } = await supabase.auth.getSession();
-        const token = sessionData?.session?.access_token;
-
-        const res = await fetch("/api/admin/create-auth-user", {
+        // Create new teacher directly via server POST API
+        const res = await fetch("/api/admin/teachers", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            email: teacherFormData.email.trim().toLowerCase(),
-            password: teacherFormData.password,
+            name: teacherFormData.name.trim(),
+            staffId: teacherFormData.staffId.trim().toUpperCase(),
+            phone: teacherFormData.phone.trim(),
+            password: teacherFormData.password.trim() || "gracemark",
+            mustChangePassword: teacherFormData.mustChangePassword,
           }),
         });
 
         const resJson = await res.json();
-        if (!res.ok) throw new Error(resJson.error || "Failed to create teacher login account.");
-
-        const teacherAuthId = resJson.user?.id;
-
-        // Insert into public.users
-        const { error: uErr } = await supabase.from("users").upsert({
-          auth_id: teacherAuthId,
-          email: teacherFormData.email.trim().toLowerCase(),
-          display_name: teacherFormData.name.trim(),
-          staff_id: teacherFormData.staffId.trim() || null,
-          personal_email: teacherFormData.personalEmail.trim() || null,
-          phone: teacherFormData.phone.trim() || null,
-          role: "teacher",
-          status: "active",
-          must_change_password: teacherFormData.mustChangePassword,
+        if (!res.ok || !resJson.ok) {
+          throw new Error(resJson.error || "Failed to register teacher.");
+        }
+      } else {
+        // Update existing teacher profile via server PATCH API
+        const res = await fetch("/api/admin/teachers", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            teacherId: editingTeacher.id,
+            authId: editingTeacher.auth_id,
+            display_name: teacherFormData.name.trim(),
+            staff_id: teacherFormData.staffId.trim().toUpperCase() || null,
+            phone: teacherFormData.phone.trim() || null,
+          }),
         });
 
-        if (uErr) throw uErr;
-      } else {
-        // Update existing teacher profile
-        const { error: uErr } = await supabase
-          .from("users")
-          .update({
-            display_name: teacherFormData.name.trim(),
-            staff_id: teacherFormData.staffId.trim() || null,
-            personal_email: teacherFormData.personalEmail.trim() || null,
-            phone: teacherFormData.phone.trim() || null,
-            must_change_password: teacherFormData.mustChangePassword,
-          })
-          .eq("id", editingTeacher.id);
-
-        if (uErr) throw uErr;
+        const resJson = await res.json();
+        if (!res.ok || !resJson.ok) {
+          throw new Error(resJson.error || "Failed to update teacher profile.");
+        }
       }
 
       setIsTeacherModalOpen(false);
@@ -526,9 +506,8 @@ export default function AdminTeachersPage() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                    <th className="px-6 py-3.5">Staff ID & Name</th>
-                    <th className="px-4 py-3.5">Portal Login</th>
-                    <th className="px-4 py-3.5">Contact Details</th>
+                    <th className="px-6 py-3.5">Teacher ID & Name</th>
+                    <th className="px-4 py-3.5">Phone Number</th>
                     <th className="px-4 py-3.5">Status</th>
                     <th className="px-4 py-3.5">Active Duties ({selectedSession})</th>
                     <th className="px-6 py-3.5 text-right">Actions</th>
@@ -537,13 +516,13 @@ export default function AdminTeachersPage() {
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                      <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
                         Loading staff directory…
                       </td>
                     </tr>
                   ) : filteredTeachers.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                      <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
                         No teachers found matching your criteria.
                       </td>
                     </tr>
@@ -566,20 +545,15 @@ export default function AdminTeachersPage() {
                               </div>
                               <div>
                                 <div className="font-bold text-slate-900">{t.display_name}</div>
-                                <div className="font-mono text-[11px] text-indigo-600 font-semibold">
-                                  {t.staff_id || "No Staff ID"}
+                                <div className="font-mono text-[11px] text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded-md inline-block mt-0.5">
+                                  {t.staff_id || "GMT"}
                                 </div>
                               </div>
                             </div>
                           </td>
 
-                          <td className="px-4 py-3.5 font-mono text-[11px] text-slate-600">
-                            {t.email}
-                          </td>
-
-                          <td className="px-4 py-3.5">
-                            <div className="text-[11px] text-slate-600">{t.personal_email || "—"}</div>
-                            <div className="text-[10px] text-slate-400">{t.phone || "No phone"}</div>
+                          <td className="px-4 py-3.5 text-xs text-slate-700 font-medium">
+                            {t.phone || "—"}
                           </td>
 
                           <td className="px-4 py-3.5">
@@ -1206,16 +1180,19 @@ export default function AdminTeachersPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 uppercase tracking-wider text-[10px] mb-1">
-                    Staff Portal ID *
+                    Teacher ID (Login ID) *
                   </label>
                   <input
                     type="text"
                     required
                     value={teacherFormData.staffId}
-                    onChange={(e) => setTeacherFormData({ ...teacherFormData, staffId: e.target.value })}
-                    placeholder="e.g. GMA-T-001"
+                    onChange={(e) => setTeacherFormData({ ...teacherFormData, staffId: e.target.value.toUpperCase() })}
+                    placeholder="e.g. GMT001"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono text-indigo-700 font-bold focus:outline-none focus:ring-2 focus:ring-slate-900"
                   />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Teachers use this ID to sign in
+                  </span>
                 </div>
 
                 <div>
@@ -1230,33 +1207,6 @@ export default function AdminTeachersPage() {
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-slate-900"
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 uppercase tracking-wider text-[10px] mb-1">
-                  Portal Login Identity (Auth Email) *
-                </label>
-                <input
-                  type="email"
-                  required
-                  disabled={Boolean(editingTeacher)}
-                  value={teacherFormData.email}
-                  onChange={(e) => setTeacherFormData({ ...teacherFormData, email: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono text-slate-800 disabled:opacity-60"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 uppercase tracking-wider text-[10px] mb-1">
-                  Personal / Recovery Email (Optional)
-                </label>
-                <input
-                  type="email"
-                  value={teacherFormData.personalEmail}
-                  onChange={(e) => setTeacherFormData({ ...teacherFormData, personalEmail: e.target.value })}
-                  placeholder="e.g. adeyemi@gmail.com"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-slate-900"
-                />
               </div>
 
               {!editingTeacher && (
