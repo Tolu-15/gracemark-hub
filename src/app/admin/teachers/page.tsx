@@ -10,6 +10,13 @@ import { getAppSettings } from "@/lib/appSettings";
 
 type TabMode = "directory" | "class-teachers" | "subject-teachers";
 
+export interface ClassGroup {
+  id: string;
+  name: string;
+  subName?: string;
+  classIds: string[];
+}
+
 export default function AdminTeachersPage() {
   const [activeTab, setActiveTab] = useState<TabMode>("directory");
   const [loading, setLoading] = useState(true);
@@ -27,13 +34,13 @@ export default function AdminTeachersPage() {
 
   // Class Teacher Tab State
   const [classAssignments, setClassAssignments] = useState<ClassTeacherAssignment[]>([]);
-  const [selectedClassForHistory, setSelectedClassForHistory] = useState<ClassRecord | null>(null);
+  const [selectedClassForHistory, setSelectedClassForHistory] = useState<ClassGroup | null>(null);
   const [classHistoryModalOpen, setClassHistoryModalOpen] = useState(false);
   const [classHistoryList, setClassHistoryList] = useState<ClassTeacherAssignment[]>([]);
 
   // Assign / Replace Class Teacher Modal
   const [assignClassModalOpen, setAssignClassModalOpen] = useState(false);
-  const [targetClassForAssignment, setTargetClassForAssignment] = useState<ClassRecord | null>(null);
+  const [targetClassForAssignment, setTargetClassForAssignment] = useState<ClassGroup | null>(null);
   const [selectedTeacherForClass, setSelectedTeacherForClass] = useState("");
   const [classAssignNotes, setClassAssignNotes] = useState("");
   const [savingClassAssign, setSavingClassAssign] = useState(false);
@@ -96,7 +103,7 @@ export default function AdminTeachersPage() {
         getAcademicSessions(),
         getAppSettings(),
         supabase.from("classes").select("id, name").order("name", { ascending: true }),
-        supabase.from("subjects").select("id, name, code").order("name", { ascending: true }),
+        supabase.from("subjects").select("id, name").order("name", { ascending: true }),
       ]);
 
       const sNames = (sessList || []).map((s: { name: string }) => s.name);
@@ -120,6 +127,64 @@ export default function AdminTeachersPage() {
       setLoading(false);
     }
   }, [loadTeachers]);
+
+  // Compute Unified Class Groups for Class Teacher Tab (SSS 1, SSS 2, SSS 3 unified across arms)
+  const classGroups: ClassGroup[] = React.useMemo(() => {
+    const groups: ClassGroup[] = [];
+    const sss1Classes = classes.filter((c) => /^(SSS\s*1|SS\s*1)/i.test(c.name));
+    const sss2Classes = classes.filter((c) => /^(SSS\s*2|SS\s*2)/i.test(c.name));
+    const sss3Classes = classes.filter((c) => /^(SSS\s*3|SS\s*3)/i.test(c.name));
+    const otherClasses = classes.filter(
+      (c) => !/^(SSS\s*[123]|SS\s*[123])/i.test(c.name)
+    );
+
+    otherClasses.forEach((c) => {
+      groups.push({
+        id: c.id,
+        name: c.name,
+        classIds: [c.id],
+      });
+    });
+
+    if (sss1Classes.length > 0) {
+      groups.push({
+        id: sss1Classes[0].id,
+        name: "SSS 1",
+        subName: "All Arms: Science, Arts, Commercial",
+        classIds: sss1Classes.map((c) => c.id),
+      });
+    }
+
+    if (sss2Classes.length > 0) {
+      groups.push({
+        id: sss2Classes[0].id,
+        name: "SSS 2",
+        subName: "All Arms: Science, Arts, Commercial",
+        classIds: sss2Classes.map((c) => c.id),
+      });
+    }
+
+    if (sss3Classes.length > 0) {
+      groups.push({
+        id: sss3Classes[0].id,
+        name: "SSS 3",
+        subName: "All Arms: Science, Arts, Commercial",
+        classIds: sss3Classes.map((c) => c.id),
+      });
+    }
+
+    const orderWeight = (name: string) => {
+      if (/JSS\s*1/i.test(name)) return 1;
+      if (/JSS\s*2/i.test(name)) return 2;
+      if (/JSS\s*3/i.test(name)) return 3;
+      if (/SSS\s*1|SS\s*1/i.test(name)) return 4;
+      if (/SSS\s*2|SS\s*2/i.test(name)) return 5;
+      if (/SSS\s*3|SS\s*3/i.test(name)) return 6;
+      return 10;
+    };
+
+    return groups.sort((a, b) => orderWeight(a.name) - orderWeight(b.name));
+  }, [classes]);
 
   const loadAssignments = useCallback(async () => {
     if (!selectedSession) return;
@@ -270,9 +335,9 @@ export default function AdminTeachersPage() {
   }
 
   // Assign Class Teacher Handlers
-  function handleOpenAssignClassModal(c: ClassRecord) {
-    setTargetClassForAssignment(c);
-    const current = classAssignments.find((a) => a.class_id === c.id && a.status === "active");
+  function handleOpenAssignClassModal(group: ClassGroup) {
+    setTargetClassForAssignment(group);
+    const current = classAssignments.find((a) => group.classIds.includes(a.class_id) && a.status === "active");
     setSelectedTeacherForClass(current?.teacher_user_id || "");
     setClassAssignNotes("");
     setAssignClassModalOpen(true);
@@ -293,6 +358,7 @@ export default function AdminTeachersPage() {
           type: "class",
           session: selectedSession,
           classId: targetClassForAssignment.id,
+          classIds: targetClassForAssignment.classIds,
           teacherUserId: selectedTeacherForClass,
           notes: classAssignNotes,
         }),
@@ -311,9 +377,9 @@ export default function AdminTeachersPage() {
     }
   }
 
-  function handleOpenClassHistory(c: ClassRecord) {
-    setSelectedClassForHistory(c);
-    const history = classAssignments.filter((a) => a.class_id === c.id);
+  function handleOpenClassHistory(group: ClassGroup) {
+    setSelectedClassForHistory(group);
+    const history = classAssignments.filter((a) => group.classIds.includes(a.class_id));
     setClassHistoryList(history);
     setClassHistoryModalOpen(true);
   }
@@ -626,88 +692,168 @@ export default function AdminTeachersPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div className="text-xs text-blue-900">
-              <span className="font-bold">Class Teacher Roles:</span> Class Teachers are responsible for taking attendance, monitoring student care, and writing end-of-term class remarks. Changing a teacher automatically preserves the previous teacher in historical records.
+              <span className="font-bold">Class Teacher Roles:</span> Class Teachers manage attendance, pastoral care, and end-of-term remarks. For senior classes (SSS 1, SSS 2, SSS 3), assigning a class teacher covers all arms (Science, Arts, Commercial) together.
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  <th className="px-6 py-3.5">Class</th>
-                  <th className="px-4 py-3.5">Section</th>
-                  <th className="px-6 py-3.5">Current Class Teacher ({selectedSession})</th>
-                  <th className="px-4 py-3.5">Status</th>
-                  <th className="px-4 py-3.5">Assigned Since</th>
-                  <th className="px-6 py-3.5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                {classes.map((c) => {
-                  const assignment = classAssignments.find(
-                    (a) => a.class_id === c.id && a.status === "active"
-                  );
-                  const teacher = assignment?.teacher;
+          {/* MOBILE VIEW (< md): Touch-Friendly Cards */}
+          <div className="grid grid-cols-1 gap-3 md:hidden">
+            {classGroups.map((group) => {
+              const assignment = classAssignments.find(
+                (a) => group.classIds.includes(a.class_id) && a.status === "active"
+              );
+              const teacher = assignment?.teacher;
 
-                  return (
-                    <tr key={c.id} className="hover:bg-slate-50/70 transition">
-                      <td className="px-6 py-3.5 font-bold text-slate-900 text-sm">{c.name}</td>
-                      <td className="px-4 py-3.5 text-slate-500 font-medium">Main</td>
+              return (
+                <div key={group.name} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-base">{group.name}</h4>
+                      {group.subName ? (
+                        <p className="text-[11px] text-blue-600 font-semibold">{group.subName}</p>
+                      ) : (
+                        <p className="text-[11px] text-slate-400">Main Class</p>
+                      )}
+                    </div>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                        teacher
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                          : "bg-amber-100 text-amber-800 border border-amber-200"
+                      }`}
+                    >
+                      {teacher ? "Assigned" : "Vacant"}
+                    </span>
+                  </div>
 
-                      <td className="px-6 py-3.5">
-                        {teacher ? (
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs shrink-0">
-                              {teacher.display_name?.charAt(0) || "T"}
-                            </div>
-                            <div>
-                              <div className="font-bold text-slate-900">{teacher.display_name}</div>
-                              <div className="text-[10px] font-mono text-slate-500">{teacher.staff_id || teacher.email}</div>
-                            </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                      Assigned Class Teacher
+                    </span>
+                    {teacher ? (
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs shrink-0">
+                          {teacher.display_name?.charAt(0) || "T"}
+                        </div>
+                        <div>
+                          <div className="font-bold text-slate-900 text-xs">{teacher.display_name}</div>
+                          <div className="text-[10px] font-mono text-indigo-700 font-bold">{teacher.staff_id || teacher.email}</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">
+                            Assigned: <span className="font-mono text-slate-700 font-medium">{assignment?.start_date || "—"}</span>
                           </div>
-                        ) : (
-                          <span className="text-amber-600 font-semibold italic text-xs">No Class Teacher Assigned</span>
-                        )}
-                      </td>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-amber-700 italic font-medium">No Class Teacher Assigned</p>
+                    )}
+                  </div>
 
-                      <td className="px-4 py-3.5">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            teacher
-                              ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
-                              : "bg-amber-100 text-amber-800 border border-amber-200"
-                          }`}
-                        >
-                          {teacher ? "Assigned" : "Vacant"}
-                        </span>
-                      </td>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAssignClassModal(group)}
+                      className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs cursor-pointer transition text-center shadow-xs"
+                    >
+                      {teacher ? "Change Teacher" : "Assign Teacher"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenClassHistory(group)}
+                      className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold text-xs cursor-pointer transition text-center"
+                    >
+                      History
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
-                      <td className="px-4 py-3.5 text-slate-500 font-mono text-[11px]">
-                        {assignment?.start_date || "—"}
-                      </td>
+          {/* DESKTOP VIEW (>= md): Full Table with overflow-x-auto */}
+          <div className="hidden md:block bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    <th className="px-6 py-3.5">Class / Level</th>
+                    <th className="px-4 py-3.5">Coverage</th>
+                    <th className="px-6 py-3.5">Current Class Teacher ({selectedSession})</th>
+                    <th className="px-4 py-3.5">Status</th>
+                    <th className="px-4 py-3.5">Assigned Date</th>
+                    <th className="px-6 py-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                  {classGroups.map((group) => {
+                    const assignment = classAssignments.find(
+                      (a) => group.classIds.includes(a.class_id) && a.status === "active"
+                    );
+                    const teacher = assignment?.teacher;
 
-                      <td className="px-6 py-3.5 text-right space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenAssignClassModal(c)}
-                          className="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-xs cursor-pointer transition"
-                        >
-                          {teacher ? "Change Teacher" : "Assign Teacher"}
-                        </button>
+                    return (
+                      <tr key={group.name} className="hover:bg-slate-50/70 transition">
+                        <td className="px-6 py-3.5 font-bold text-slate-900 text-sm">{group.name}</td>
+                        <td className="px-4 py-3.5">
+                          <span className="text-xs text-slate-600 font-medium">
+                            {group.subName || "Main"}
+                          </span>
+                        </td>
 
-                        <button
-                          type="button"
-                          onClick={() => handleOpenClassHistory(c)}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold text-xs cursor-pointer transition"
-                        >
-                          History
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        <td className="px-6 py-3.5">
+                          {teacher ? (
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs shrink-0">
+                                {teacher.display_name?.charAt(0) || "T"}
+                              </div>
+                              <div>
+                                <div className="font-bold text-slate-900">{teacher.display_name}</div>
+                                <div className="text-[10px] font-mono text-indigo-700 font-bold">{teacher.staff_id || teacher.email}</div>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-amber-600 font-semibold italic text-xs">No Class Teacher Assigned</span>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3.5">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              teacher
+                                ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                : "bg-amber-100 text-amber-800 border border-amber-200"
+                            }`}
+                          >
+                            {teacher ? "Assigned" : "Vacant"}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3.5 text-slate-600 font-mono text-[11px]">
+                          {assignment?.start_date || "—"}
+                        </td>
+
+                        <td className="px-6 py-3.5 text-right space-x-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAssignClassModal(group)}
+                            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-xs cursor-pointer transition"
+                          >
+                            {teacher ? "Change Teacher" : "Assign Teacher"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenClassHistory(group)}
+                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold text-xs cursor-pointer transition"
+                          >
+                            History
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -727,101 +873,172 @@ export default function AdminTeachersPage() {
           </div>
 
           {/* Class Filter Dropdown */}
-          <div className="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-200">
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Select Class:</span>
-            <select
-              value={selectedSubjectClass}
-              onChange={(e) => setSelectedSubjectClass(e.target.value)}
-              className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 w-64"
-            >
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-white p-4 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider shrink-0">Select Class:</span>
+              <select
+                value={selectedSubjectClass}
+                onChange={(e) => setSelectedSubjectClass(e.target.value)}
+                className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 w-full sm:w-64"
+              >
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-            <span className="text-xs text-slate-400 ml-auto font-medium">
-              Showing all {subjects.length} subjects for {classes.find((c) => c.id === selectedSubjectClass)?.name}
+            <span className="text-xs text-slate-500 sm:ml-auto font-medium">
+              Showing all {subjects.length} subjects for <span className="font-bold text-slate-900">{classes.find((c) => c.id === selectedSubjectClass)?.name}</span>
             </span>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  <th className="px-6 py-3.5">Subject</th>
-                  <th className="px-6 py-3.5">Assigned Subject Teacher ({selectedSession})</th>
-                  <th className="px-4 py-3.5">Status</th>
-                  <th className="px-4 py-3.5">Assigned Since</th>
-                  <th className="px-6 py-3.5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                {subjects.map((sub) => {
-                  const assignment = subjectAssignments.find(
-                    (a) => a.class_id === selectedSubjectClass && a.subject_id === sub.id && a.status === "active"
-                  );
-                  const teacher = assignment?.teacher;
+          {/* MOBILE VIEW (< md): Touch-Friendly Subject Cards */}
+          <div className="grid grid-cols-1 gap-3 md:hidden">
+            {subjects.map((sub) => {
+              const assignment = subjectAssignments.find(
+                (a) => a.class_id === selectedSubjectClass && a.subject_id === sub.id && a.status === "active"
+              );
+              const teacher = assignment?.teacher;
 
-                  return (
-                    <tr key={sub.id} className="hover:bg-slate-50/70 transition">
-                      <td className="px-6 py-3.5 font-bold text-slate-900">{sub.name}</td>
+              return (
+                <div key={sub.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <h4 className="font-bold text-slate-900 text-sm">{sub.name}</h4>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                        teacher
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {teacher ? "Assigned" : "Unassigned"}
+                    </span>
+                  </div>
 
-                      <td className="px-6 py-3.5">
-                        {teacher ? (
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs shrink-0">
-                              {teacher.display_name?.charAt(0) || "T"}
-                            </div>
-                            <div>
-                              <div className="font-bold text-slate-900">{teacher.display_name}</div>
-                              <div className="text-[10px] font-mono text-slate-500">{teacher.staff_id || teacher.email}</div>
-                            </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                      Assigned Subject Teacher
+                    </span>
+                    {teacher ? (
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs shrink-0">
+                          {teacher.display_name?.charAt(0) || "T"}
+                        </div>
+                        <div>
+                          <div className="font-bold text-slate-900 text-xs">{teacher.display_name}</div>
+                          <div className="text-[10px] font-mono text-indigo-700 font-bold">{teacher.staff_id || teacher.email}</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">
+                            Assigned Since: <span className="font-mono text-slate-700 font-medium">{assignment?.start_date || "—"}</span>
                           </div>
-                        ) : (
-                          <span className="text-slate-400 italic text-xs">Unassigned</span>
-                        )}
-                      </td>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400 italic">No subject teacher assigned yet</p>
+                    )}
+                  </div>
 
-                      <td className="px-4 py-3.5">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            teacher
-                              ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
-                              : "bg-slate-100 text-slate-500"
-                          }`}
-                        >
-                          {teacher ? "Assigned" : "Unassigned"}
-                        </span>
-                      </td>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAssignSubjectModal(sub)}
+                      className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs cursor-pointer transition text-center shadow-xs"
+                    >
+                      {teacher ? "Change Teacher" : "Assign Teacher"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenSubjectHistory(sub)}
+                      className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold text-xs cursor-pointer transition text-center"
+                    >
+                      History
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
-                      <td className="px-4 py-3.5 text-slate-500 font-mono text-[11px]">
-                        {assignment?.start_date || "—"}
-                      </td>
+          {/* DESKTOP VIEW (>= md): Full Table with overflow-x-auto */}
+          <div className="hidden md:block bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    <th className="px-6 py-3.5">Subject</th>
+                    <th className="px-6 py-3.5">Assigned Subject Teacher ({selectedSession})</th>
+                    <th className="px-4 py-3.5">Status</th>
+                    <th className="px-4 py-3.5">Assigned Since</th>
+                    <th className="px-6 py-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                  {subjects.map((sub) => {
+                    const assignment = subjectAssignments.find(
+                      (a) => a.class_id === selectedSubjectClass && a.subject_id === sub.id && a.status === "active"
+                    );
+                    const teacher = assignment?.teacher;
 
-                      <td className="px-6 py-3.5 text-right space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenAssignSubjectModal(sub)}
-                          className="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-xs cursor-pointer transition"
-                        >
-                          {teacher ? "Change Teacher" : "Assign Teacher"}
-                        </button>
+                    return (
+                      <tr key={sub.id} className="hover:bg-slate-50/70 transition">
+                        <td className="px-6 py-3.5 font-bold text-slate-900">{sub.name}</td>
 
-                        <button
-                          type="button"
-                          onClick={() => handleOpenSubjectHistory(sub)}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold text-xs cursor-pointer transition"
-                        >
-                          History
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        <td className="px-6 py-3.5">
+                          {teacher ? (
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs shrink-0">
+                                {teacher.display_name?.charAt(0) || "T"}
+                              </div>
+                              <div>
+                                <div className="font-bold text-slate-900">{teacher.display_name}</div>
+                                <div className="text-[10px] font-mono text-indigo-700 font-bold">{teacher.staff_id || teacher.email}</div>
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic text-xs">Unassigned</span>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3.5">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              teacher
+                                ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                : "bg-slate-100 text-slate-500"
+                            }`}
+                          >
+                            {teacher ? "Assigned" : "Unassigned"}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3.5 text-slate-600 font-mono text-[11px]">
+                          {assignment?.start_date || "—"}
+                        </td>
+
+                        <td className="px-6 py-3.5 text-right space-x-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAssignSubjectModal(sub)}
+                            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-xs cursor-pointer transition"
+                          >
+                            {teacher ? "Change Teacher" : "Assign Teacher"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSubjectHistory(sub)}
+                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold text-xs cursor-pointer transition"
+                          >
+                            History
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -833,9 +1050,14 @@ export default function AdminTeachersPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 border border-slate-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-bold text-base text-slate-900">
-                Assign Class Teacher — {targetClassForAssignment.name}
-              </h3>
+              <div>
+                <h3 className="font-bold text-base text-slate-900">
+                  Assign Class Teacher — {targetClassForAssignment.name}
+                </h3>
+                {targetClassForAssignment.subName && (
+                  <p className="text-xs text-blue-600 font-semibold">{targetClassForAssignment.subName}</p>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setAssignClassModalOpen(false)}
@@ -889,8 +1111,10 @@ export default function AdminTeachersPage() {
                 />
               </div>
 
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-500">
-                Note: Assigning a new teacher will automatically end any active class teacher assignment for this class while preserving audit history.
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-800">
+                {targetClassForAssignment.subName
+                  ? `Assigning this Class Teacher will automatically apply to all arms (${targetClassForAssignment.subName}) for attendance and remarks.`
+                  : "Assigning a new teacher will automatically end any active class teacher assignment for this class while preserving audit history."}
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
@@ -926,7 +1150,9 @@ export default function AdminTeachersPage() {
                 <h3 className="font-bold text-base text-slate-900">
                   Class Teacher History — {selectedClassForHistory.name}
                 </h3>
-                <p className="text-xs text-slate-500">Session: {selectedSession}</p>
+                <p className="text-xs text-slate-500">
+                  {selectedClassForHistory.subName ? `${selectedClassForHistory.subName} • ` : ""}Session: {selectedSession}
+                </p>
               </div>
               <button
                 type="button"

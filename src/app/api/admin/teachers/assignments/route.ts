@@ -145,48 +145,58 @@ export async function POST(req: NextRequest) {
     const todayStr = new Date().toISOString().split("T")[0];
 
     if (type === "class") {
-      // 1. Mark previous active class teacher as ended
-      let endQuery = service
-        .from("class_teacher_assignments")
-        .update({ status: "ended", end_date: todayStr })
-        .eq("academic_session_id", effectiveSessionId)
-        .eq("class_id", classId)
-        .eq("status", "active");
+      const targetClassIds: string[] = Array.isArray(body.classIds) && body.classIds.length > 0 
+        ? body.classIds 
+        : [classId];
 
-      if (sectionId) {
-        endQuery = endQuery.eq("section_id", sectionId);
-      } else {
-        endQuery = endQuery.is("section_id", null);
+      const insertedList: any[] = [];
+
+      for (const cid of targetClassIds) {
+        // 1. Mark previous active class teacher as ended
+        let endQuery = service
+          .from("class_teacher_assignments")
+          .update({ status: "ended", end_date: todayStr })
+          .eq("academic_session_id", effectiveSessionId)
+          .eq("class_id", cid)
+          .eq("status", "active");
+
+        if (sectionId) {
+          endQuery = endQuery.eq("section_id", sectionId);
+        } else {
+          endQuery = endQuery.is("section_id", null);
+        }
+        await endQuery;
+
+        // 2. Insert new active class teacher assignment
+        const { data: newAssignment, error: insErr } = await service
+          .from("class_teacher_assignments")
+          .insert({
+            academic_session_id: effectiveSessionId,
+            session,
+            class_id: cid,
+            section_id: sectionId || null,
+            teacher_user_id: teacherUserId,
+            status: "active",
+            start_date: todayStr,
+            notes: notes || null,
+          })
+          .select("*")
+          .single();
+
+        if (insErr) {
+          return NextResponse.json({ ok: false, error: insErr.message }, { status: 400 });
+        }
+
+        insertedList.push(newAssignment);
+
+        // Backward compatibility: sync classes.class_teacher_id
+        await service
+          .from("classes")
+          .update({ class_teacher_id: teacherUserId })
+          .eq("id", cid);
       }
-      await endQuery;
 
-      // 2. Insert new active class teacher assignment
-      const { data: newAssignment, error: insErr } = await service
-        .from("class_teacher_assignments")
-        .insert({
-          academic_session_id: effectiveSessionId,
-          session,
-          class_id: classId,
-          section_id: sectionId || null,
-          teacher_user_id: teacherUserId,
-          status: "active",
-          start_date: todayStr,
-          notes: notes || null,
-        })
-        .select("*")
-        .single();
-
-      if (insErr) {
-        return NextResponse.json({ ok: false, error: insErr.message }, { status: 400 });
-      }
-
-      // Backward compatibility: sync classes.class_teacher_id
-      await service
-        .from("classes")
-        .update({ class_teacher_id: teacherUserId })
-        .eq("id", classId);
-
-      return NextResponse.json({ ok: true, assignment: newAssignment });
+      return NextResponse.json({ ok: true, assignment: insertedList[0], assignments: insertedList });
     } else if (type === "subject") {
       if (!subjectId) {
         return NextResponse.json(
