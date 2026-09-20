@@ -157,12 +157,12 @@ export default function ResultDashboardApp({
       const ms = data?.publishedMilestones;
       if (ms) {
         if (ms.tr) {
-          setTab((prev) => (prev === "pr1" || prev === "pr2" || prev === "pr3" || prev === "tr" || prev === "all" ? prev : "all"));
-        } else if (ms.pr3) {
+          setTab((prev) => ((prev === "pr1" && ms.pr1) || (prev === "pr2" && ms.pr2) || (prev === "pr3" && ms.pr3) || prev === "tr" || prev === "all") ? prev : "all");
+        } else if (ms.pr3 && (!ms[tab as keyof typeof ms])) {
           setTab("pr3");
-        } else if (ms.pr2) {
+        } else if (ms.pr2 && (!ms[tab as keyof typeof ms])) {
           setTab("pr2");
-        } else if (ms.pr1) {
+        } else if (ms.pr1 && (!ms[tab as keyof typeof ms])) {
           setTab("pr1");
         }
       }
@@ -228,6 +228,13 @@ export default function ResultDashboardApp({
       ? Boolean(report.publishedMilestones?.pr3)
       : false;
 
+  const hasAnyPublished = Boolean(
+    report?.publishedMilestones?.pr1 ||
+    report?.publishedMilestones?.pr2 ||
+    report?.publishedMilestones?.pr3 ||
+    report?.publishedMilestones?.tr
+  );
+
   const reportTitle =
     tab === "pr1"
       ? `${report.termLabel} Progress Report 1 Result`
@@ -278,63 +285,65 @@ export default function ResultDashboardApp({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Prominent Milestone Selection Tabs */}
-            <div className="inline-flex rounded-xl border-2 border-slate-200 p-1 bg-slate-100 text-xs font-bold shadow-xs">
-              {report?.publishedMilestones?.tr && (
-                <button
-                  onClick={() => setTab("all")}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    tab === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  Overview
-                </button>
-              )}
-              <button
-                onClick={() => setTab("pr1")}
-                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                  tab === "pr1" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <span>PR 1</span>
-                {report?.publishedMilestones?.pr1 && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                )}
-              </button>
-              <button
-                onClick={() => setTab("pr2")}
-                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                  tab === "pr2" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <span>PR 2</span>
-                {report?.publishedMilestones?.pr2 && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                )}
-              </button>
-              <button
-                onClick={() => setTab("pr3")}
-                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                  tab === "pr3" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <span>PR 3</span>
-                {report?.publishedMilestones?.pr3 && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                )}
-              </button>
-              <button
-                onClick={() => setTab("tr")}
-                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                  tab === "tr" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <span>Terminal</span>
+            {/* Prominent Milestone Selection Tabs - ONLY SHOW PUBLISHED ONES */}
+            {hasAnyPublished && (
+              <div className="inline-flex rounded-xl border-2 border-slate-200 p-1 bg-slate-100 text-xs font-bold shadow-xs">
                 {report?.publishedMilestones?.tr && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <button
+                    onClick={() => setTab("all")}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                      tab === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Overview
+                  </button>
                 )}
-              </button>
-            </div>
+                {report?.publishedMilestones?.pr1 && (
+                  <button
+                    onClick={() => setTab("pr1")}
+                    className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                      tab === "pr1" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <span>PR 1</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  </button>
+                )}
+                {report?.publishedMilestones?.pr2 && (
+                  <button
+                    onClick={() => setTab("pr2")}
+                    className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                      tab === "pr2" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <span>PR 2</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  </button>
+                )}
+                {report?.publishedMilestones?.pr3 && (
+                  <button
+                    onClick={() => setTab("pr3")}
+                    className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                      tab === "pr3" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <span>PR 3</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  </button>
+                )}
+                {report?.publishedMilestones?.tr && (
+                  <button
+                    onClick={() => setTab("tr")}
+                    className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                      tab === "tr" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <span>Terminal</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  </button>
+                )}
+              </div>
+            )}
 
             <button
               onClick={handlePrint}
@@ -395,8 +404,20 @@ export default function ResultDashboardApp({
           </div>
         </div>
 
-        {/* If the selected milestone is NOT published, display a clean empty state and do NOT load table */}
-        {!isCurrentTabPublished ? (
+        {/* If no milestones published or selected milestone is NOT published */}
+        {!hasAnyPublished ? (
+          <div className="my-12 p-8 sm:p-12 text-center max-w-xl mx-auto bg-slate-50 border border-slate-200/80 rounded-2xl shadow-xs">
+            <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
+              🔒
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 mb-1">
+              No Results Published Yet
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 leading-relaxed max-w-md mx-auto">
+              The school administration has not released any progress reports or terminal examination results for {report.termLabel} ({report.session}) yet. Please check back later.
+            </p>
+          </div>
+        ) : !isCurrentTabPublished ? (
           <div className="my-12 p-8 sm:p-12 text-center max-w-xl mx-auto bg-slate-50 border border-slate-200/80 rounded-2xl shadow-xs">
             <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
               🔒
@@ -405,7 +426,7 @@ export default function ResultDashboardApp({
               {reportTitle} Not Published Yet
             </h3>
             <p className="text-xs sm:text-sm text-slate-500 leading-relaxed max-w-md mx-auto">
-              The {reportTitle.toLowerCase()} for {report.termLabel} ({report.session}) has not been released by the school administration yet. Please check back soon or switch to an available milestone tab above.
+              The {reportTitle.toLowerCase()} for {report.termLabel} ({report.session}) has not been released by the school administration yet. Please select an available checkpoint tab above.
             </p>
           </div>
         ) : (

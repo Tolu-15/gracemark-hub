@@ -211,14 +211,29 @@ export default function AdminApprovalsPage() {
     setPublishing(true);
     try {
       // 1. Fetch all subjects results for the entire class cohort
-      const { data: allClassResults } = await supabase
+      let { data: allClassResults } = await supabase
         .from("results")
         .select("*, students(id, name, admission_no, class_id), subjects(id, name)")
         .eq("class_id", selectedClass)
         .eq("term", currentTerm);
 
+      if (!allClassResults || allClassResults.length === 0) {
+        const { data: stds } = await supabase.from("students").select("id").eq("class_id", selectedClass);
+        const sIds = (stds || []).map((s) => s.id);
+        if (sIds.length) {
+          const { data: resByS } = await supabase
+            .from("results")
+            .select("*, students(id, name, admission_no, class_id), subjects(id, name)")
+            .in("student_id", sIds)
+            .eq("term", currentTerm);
+          allClassResults = resByS || [];
+        }
+      }
+
+      const allResultsList = (allClassResults && allClassResults.length > 0 ? allClassResults : results);
+
       const studentMap = new Map<string, any[]>();
-      (allClassResults || []).forEach((r) => {
+      allResultsList.forEach((r: any) => {
         if (!studentMap.has(r.student_id)) studentMap.set(r.student_id, []);
         studentMap.get(r.student_id)!.push(r);
       });
@@ -303,7 +318,7 @@ export default function AdminApprovalsPage() {
           ? { pr3_status: "published" }
           : { tr_status: "published", status: "published" };
 
-      const resultIds = results.map((r) => r.id);
+      const resultIds = allResultsList.map((r: any) => r.id);
 
       const res = await fetch("/api/results/batch-publish", {
         method: "POST",

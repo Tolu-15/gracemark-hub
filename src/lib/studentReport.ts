@@ -299,22 +299,43 @@ export async function fetchStudentReport({
     pr3: false,
     tr: false,
   };
+  const publishedSnapshotsMap: Record<string, any> = {};
 
   try {
     let snapQuery = supabase
       .from("published_snapshots")
-      .select("report_type")
+      .select("report_type, snapshot_data, session, term")
       .eq("student_id", student.id)
       .eq("term", term);
     if (session) snapQuery = snapQuery.eq("session", session);
 
-    const { data: snaps } = await snapQuery;
+    let { data: snaps } = await snapQuery;
+    if ((!snaps || snaps.length === 0) && session) {
+      const fbSnap = await supabase
+        .from("published_snapshots")
+        .select("report_type, snapshot_data, session, term")
+        .eq("student_id", student.id)
+        .eq("term", term);
+      if (fbSnap.data && fbSnap.data.length > 0) {
+        snaps = fbSnap.data;
+      }
+    }
+
     (snaps || []).forEach((s: any) => {
       const type = String(s.report_type || "").toLowerCase();
-      if (type === "pr1") publishedMilestones.pr1 = true;
-      else if (type === "pr2") publishedMilestones.pr2 = true;
-      else if (type === "pr3") publishedMilestones.pr3 = true;
-      else if (type === "tr") publishedMilestones.tr = true;
+      if (type === "pr1") {
+        publishedMilestones.pr1 = true;
+        publishedSnapshotsMap.pr1 = s.snapshot_data;
+      } else if (type === "pr2") {
+        publishedMilestones.pr2 = true;
+        publishedSnapshotsMap.pr2 = s.snapshot_data;
+      } else if (type === "pr3") {
+        publishedMilestones.pr3 = true;
+        publishedSnapshotsMap.pr3 = s.snapshot_data;
+      } else if (type === "tr") {
+        publishedMilestones.tr = true;
+        publishedSnapshotsMap.tr = s.snapshot_data;
+      }
     });
   } catch (snapErr) {
     console.warn("Could not fetch published_snapshots:", snapErr);
@@ -402,7 +423,7 @@ export async function fetchStudentReport({
     return isApprovedOrPublished || hasPublishedSnapshot;
   });
 
-  const rows = approvedOrPublishedResults.map((row: any) => {
+  let rows = approvedOrPublishedResults.map((row: any) => {
     const raw = normalizeBreakdown(row);
     const computed = calculateStudentResult(raw, undefined, { isSenior, className });
     const subjectName = row.subjects?.name ?? "Subject";
@@ -454,6 +475,84 @@ export async function fetchStudentReport({
       low: null as any,
     };
   });
+
+  // If no rows found in results table but snapshots exist in published_snapshots, hydrate rows from snapshots!
+  if (rows.length === 0) {
+    const activeSnap =
+      publishedSnapshotsMap.pr2 ||
+      publishedSnapshotsMap.pr1 ||
+      publishedSnapshotsMap.pr3 ||
+      publishedSnapshotsMap.tr;
+
+    if (activeSnap && Array.isArray(activeSnap.subjects)) {
+      activeSnap.subjects.forEach((sub: any, idx: number) => {
+        const subName = sub.subject_name || "Subject";
+        const cw = sub.cw ?? 0;
+        const hw = sub.hw ?? 0;
+        const test = sub.test ?? 0;
+        const project = sub.project ?? 0;
+        const exam = sub.exam ?? 0;
+        const total = sub.total ?? 0;
+        const grade = sub.grade || "—";
+        const remark = sub.remark || "—";
+        const percentage = sub.percentage ?? total;
+
+        const prData = {
+          cw,
+          hw,
+          test,
+          totalCa: total,
+          percentage,
+          grade,
+          status: remark,
+        };
+
+        const getPrForType = (type: string) => {
+          const sObj =
+            publishedSnapshotsMap[type]?.subjects?.find((s: any) => s.subject_name === subName) ||
+            publishedSnapshotsMap[type]?.subjects?.[idx];
+          if (sObj) {
+            return {
+              cw: sObj.cw ?? 0,
+              hw: sObj.hw ?? 0,
+              test: sObj.test ?? 0,
+              totalCa: sObj.total ?? 0,
+              percentage: sObj.percentage ?? sObj.total,
+              grade: sObj.grade || "—",
+              status: sObj.remark || "—",
+            };
+          }
+          return prData;
+        };
+
+        rows.push({
+          subject: subName,
+          subjectId: `snap-${idx}`,
+          cw,
+          hw,
+          test,
+          project,
+          exam,
+          total,
+          term1_total: null,
+          term2_total: null,
+          term3_total: null,
+          annualAverage: null,
+          grade,
+          remark,
+          pr: prData,
+          prs: {
+            pr1: getPrForType("pr1"),
+            pr2: getPrForType("pr2"),
+            pr3: getPrForType("pr3"),
+          },
+          classAverage: null as any,
+          high: null as any,
+          low: null as any,
+        });
+      });
+    }
+  }
 
   rows.sort((a: any, b: any) => a.subject.localeCompare(b.subject));
 
