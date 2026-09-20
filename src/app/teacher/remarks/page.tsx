@@ -19,8 +19,6 @@ interface EvaluationRow {
   sports: number | "";
   crafts: number | "";
   music: number | "";
-  teacher_remark: string;
-  principal_remark: string;
 }
 
 export default function TeacherRemarksPage() {
@@ -57,25 +55,68 @@ export default function TeacherRemarksPage() {
       const curTerm = settings?.current_term || settings?.active_term;
       if (curTerm) setTerm(curTerm);
 
-      // Fetch teacher assignments
-      const { data: assignments, error } = await supabase
-        .from("teacher_assignments")
-        .select("class_id, classes(id, name)")
-        .eq("teacher_user_id", teacherUid);
+      // Fetch teacher assignments across all assignment sources
+      const idList = Array.from(new Set([teacherUid, user.id].filter(Boolean)));
+      const uniqueClassesMap = new Map<string, ClassRecord>();
 
-      if (error) {
-        console.error("Error fetching assignments:", error);
-        return;
+      // 1. class_teacher_assignments
+      try {
+        const { data: cta } = await supabase
+          .from("class_teacher_assignments")
+          .select("class_id, classes(id, name)")
+          .in("teacher_user_id", idList)
+          .eq("status", "active");
+        (cta || []).forEach((a: any) => {
+          if (a.classes?.id && a.classes?.name) uniqueClassesMap.set(a.classes.id, a.classes);
+        });
+      } catch (e) {
+        console.warn("CTA lookup failed:", e);
       }
 
-      const uniqueClassesMap = new Map<string, ClassRecord>();
-      (assignments || []).forEach((asg: any) => {
-        if (asg.classes?.id && asg.classes?.name) {
-          uniqueClassesMap.set(asg.classes.id, asg.classes);
-        }
-      });
+      // 2. classes where class_teacher_id matches
+      try {
+        const { data: ctClasses } = await supabase
+          .from("classes")
+          .select("id, name")
+          .in("class_teacher_id", idList);
+        (ctClasses || []).forEach((c: any) => {
+          if (c?.id && c?.name) uniqueClassesMap.set(c.id, c);
+        });
+      } catch (e) {
+        console.warn("classes.class_teacher_id lookup failed:", e);
+      }
 
-      const classList = Array.from(uniqueClassesMap.values());
+      // 3. subject_teacher_assignments
+      try {
+        const { data: subAssigns } = await supabase
+          .from("subject_teacher_assignments")
+          .select("class_id, classes(id, name)")
+          .in("teacher_user_id", idList)
+          .eq("status", "active");
+        (subAssigns || []).forEach((a: any) => {
+          if (a.classes?.id && a.classes?.name) uniqueClassesMap.set(a.classes.id, a.classes);
+        });
+      } catch (e) {
+        // table not ready yet
+      }
+
+      // 4. legacy teacher_assignments
+      try {
+        const { data: assignments } = await supabase
+          .from("teacher_assignments")
+          .select("class_id, classes(id, name)")
+          .in("teacher_user_id", idList);
+
+        (assignments || []).forEach((asg: any) => {
+          if (asg.classes?.id && asg.classes?.name) {
+            uniqueClassesMap.set(asg.classes.id, asg.classes);
+          }
+        });
+      } catch (e) {
+        // fallback
+      }
+
+      const classList = Array.from(uniqueClassesMap.values()).sort((a, b) => a.name.localeCompare(b.name));
       setClasses(classList);
       if (classList.length > 0) {
         setSelectedClass(classList[0].id);
@@ -136,8 +177,6 @@ export default function TeacherRemarksPage() {
             sports: ev?.sports ?? "",
             crafts: ev?.crafts ?? "",
             music: ev?.music ?? "",
-            teacher_remark: ev?.teacher_remark || "",
-            principal_remark: ev?.principal_remark || "",
           };
         });
 
@@ -164,17 +203,6 @@ export default function TeacherRemarksPage() {
     });
   };
 
-  const handleRemarkChange = (index: number, field: "teacher_remark" | "principal_remark", value: string) => {
-    setRows((prev) => {
-      const next = [...prev];
-      next[index] = {
-        ...next[index],
-        [field]: value,
-      };
-      return next;
-    });
-  };
-
   const saveEvaluations = async () => {
     if (!selectedClass || !term) return;
     setSaving(true);
@@ -196,8 +224,6 @@ export default function TeacherRemarksPage() {
       sports: r.sports === "" ? null : Number(r.sports),
       crafts: r.crafts === "" ? null : Number(r.crafts),
       music: r.music === "" ? null : Number(r.music),
-      teacher_remark: r.teacher_remark.trim() || null,
-      principal_remark: r.principal_remark.trim() || null,
       updated_at: new Date().toISOString(),
     }));
 
@@ -280,20 +306,18 @@ export default function TeacherRemarksPage() {
                   <th className="px-2 py-4 text-center">Sprt</th>
                   <th className="px-2 py-4 text-center">Crft</th>
                   <th className="px-2 py-4 text-center">Musc</th>
-                  <th className="px-4 py-4 min-w-[200px]">Form Teacher's Remark</th>
-                  <th className="px-4 py-4 min-w-[200px]">Principal's Remark</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={13} className="px-6 py-8 text-center text-slate-500">
+                    <td colSpan={11} className="px-6 py-8 text-center text-slate-500">
                       Loading students and evaluations...
                     </td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-6 py-8 text-center text-slate-500">
+                    <td colSpan={11} className="px-6 py-8 text-center text-slate-500">
                       {classes.length === 0 ? "No classes assigned to you." : "No students found in this class."}
                     </td>
                   </tr>
@@ -322,24 +346,6 @@ export default function TeacherRemarksPage() {
                           </select>
                         </td>
                       ))}
-                      <td className="px-2 py-3">
-                        <input
-                          type="text"
-                          value={r.teacher_remark}
-                          onChange={(e) => handleRemarkChange(idx, "teacher_remark", e.target.value)}
-                          className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-500"
-                          placeholder="e.g. Attentive learner"
-                        />
-                      </td>
-                      <td className="px-2 py-3">
-                        <input
-                          type="text"
-                          value={r.principal_remark}
-                          onChange={(e) => handleRemarkChange(idx, "principal_remark", e.target.value)}
-                          className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-500"
-                          placeholder="e.g. Promising result"
-                        />
-                      </td>
                     </tr>
                   ))
                 )}

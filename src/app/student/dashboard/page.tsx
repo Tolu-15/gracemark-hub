@@ -35,6 +35,7 @@ export default function StudentDashboardPage() {
 
   const [results, setResults] = useState<any[]>([]);
   const [loadingResults, setLoadingResults] = useState(false);
+  const [activeMilestoneTitle, setActiveMilestoneTitle] = useState("");
 
   // Breakdown modal state
   const [activeBreakdown, setActiveBreakdown] = useState<any | null>(null);
@@ -221,20 +222,41 @@ export default function StudentDashboardPage() {
         const hasAnyPublished = publishedMilestones.pr1 || publishedMilestones.pr2 || publishedMilestones.pr3 || publishedMilestones.tr;
         const hasApproved = (data || []).some((r: any) => r.status === "approved");
 
-        // Filter results: If milestone gating is used, only show when at least one milestone is published or results are approved
         if (!hasAnyPublished && !hasApproved) {
           setResults([]);
+          setActiveMilestoneTitle("Results Awaiting Publication");
           return;
         }
 
         // Determine highest published milestone (TR > PR3 > PR2 > PR1)
-        const activeMilestone = publishedMilestones.tr || (!hasAnyPublished && hasApproved)
+        const activeMilestone = publishedMilestones.tr
           ? "tr"
           : publishedMilestones.pr3
           ? "pr3"
           : publishedMilestones.pr2
           ? "pr2"
-          : "pr1";
+          : publishedMilestones.pr1
+          ? "pr1"
+          : hasApproved
+          ? "tr"
+          : "none";
+
+        if (activeMilestone === "none") {
+          setResults([]);
+          setActiveMilestoneTitle("Results Awaiting Publication");
+          return;
+        }
+
+        const title =
+          activeMilestone === "tr"
+            ? "Terminal Report Available"
+            : activeMilestone === "pr3"
+            ? "Progress Report 3 Available"
+            : activeMilestone === "pr2"
+            ? "Progress Report 2 Available"
+            : "Progress Report 1 Available";
+
+        setActiveMilestoneTitle(title);
 
         const formatted = (data || [])
           .filter((r: any) => r.status === "approved" || r.status === "published" || r.pr1_status === "published" || r.pr2_status === "published" || r.pr3_status === "published" || r.tr_status === "published")
@@ -380,12 +402,28 @@ export default function StudentDashboardPage() {
         </div>
 
         {/* Results Viewer Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-          <div className="flex items-center gap-2">
-            <h3 className="text-lg font-semibold text-slate-800">My Approved Results</h3>
-            <span className="text-xs px-2.5 py-0.5 bg-slate-100 text-slate-600 rounded-full font-bold">
-              {results.length} subjects
-            </span>
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${results.length > 0 ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-slate-100 text-slate-500"}`}>
+              {results.length > 0 ? "📑" : "⏳"}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-bold text-slate-900 tracking-tight">
+                  {results.length > 0 ? activeMilestoneTitle : "Academic Reports"}
+                </h3>
+                {results.length > 0 && (
+                  <span className="text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-extrabold uppercase">
+                    Published
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500">
+                {results.length > 0
+                  ? `Showing official verified scores for ${term.toUpperCase()} (${session})`
+                  : `Select term or session to check published reports`}
+              </p>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2 items-center">
@@ -419,7 +457,7 @@ export default function StudentDashboardPage() {
 
             <button
               onClick={() => setShowFullReport(true)}
-              className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-indigo-700 transition-colors inline-flex items-center gap-1.5"
+              className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-indigo-700 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -432,15 +470,17 @@ export default function StudentDashboardPage() {
         {/* Results Cards Grid */}
         {loadingResults ? (
           <div className="p-8 text-center text-slate-500 bg-white border border-slate-200 rounded-xl shadow-sm">
-            Loading your approved results…
+            Checking published academic reports…
           </div>
         ) : results.length === 0 ? (
-          <div className="p-12 text-center text-slate-500 bg-white border border-slate-200 rounded-xl shadow-sm">
-            <svg className="w-10 h-10 text-slate-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <p className="font-semibold text-slate-700">No approved results found</p>
-            <p className="text-xs text-slate-400 mt-1">Results for this term have not been published by administration yet.</p>
+          <div className="p-10 text-center bg-white border border-slate-200/80 rounded-2xl shadow-xs">
+            <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-3 text-xl">
+              🔒
+            </div>
+            <h4 className="font-bold text-slate-900 text-base">Results Awaiting Publication</h4>
+            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+              Terminal and checkpoint progress reports for this period have not been published by administration yet. Check back soon.
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

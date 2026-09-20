@@ -306,11 +306,21 @@ export default function TeacherScoreEntryPage() {
     setStatusMsg("");
 
     try {
-      const recordsToSave = rows.map((r) => {
-        const tr = calculateTR(r.raw, { isSenior, className: selectedClassName });
-        const stored = toStoredScores(tr, r.raw);
+      const recordsToSave: any[] = [];
+      const deletedResultIds: string[] = [];
 
-        return {
+      rows.forEach((r) => {
+        const tr = calculateTR(r.raw, { isSenior, className: selectedClassName });
+        if (!tr.hasData) {
+          // If student has no scores entered and had a previously saved result row, mark for deletion
+          if (r.resultId) {
+            deletedResultIds.push(r.resultId);
+          }
+          return;
+        }
+
+        const stored = toStoredScores(tr, r.raw);
+        recordsToSave.push({
           student_id: r.student_id,
           subject_id: selectedSubject,
           class_id: selectedClass,
@@ -318,15 +328,21 @@ export default function TeacherScoreEntryPage() {
           session: currentSession,
           academic_session_id: currentSessionId || undefined,
           ...stored,
-          status: submit ? "submitted" : r.status || "draft",
+          status: submit ? "submitted" : "draft",
           submitted_at: submit ? new Date().toISOString() : undefined,
-        };
+        });
       });
+
+      if (!recordsToSave.length && !deletedResultIds.length) {
+        setStatusMsg("No scores have been entered for this subject yet. Please enter at least one score before saving.");
+        setSaving(false);
+        return;
+      }
 
       const res = await fetch("/api/results/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ records: recordsToSave }),
+        body: JSON.stringify({ records: recordsToSave, deletedResultIds }),
       });
 
       const resJson = await res.json();

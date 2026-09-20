@@ -95,8 +95,25 @@ export default function LoginPage() {
         return;
       }
 
-      // Check if user must change password
+      // Check if user must change password or logged in with a default password
+      const DEFAULT_PASSWORDS = new Set([
+        "gracemark",
+        "gracemark2026!",
+        "student123",
+        "teacher123",
+        "student",
+        "password",
+        "password123",
+        "123456",
+        "12345678",
+      ]);
+
       let mustChange = Boolean((profile as any)?.must_change_password);
+      const cleanPw = password.trim().toLowerCase();
+      if (DEFAULT_PASSWORDS.has(cleanPw) || password.trim().startsWith("Gma@")) {
+        mustChange = true;
+      }
+
       if (!mustChange && profile.role === "student") {
         try {
           const { data: std } = await supabase

@@ -217,6 +217,26 @@ export default function ResultDashboardApp({
 
   const isPrView = tab === "pr1" || tab === "pr2" || tab === "pr3";
 
+  const isCurrentTabPublished =
+    tab === "all" || tab === "tr"
+      ? Boolean(report.publishedMilestones?.tr)
+      : tab === "pr1"
+      ? Boolean(report.publishedMilestones?.pr1)
+      : tab === "pr2"
+      ? Boolean(report.publishedMilestones?.pr2)
+      : tab === "pr3"
+      ? Boolean(report.publishedMilestones?.pr3)
+      : false;
+
+  const reportTitle =
+    tab === "pr1"
+      ? `${report.termLabel} Progress Report 1 Result`
+      : tab === "pr2"
+      ? `${report.termLabel} Progress Report 2 Result`
+      : tab === "pr3"
+      ? `${report.termLabel} Progress Report 3 Result`
+      : `${report.termLabel} Terminal Examination Result`;
+
   return (
     <div className="rd-root bg-white text-slate-900 print:p-0">
       <div className="rd-inner max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
@@ -258,63 +278,68 @@ export default function ResultDashboardApp({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-lg border border-slate-200 p-1 bg-slate-50 text-xs font-semibold">
-              {/* If TR is published or if multiple are published, show Overview */}
-              {(report?.publishedMilestones?.tr || !report?.publishedMilestones || (Number(!!report?.publishedMilestones?.pr1) + Number(!!report?.publishedMilestones?.pr2) + Number(!!report?.publishedMilestones?.pr3) + Number(!!report?.publishedMilestones?.tr) > 1)) && (
+            {/* Prominent Milestone Selection Tabs */}
+            <div className="inline-flex rounded-xl border-2 border-slate-200 p-1 bg-slate-100 text-xs font-bold shadow-xs">
+              {report?.publishedMilestones?.tr && (
                 <button
                   onClick={() => setTab("all")}
-                  className={`px-3 py-1 rounded-md transition-colors ${
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                     tab === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
                   Overview
                 </button>
               )}
-              {(!report?.publishedMilestones || report?.publishedMilestones?.pr1) && (
-                <button
-                  onClick={() => setTab("pr1")}
-                  className={`px-3 py-1 rounded-md transition-colors ${
-                    tab === "pr1" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  PR 1
-                </button>
-              )}
-              {(!report?.publishedMilestones || report?.publishedMilestones?.pr2) && (
-                <button
-                  onClick={() => setTab("pr2")}
-                  className={`px-3 py-1 rounded-md transition-colors ${
-                    tab === "pr2" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  PR 2
-                </button>
-              )}
-              {(!report?.publishedMilestones || report?.publishedMilestones?.pr3) && (
-                <button
-                  onClick={() => setTab("pr3")}
-                  className={`px-3 py-1 rounded-md transition-colors ${
-                    tab === "pr3" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  PR 3
-                </button>
-              )}
-              {(!report?.publishedMilestones || report?.publishedMilestones?.tr) && (
-                <button
-                  onClick={() => setTab("tr")}
-                  className={`px-3 py-1 rounded-md transition-colors ${
-                    tab === "tr" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  Terminal
-                </button>
-              )}
+              <button
+                onClick={() => setTab("pr1")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  tab === "pr1" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <span>PR 1</span>
+                {report?.publishedMilestones?.pr1 && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                )}
+              </button>
+              <button
+                onClick={() => setTab("pr2")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  tab === "pr2" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <span>PR 2</span>
+                {report?.publishedMilestones?.pr2 && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                )}
+              </button>
+              <button
+                onClick={() => setTab("pr3")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  tab === "pr3" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <span>PR 3</span>
+                {report?.publishedMilestones?.pr3 && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                )}
+              </button>
+              <button
+                onClick={() => setTab("tr")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  tab === "tr" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <span>Terminal</span>
+                {report?.publishedMilestones?.tr && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                )}
+              </button>
             </div>
 
             <button
               onClick={handlePrint}
-              className="rd-btn-print inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors"
+              disabled={!isCurrentTabPublished}
+              className="rd-btn-print inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold shadow-sm transition-colors"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -342,9 +367,11 @@ export default function ResultDashboardApp({
                 Gracemark Academy
               </h1>
               <p className="text-xs font-bold tracking-widest text-amber-700 uppercase">
-                Excellence • Integrity • Innovation
+                Marked by Grace and Excellence
               </p>
-              <p className="text-[11px] text-slate-500">Official Terminal Academic Performance Report</p>
+              <div className="mt-2 inline-block px-3.5 py-1 bg-slate-900 text-white font-black text-xs sm:text-sm rounded-full tracking-wide uppercase shadow-xs">
+                {reportTitle}
+              </div>
             </div>
           </div>
 
@@ -367,6 +394,22 @@ export default function ResultDashboardApp({
             </div>
           </div>
         </div>
+
+        {/* If the selected milestone is NOT published, display a clean empty state and do NOT load table */}
+        {!isCurrentTabPublished ? (
+          <div className="my-12 p-8 sm:p-12 text-center max-w-xl mx-auto bg-slate-50 border border-slate-200/80 rounded-2xl shadow-xs">
+            <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
+              🔒
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 mb-1">
+              {reportTitle} Not Published Yet
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 leading-relaxed max-w-md mx-auto">
+              The {reportTitle.toLowerCase()} for {report.termLabel} ({report.session}) has not been released by the school administration yet. Please check back soon or switch to an available milestone tab above.
+            </p>
+          </div>
+        ) : (
+          <>
 
         {/* Promotion Banner (if 3rd Term) */}
         {report.promotion && (
@@ -765,6 +808,8 @@ export default function ResultDashboardApp({
           </div>
           <p className="text-xs text-slate-700 leading-relaxed">{report.aiInsight}</p>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

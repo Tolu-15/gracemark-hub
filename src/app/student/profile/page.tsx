@@ -108,8 +108,8 @@ export default function StudentProfilePage() {
                 <span className="font-bold text-slate-900 text-sm">{student?.classes?.name || "—"}</span>
               </div>
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                <span className="text-slate-400 block mb-1">Portal Account Login</span>
-                <span className="font-mono font-medium text-slate-900 text-sm">{userEmail || "—"}</span>
+                <span className="text-slate-400 block mb-1">Official Student ID</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">{student?.admission_no || "—"}</span>
               </div>
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
                 <span className="text-slate-400 block mb-1">Admission Date</span>

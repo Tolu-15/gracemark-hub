@@ -11,8 +11,10 @@ export async function POST(req: NextRequest) {
   }
 
   const records = body.records || (Array.isArray(body) ? body : []);
-  if (!records.length) {
-    return NextResponse.json({ error: "No records provided." }, { status: 400 });
+  const deletedResultIds: string[] = Array.isArray(body.deletedResultIds) ? body.deletedResultIds : [];
+
+  if (!records.length && !deletedResultIds.length) {
+    return NextResponse.json({ error: "No records or deletions provided." }, { status: 400 });
   }
 
   const service = getServiceClient();
@@ -44,6 +46,20 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    if (deletedResultIds.length > 0) {
+      const { error: delErr } = await service
+        .from("results")
+        .delete()
+        .in("id", deletedResultIds);
+      if (delErr) {
+        console.warn("Could not delete dropped result IDs:", delErr);
+      }
+    }
+
+    if (!records.length) {
+      return NextResponse.json({ ok: true, count: 0, deleted: deletedResultIds.length });
+    }
+
     let { data, error } = await service
       .from("results")
       .upsert(records, { onConflict: "student_id,subject_id,term,session" });

@@ -34,20 +34,17 @@ export default function TeacherAttendancePage() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Fetch active term info
+  // Fetch active term & session info
   useEffect(() => {
     async function fetchTermInfo() {
       try {
-        const { data: termData } = await supabase
-          .from("terms")
-          .select("session, term, school_days")
-          .eq("status", "open")
-          .maybeSingle();
-
-        if (termData) {
-          if (termData.session) setCurrentSession(termData.session);
-          if (termData.term) setCurrentTerm(termData.term);
-          if (termData.school_days) setDefaultTimesOpened(termData.school_days * 2);
+        const res = await fetch("/api/terms");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ok) {
+            if (data.current_session) setCurrentSession(data.current_session);
+            if (data.current_term) setCurrentTerm(data.current_term);
+          }
         }
       } catch (err) {
         console.warn("Could not fetch active term, using default session/term:", err);
@@ -62,13 +59,22 @@ export default function TeacherAttendancePage() {
       const user = sessionData?.session?.user;
       if (!user) return;
 
+      const { data: profile } = await supabase
+        .from("users")
+        .select("id")
+        .eq("auth_id", user.id)
+        .maybeSingle();
+
+      const teacherUid = profile?.id || user.id;
+      const idList = Array.from(new Set([user.id, teacherUid].filter(Boolean)));
+
       // 1. Check class_teacher_assignments for active class teacher duties
       let list: { id: string; name: string }[] = [];
       try {
         const { data: ctaData } = await supabase
           .from("class_teacher_assignments")
           .select("class_id, classes(id, name)")
-          .eq("teacher_user_id", user.id)
+          .in("teacher_user_id", idList)
           .eq("status", "active");
 
         if (ctaData && ctaData.length > 0) {
@@ -87,7 +93,7 @@ export default function TeacherAttendancePage() {
         const { data: ctClasses } = await supabase
           .from("classes")
           .select("id, name")
-          .eq("class_teacher_id", user.id);
+          .in("class_teacher_id", idList);
         if (ctClasses && ctClasses.length > 0) {
           list = ctClasses;
         }
@@ -98,7 +104,7 @@ export default function TeacherAttendancePage() {
         const { data: assignments } = await supabase
           .from("teacher_assignments")
           .select("class_id, classes(id, name)")
-          .eq("teacher_user_id", user.id);
+          .in("teacher_user_id", idList);
 
         const map = new Map<string, { id: string; name: string }>();
         (assignments || []).forEach((a: any) => {
@@ -120,95 +126,33 @@ export default function TeacherAttendancePage() {
     if (!selectedClass) return;
     setLoading(true);
     try {
-      // 1. Fetch students from student_enrollments (or fallback to students)
-      let stdData: any[] = [];
-      try {
-        const { data: enrollments } = await supabase
-          .from("student_enrollments")
-          .select("student_id, students(id, name, admission_no)")
-          .eq("class_id", selectedClass)
-          .eq("status", "active");
-
-        if (enrollments && enrollments.length > 0) {
-          stdData = enrollments
-            .map((e: any) => e.students)
-            .filter(Boolean)
-            .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
-        }
-      } catch (eErr) {
-        console.warn("Could not query student_enrollments, falling back to students table:", eErr);
+      const q = `/api/teacher/attendance?class_id=${encodeURIComponent(selectedClass)}&term=${encodeURIComponent(currentTerm)}&session=${encodeURIComponent(currentSession)}&date=${encodeURIComponent(selectedDate)}`;
+      const res = await fetch(q);
+      if (!res.ok) {
+        throw new Error("Failed to load attendance from server.");
       }
-
-      if (!stdData.length) {
-        const { data: fallbackStudents } = await supabase
-          .from("students")
-          .select("id, name, admission_no")
-          .eq("class_id", selectedClass)
-          .order("name");
-        stdData = fallbackStudents || [];
-      }
-
-      if (!stdData || !stdData.length) {
+      const data = await res.json();
+      if (data.students) {
+        setStudents(
+          data.students.map((s: any) => ({
+            student_id: s.student_id,
+            name: s.name,
+            admission_no: s.admission_no,
+            am: s.am ?? true,
+            pm: s.pm ?? true,
+            timesPresent: s.timesPresent ?? 0,
+            timesOpened: s.timesOpened || defaultTimesOpened,
+          }))
+        );
+      } else {
         setStudents([]);
-        setLoading(false);
-        return;
       }
-
-      const sIds = stdData.map((s) => s.id);
-
-      // 2. Fetch daily register records for selected date
-      const { data: todayRecords } = await supabase
-        .from("attendance_records")
-        .select("student_id, am_present, pm_present")
-        .in("student_id", sIds)
-        .eq("term", currentTerm)
-        .eq("session", currentSession)
-        .eq("date", selectedDate);
-
-      const recordMap = new Map<string, { am: boolean; pm: boolean }>();
-      (todayRecords || []).forEach((r) => {
-        recordMap.set(r.student_id, {
-          am: r.am_present ?? true,
-          pm: r.pm_present ?? true,
-        });
-      });
-
-      // 3. Fetch term aggregate attendance (from attendance table)
-      const { data: termData } = await supabase
-        .from("attendance")
-        .select("student_id, times_present, times_opened, days_present, days_opened")
-        .in("student_id", sIds)
-        .eq("term", currentTerm);
-
-      const termMap = new Map<string, { times_present: number; times_opened: number }>();
-      (termData || []).forEach((t) => {
-        const opened = t.times_opened || (t.days_opened ? t.days_opened * 2 : defaultTimesOpened);
-        const present = t.times_present ?? (t.days_present ? t.days_present * 2 : opened);
-        termMap.set(t.student_id, {
-          times_present: present,
-          times_opened: opened,
-        });
-      });
-
-      const list: StudentAttendance[] = stdData.map((s) => {
-        const rec = recordMap.get(s.id);
-        const term = termMap.get(s.id);
-        const opened = term?.times_opened ?? defaultTimesOpened;
-        const present = term?.times_present ?? opened; // default full attendance for convenience
-        return {
-          student_id: s.id,
-          name: s.name,
-          admission_no: s.admission_no,
-          am: rec?.am ?? true,
-          pm: rec?.pm ?? true,
-          timesPresent: present,
-          timesOpened: opened,
-        };
-      });
-
-      setStudents(list);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Load attendance error:", err);
+      setSaveStatus({
+        type: "error",
+        text: `Error loading attendance: ${err.message || "Unknown error"}`,
+      });
     } finally {
       setLoading(false);
     }
@@ -255,7 +199,7 @@ export default function TeacherAttendancePage() {
     );
   }
 
-  // Save Daily Register (attendance_records table)
+  // Save Daily Register (via secure API)
   async function handleSaveDaily() {
     if (!students.length) return;
     setSaving(true);
@@ -276,29 +220,41 @@ export default function TeacherAttendancePage() {
         recorded_by: userId || null,
       }));
 
-      const { error } = await supabase
-        .from("attendance_records")
-        .upsert(recordsToUpsert, { onConflict: "student_id,term,session,date" });
+      const res = await fetch("/api/teacher/attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_daily",
+          records: recordsToUpsert,
+          term: currentTerm,
+          session: currentSession,
+          class_id: selectedClass,
+        }),
+      });
 
-      if (error) throw error;
+      const resJson = await res.json();
+      if (!res.ok) {
+        throw new Error(resJson.error || "Failed to save daily register.");
+      }
 
       setSaveStatus({
         type: "success",
-        text: `Daily register for ${selectedDate} saved successfully!`,
+        text: `Daily register for ${selectedDate} saved! Term totals automatically synced.`,
       });
       setTimeout(() => setSaveStatus(null), 4000);
+      loadAttendance();
     } catch (err: any) {
       console.error("Save daily attendance error:", err);
       setSaveStatus({
         type: "error",
-        text: `Error saving daily register: ${err.message || err.details || "Unknown error"}`,
+        text: `Error saving daily register: ${err.message || "Unknown error"}`,
       });
     } finally {
       setSaving(false);
     }
   }
 
-  // Save Term Summary (attendance table used by Report Cards)
+  // Save Term Summary (via secure API, strictly omitting days_opened/days_present to prevent schema errors)
   async function handleSaveSummary() {
     if (!students.length) return;
     setSaving(true);
@@ -320,29 +276,38 @@ export default function TeacherAttendancePage() {
           times_opened: opened,
           times_present: present,
           times_absent: absent,
-          days_opened: Math.round(opened / 2),
-          days_present: Math.round(present / 2),
-          days_absent: Math.round(absent / 2),
           recorded_by: userId || null,
         };
       });
 
-      const { error } = await supabase
-        .from("attendance")
-        .upsert(payload, { onConflict: "student_id,term" });
+      const res = await fetch("/api/teacher/attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_summary",
+          records: payload,
+          term: currentTerm,
+          session: currentSession,
+          class_id: selectedClass,
+        }),
+      });
 
-      if (error) throw error;
+      const resJson = await res.json();
+      if (!res.ok) {
+        throw new Error(resJson.error || "Failed to save summary.");
+      }
 
       setSaveStatus({
         type: "success",
         text: `Term attendance summary saved! Report cards will immediately reflect these totals.`,
       });
       setTimeout(() => setSaveStatus(null), 4500);
+      loadAttendance();
     } catch (err: any) {
       console.error("Save summary attendance error:", err);
       setSaveStatus({
         type: "error",
-        text: `Error saving summary: ${err.message || err.details || "Unknown error"}`,
+        text: `Error saving summary: ${err.message || "Unknown error"}`,
       });
     } finally {
       setSaving(false);

@@ -349,19 +349,13 @@ export async function fetchStudentReport({
   }
   if (error) throw error;
 
-  // Also check if results rows have explicit published statuses
+  // Check if results rows have explicit published statuses for each milestone
   (results || []).forEach((r: any) => {
     if (r.pr1_status === "published") publishedMilestones.pr1 = true;
     if (r.pr2_status === "published") publishedMilestones.pr2 = true;
     if (r.pr3_status === "published") publishedMilestones.pr3 = true;
-    if (r.tr_status === "published" || r.status === "published") publishedMilestones.tr = true;
+    if (r.tr_status === "published") publishedMilestones.tr = true;
   });
-
-  // If TR is published or if any results are approved without milestone gating, allow TR
-  const hasApprovedOrPublished = (results || []).some((r: any) => r.status === "approved" || r.status === "published");
-  if (hasApprovedOrPublished && !publishedMilestones.pr1 && !publishedMilestones.pr2 && !publishedMilestones.pr3 && !publishedMilestones.tr) {
-    publishedMilestones.tr = true;
-  }
 
   // Fetch all approved results for the session for cumulative averages (Term 3)
   let allSessionQuery = supabase
@@ -470,19 +464,53 @@ export async function fetchStudentReport({
     }
   });
 
-  const { data: attendance } = await supabase
+  let attQuery = supabase
     .from("attendance")
-    .select("times_opened, times_present, times_absent, days_present, days_absent")
+    .select("times_opened, times_present, times_absent")
     .eq("student_id", student.id)
-    .eq("term", term)
-    .maybeSingle();
+    .eq("term", term);
+  if (session) attQuery = attQuery.eq("session", session);
 
-  const timesOpened = attendance?.times_opened || ((attendance?.days_present || 0) + (attendance?.days_absent || 0)) * 2 || 130;
-  const timesPresent = attendance?.times_present ?? (attendance?.days_present ? attendance.days_present * 2 : 0);
-  const timesAbsent = attendance?.times_absent ?? Math.max(0, timesOpened - timesPresent);
+  let { data: attendance } = await attQuery.maybeSingle();
+
+  let timesPresent = attendance?.times_present;
+  let timesOpened = attendance?.times_opened;
+  let timesAbsent = attendance?.times_absent;
+
+  // If no attendance row recorded yet, dynamically calculate from daily register
+  if (timesPresent === undefined || timesPresent === null) {
+    try {
+      let drQuery = supabase
+        .from("attendance_records")
+        .select("am_present, pm_present, date")
+        .eq("student_id", student.id)
+        .eq("term", term);
+      if (session) drQuery = drQuery.eq("session", session);
+
+      const { data: dailyRecords } = await drQuery;
+      if (dailyRecords && dailyRecords.length > 0) {
+        let presCount = 0;
+        const datesSet = new Set<string>();
+        dailyRecords.forEach((dr) => {
+          datesSet.add(dr.date);
+          if (dr.am_present) presCount++;
+          if (dr.pm_present) presCount++;
+        });
+        timesPresent = presCount;
+        timesOpened = Math.max(130, datesSet.size * 2);
+        timesAbsent = Math.max(0, timesOpened - timesPresent);
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  timesOpened = timesOpened || 130;
+  timesPresent = timesPresent ?? 0;
+  timesAbsent = timesAbsent ?? Math.max(0, timesOpened - timesPresent);
   const daysOpened = Math.round(timesOpened / 2);
   const daysPresent = Math.round(timesPresent / 2);
-  const attendancePct = timesOpened > 0 ? Math.round((timesPresent / timesOpened) * 100) : 95;
+  const attendancePct = timesOpened > 0 ? Math.round((timesPresent / timesOpened) * 100) : 100;
 
   const sumOfScores = rows.reduce((s: number, r: any) => {
     const val = term === "term3" && r.annualAverage !== null ? r.annualAverage : r.total;
