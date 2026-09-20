@@ -21,7 +21,7 @@ export default function TeacherAttendancePage() {
   // Term and session state
   const [currentSession, setCurrentSession] = useState("2026/2027");
   const [currentTerm, setCurrentTerm] = useState("term2");
-  const [defaultTimesOpened, setDefaultTimesOpened] = useState(130);
+  const [defaultTimesOpened, setDefaultTimesOpened] = useState(65);
 
   // Daily mode state
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -433,19 +433,19 @@ export default function TeacherAttendancePage() {
           ) : (
             <div className="flex flex-col gap-1">
               <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                School Days Opened (Sessions)
+                School Days Opened (Term Total)
               </label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
                   min="1"
-                  max="300"
+                  max="200"
                   value={defaultTimesOpened}
                   onChange={(e) => handleSetClassTimesOpened(Number(e.target.value))}
                   className="w-24 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
                 />
                 <span className="text-[11px] text-slate-500 font-medium">
-                  sessions (~{Math.round(defaultTimesOpened / 2)} days)
+                  days per term
                 </span>
               </div>
             </div>
@@ -459,14 +459,14 @@ export default function TeacherAttendancePage() {
               <button
                 type="button"
                 onClick={() => handleMarkAllDaily(true)}
-                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-semibold border border-emerald-200 transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-semibold border border-emerald-200 transition-colors cursor-pointer"
               >
-                Mark All Present Today
+                Mark All Present (Full Day)
               </button>
               <button
                 type="button"
                 onClick={() => handleMarkAllDaily(false)}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
               >
                 Reset Day
               </button>
@@ -476,12 +476,12 @@ export default function TeacherAttendancePage() {
               <button
                 type="button"
                 onClick={handleMarkAllFullSummary}
-                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-semibold border border-emerald-200 transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-semibold border border-emerald-200 transition-colors cursor-pointer"
               >
                 Set All to 100% Present
               </button>
               <div className="text-[11px] text-slate-400 italic">
-                *Only adjust students who missed sessions
+                *Only adjust students who missed school days
               </div>
             </>
           )}
@@ -491,27 +491,28 @@ export default function TeacherAttendancePage() {
       {/* Main Table */}
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full text-left border-collapse min-w-[700px]">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                <th className="px-6 py-3.5">#</th>
-                <th className="px-6 py-3.5">Student</th>
-                <th className="px-4 py-3.5">Admission No</th>
+                <th className="px-5 py-4 w-12 text-center">#</th>
+                <th className="px-5 py-4">Student</th>
+                <th className="px-4 py-4">Admission No</th>
 
                 {activeTab === "daily" ? (
                   <>
-                    <th className="px-4 py-3.5 text-center">Morning (AM)</th>
-                    <th className="px-4 py-3.5 text-center">Afternoon (PM)</th>
-                    <th className="px-6 py-3.5 text-center">Term Total Present</th>
-                    <th className="px-6 py-3.5 text-center">Term Total Opened</th>
+                    <th className="px-6 py-4 text-center min-w-[130px]">Morning (AM)</th>
+                    <th className="px-6 py-4 text-center min-w-[130px]">Afternoon (PM)</th>
+                    <th className="px-6 py-4 text-center min-w-[150px]">Today&apos;s Count</th>
+                    <th className="px-6 py-4 text-center">Term Present (Days)</th>
+                    <th className="px-6 py-4 text-center">Term Opened</th>
                   </>
                 ) : (
                   <>
-                    <th className="px-4 py-3.5 text-center">Times Opened</th>
-                    <th className="px-4 py-3.5 text-center">Times Present</th>
-                    <th className="px-4 py-3.5 text-center">Times Absent</th>
-                    <th className="px-6 py-3.5 text-center">Attendance %</th>
-                    <th className="px-4 py-3.5 text-center">Quick Adjust</th>
+                    <th className="px-4 py-4 text-center">Days Opened</th>
+                    <th className="px-4 py-4 text-center">Days Present</th>
+                    <th className="px-4 py-4 text-center">Days Absent</th>
+                    <th className="px-6 py-4 text-center">Attendance %</th>
+                    <th className="px-4 py-4 text-center">Quick Adjust</th>
                   </>
                 )}
               </tr>
@@ -519,13 +520,13 @@ export default function TeacherAttendancePage() {
             <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
               {loading ? (
                 <tr>
-                  <td colSpan={activeTab === "daily" ? 7 : 8} className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan={activeTab === "daily" ? 8 : 8} className="px-6 py-12 text-center text-slate-400">
                     Loading student list…
                   </td>
                 </tr>
               ) : students.length === 0 ? (
                 <tr>
-                  <td colSpan={activeTab === "daily" ? 7 : 8} className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan={activeTab === "daily" ? 8 : 8} className="px-6 py-12 text-center text-slate-400">
                     No students found in this class.
                   </td>
                 </tr>
@@ -533,59 +534,85 @@ export default function TeacherAttendancePage() {
                 students.map((s, idx) => {
                   const pct = s.timesOpened > 0 ? Math.round((s.timesPresent / s.timesOpened) * 100) : 100;
                   const absent = Math.max(0, s.timesOpened - s.timesPresent);
+                  const isDayPresent = s.am && s.pm;
 
                   return (
-                    <tr key={s.student_id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="px-6 py-3.5 text-slate-400 font-mono text-[11px]">
+                    <tr key={s.student_id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="px-5 py-4 text-slate-400 font-mono text-[11px] text-center">
                         {idx + 1}
                       </td>
-                      <td className="px-6 py-3.5 font-bold text-slate-900">
+                      <td className="px-5 py-4 font-bold text-slate-900">
                         {s.name}
                       </td>
-                      <td className="px-4 py-3.5 font-mono text-slate-600 font-medium">
+                      <td className="px-4 py-4 font-mono text-slate-600 font-medium">
                         {s.admission_no}
                       </td>
 
                       {activeTab === "daily" ? (
                         <>
-                          <td className="px-4 py-3.5 text-center">
-                            <input
-                              type="checkbox"
-                              checked={s.am}
-                              onChange={(e) => {
-                                const updated = [...students];
-                                updated[idx].am = e.target.checked;
-                                setStudents(updated);
-                              }}
-                              className="w-4 h-4 rounded text-slate-900 focus:ring-slate-900 cursor-pointer"
-                            />
+                          <td className="px-6 py-4 text-center">
+                            <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer transition-all select-none ${
+                              s.am 
+                                ? "bg-indigo-50 border-indigo-200 text-indigo-700 shadow-xs" 
+                                : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100"
+                            }`}>
+                              <input
+                                type="checkbox"
+                                checked={s.am}
+                                onChange={(e) => {
+                                  const updated = [...students];
+                                  updated[idx].am = e.target.checked;
+                                  setStudents(updated);
+                                }}
+                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                              />
+                              <span>Morning</span>
+                            </label>
                           </td>
-                          <td className="px-4 py-3.5 text-center">
-                            <input
-                              type="checkbox"
-                              checked={s.pm}
-                              onChange={(e) => {
-                                const updated = [...students];
-                                updated[idx].pm = e.target.checked;
-                                setStudents(updated);
-                              }}
-                              className="w-4 h-4 rounded text-slate-900 focus:ring-slate-900 cursor-pointer"
-                            />
+                          <td className="px-6 py-4 text-center">
+                            <label className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer transition-all select-none ${
+                              s.pm 
+                                ? "bg-indigo-50 border-indigo-200 text-indigo-700 shadow-xs" 
+                                : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100"
+                            }`}>
+                              <input
+                                type="checkbox"
+                                checked={s.pm}
+                                onChange={(e) => {
+                                  const updated = [...students];
+                                  updated[idx].pm = e.target.checked;
+                                  setStudents(updated);
+                                }}
+                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                              />
+                              <span>Afternoon</span>
+                            </label>
                           </td>
-                          <td className="px-6 py-3.5 text-center font-bold text-slate-900">
+                          <td className="px-6 py-4 text-center">
+                            {isDayPresent ? (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <span>✓</span> 1 Day Present
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200" title={!s.am && !s.pm ? "Absent all day" : !s.am ? "Missed morning session" : "Missed afternoon session"}>
+                                <span>✕</span> 0 (Absent)
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-center font-bold text-slate-900 text-sm">
                             {s.timesPresent}
                           </td>
-                          <td className="px-6 py-3.5 text-center text-slate-500">
+                          <td className="px-6 py-4 text-center text-slate-500 font-medium">
                             {s.timesOpened}
                           </td>
                         </>
                       ) : (
                         <>
-                          <td className="px-4 py-3.5 text-center">
+                          <td className="px-4 py-4 text-center">
                             <input
                               type="number"
                               min="0"
-                              max="300"
+                              max="200"
                               value={s.timesOpened}
                               onChange={(e) => {
                                 const updated = [...students];
@@ -594,10 +621,10 @@ export default function TeacherAttendancePage() {
                                 updated[idx].timesPresent = Math.min(updated[idx].timesPresent, val);
                                 setStudents(updated);
                               }}
-                              className="w-18 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-center font-medium text-slate-800 focus:ring-1 focus:ring-slate-900"
+                              className="w-20 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-center font-medium text-slate-800 focus:ring-1 focus:ring-slate-900"
                             />
                           </td>
-                          <td className="px-4 py-3.5 text-center">
+                          <td className="px-4 py-4 text-center">
                             <input
                               type="number"
                               min="0"
@@ -609,15 +636,15 @@ export default function TeacherAttendancePage() {
                                 updated[idx].timesPresent = val;
                                 setStudents(updated);
                               }}
-                              className="w-18 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-center font-bold text-slate-900 focus:ring-1 focus:ring-slate-900"
+                              className="w-20 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-center font-bold text-slate-900 focus:ring-1 focus:ring-slate-900"
                             />
                           </td>
-                          <td className="px-4 py-3.5 text-center font-medium text-slate-500">
+                          <td className="px-4 py-4 text-center font-medium text-slate-500">
                             {absent}
                           </td>
-                          <td className="px-6 py-3.5 text-center">
+                          <td className="px-6 py-4 text-center">
                             <span
-                              className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                              className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
                                 pct >= 85
                                   ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                   : pct >= 70
@@ -628,19 +655,19 @@ export default function TeacherAttendancePage() {
                               {pct}%
                             </span>
                           </td>
-                          <td className="px-4 py-3.5 text-center">
-                            <div className="flex items-center justify-center gap-1">
+                          <td className="px-4 py-4 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
                               <button
                                 type="button"
-                                title="Minus 2 sessions (1 day)"
+                                title="Minus 1 day"
                                 onClick={() => {
                                   const updated = [...students];
-                                  updated[idx].timesPresent = Math.max(0, updated[idx].timesPresent - 2);
+                                  updated[idx].timesPresent = Math.max(0, updated[idx].timesPresent - 1);
                                   setStudents(updated);
                                 }}
-                                className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-bold cursor-pointer"
+                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
                               >
-                                -2
+                                -1
                               </button>
                               <button
                                 type="button"
@@ -650,7 +677,7 @@ export default function TeacherAttendancePage() {
                                   updated[idx].timesPresent = updated[idx].timesOpened;
                                   setStudents(updated);
                                 }}
-                                className="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded text-[11px] font-bold cursor-pointer"
+                                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold cursor-pointer"
                               >
                                 100%
                               </button>

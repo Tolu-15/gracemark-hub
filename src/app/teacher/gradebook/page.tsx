@@ -122,31 +122,26 @@ export default function TeacherGradebookPage() {
     loadSubjects();
   }, [selectedClass, selectedSubject]);
 
-  // 3. Load gradebook results
+  // 3. Load gradebook results via resilient server API
   const loadResults = useCallback(async () => {
     if (!selectedClass) return;
     setLoading(true);
     try {
-      let q = supabase
-        .from("results")
-        .select("id, subject_id, cw, hw, test, project, exam, total, grade, remark, status, students(id, name, admission_no), subjects(name)")
-        .eq("class_id", selectedClass)
-        .eq("term", term);
+      const url = new URL("/api/teacher/gradebook", window.location.origin);
+      url.searchParams.set("class_id", selectedClass);
+      url.searchParams.set("term", term);
+      if (session) url.searchParams.set("session", session);
+      if (selectedSubject) url.searchParams.set("subject_id", selectedSubject);
 
-      if (session) {
-        q = q.eq("session", session);
+      const res = await fetch(url.toString());
+      if (!res.ok) {
+        throw new Error("Failed to fetch gradebook from server.");
       }
-
-      if (selectedSubject) {
-        q = q.eq("subject_id", selectedSubject);
-      }
-
-      const { data, error } = await q.order("total", { ascending: false });
-      if (error) throw error;
-
-      setResults(data || []);
+      const data = await res.json();
+      setResults(data.results || []);
     } catch (err) {
       console.error("Load gradebook results error:", err);
+      setResults([]);
     } finally {
       setLoading(false);
     }

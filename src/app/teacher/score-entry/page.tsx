@@ -49,6 +49,9 @@ export default function TeacherScoreEntryPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "unsaved" | "saving" | "saved">("idle");
+  const isDirtyRef = React.useRef(false);
+  const isInitialLoadRef = React.useRef(true);
 
   const selectedClassName = classes.find((c) => c.id === selectedClass)?.name || "";
   const isSenior = isSeniorClass(selectedClassName);
@@ -262,6 +265,9 @@ export default function TeacherScoreEntryPage() {
       });
 
       setRows(newRows);
+      isDirtyRef.current = false;
+      isInitialLoadRef.current = true;
+      setAutoSaveStatus("idle");
     } catch (err: any) {
       console.error("Load scores error:", err);
       setStatusMsg(`Error loading scores: ${err.message}`);
@@ -274,6 +280,69 @@ export default function TeacherScoreEntryPage() {
     loadScores();
   }, [loadScores]);
 
+  // Debounced auto-save effect
+  useEffect(() => {
+    if (isInitialLoadRef.current) {
+      isInitialLoadRef.current = false;
+      return;
+    }
+    if (!isDirtyRef.current || !isEditable || !rows.length || !selectedSubject || !selectedClass) {
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      if (!isDirtyRef.current) return;
+      setAutoSaveStatus("saving");
+      try {
+        const recordsToSave: any[] = [];
+        const deletedResultIds: string[] = [];
+
+        rows.forEach((r) => {
+          const tr = calculateTR(r.raw, { isSenior, className: selectedClassName });
+          if (!tr.hasData) {
+            if (r.resultId) {
+              deletedResultIds.push(r.resultId);
+            }
+            return;
+          }
+
+          const stored = toStoredScores(tr, r.raw);
+          recordsToSave.push({
+            student_id: r.student_id,
+            subject_id: selectedSubject,
+            class_id: selectedClass,
+            term: selectedTerm,
+            session: currentSession,
+            academic_session_id: currentSessionId || undefined,
+            ...stored,
+            status: "draft",
+          });
+        });
+
+        if (recordsToSave.length > 0 || deletedResultIds.length > 0) {
+          const res = await fetch("/api/results/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ records: recordsToSave, deletedResultIds }),
+          });
+          if (res.ok) {
+            isDirtyRef.current = false;
+            setAutoSaveStatus("saved");
+          } else {
+            setAutoSaveStatus("unsaved");
+          }
+        } else {
+          setAutoSaveStatus("idle");
+        }
+      } catch (e) {
+        console.warn("Auto-save draft error:", e);
+        setAutoSaveStatus("unsaved");
+      }
+    }, 1800);
+
+    return () => clearTimeout(timer);
+  }, [rows, isEditable, selectedSubject, selectedClass, selectedTerm, currentSession, currentSessionId, isSenior, selectedClassName]);
+
   // Update cell score in state
   function updateScore(
     rowIndex: number,
@@ -282,6 +351,8 @@ export default function TeacherScoreEntryPage() {
     val: string
   ) {
     if (!isEditable) return;
+    isDirtyRef.current = true;
+    setAutoSaveStatus("unsaved");
     setRows((prev) => {
       const copy = [...prev];
       const row = { ...copy[rowIndex], raw: { ...copy[rowIndex].raw } };
@@ -299,7 +370,7 @@ export default function TeacherScoreEntryPage() {
     });
   }
 
-  // Save draft or submit
+  // Save draft or submit to admin
   async function handleSave(submit = false) {
     if (!rows.length) return;
     setSaving(true);
@@ -350,9 +421,11 @@ export default function TeacherScoreEntryPage() {
         throw new Error(resJson.error || "Failed to save results.");
       }
 
+      isDirtyRef.current = false;
+      setAutoSaveStatus(submit ? "idle" : "saved");
       setStatusMsg(
         submit
-          ? "Scores submitted to administration for approval!"
+          ? "Scores submitted to administration for review and approval!"
           : "Draft scores saved successfully!"
       );
       loadScores();
@@ -378,22 +451,51 @@ export default function TeacherScoreEntryPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Live Auto-save indicator */}
+          {autoSaveStatus === "unsaved" && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              Unsaved changes…
+            </span>
+          )}
+          {autoSaveStatus === "saving" && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs">
+              <svg className="animate-spin w-3 h-3 text-indigo-600" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              Auto-saving…
+            </span>
+          )}
+          {autoSaveStatus === "saved" && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+              <span>✓</span> Auto-saved
+            </span>
+          )}
+
           <button
             type="button"
             disabled={saving || !isEditable || rows.length === 0}
             onClick={() => handleSave(false)}
-            className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold rounded-xl text-xs shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+            className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold rounded-xl text-xs shadow-2xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+            title="Save draft scores without submitting to admin"
           >
-            {saving ? "Saving…" : "Save Draft"}
+            <span>💾</span>
+            <span>{saving ? "Saving…" : "Save Draft"}</span>
           </button>
           <button
             type="button"
             disabled={saving || !isEditable || rows.length === 0}
-            onClick={() => handleSave(true)}
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+            onClick={() => {
+              if (window.confirm("Submit scores to school administration for review and approval? Once submitted, the scores will be marked for admin review.")) {
+                handleSave(true);
+              }
+            }}
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
           >
-            {saving ? "Submitting…" : "Submit to Admin"}
+            <span>🚀</span>
+            <span>{saving ? "Submitting…" : "Submit to Admin"}</span>
           </button>
         </div>
       </div>

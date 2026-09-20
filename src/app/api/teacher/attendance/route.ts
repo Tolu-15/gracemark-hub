@@ -82,12 +82,14 @@ export async function GET(req: NextRequest) {
       if (!dailyCountsMap[r.student_id]) {
         dailyCountsMap[r.student_id] = { present: 0, recorded: 0 };
       }
-      dailyCountsMap[r.student_id].recorded += 2;
-      if (r.am_present) dailyCountsMap[r.student_id].present += 1;
-      if (r.pm_present) dailyCountsMap[r.student_id].present += 1;
+      dailyCountsMap[r.student_id].recorded += 1;
+      // A day is counted as 1. If student misses morning OR afternoon, it counts as 0 (absent).
+      if (r.am_present && r.pm_present) {
+        dailyCountsMap[r.student_id].present += 1;
+      }
     });
 
-    const totalSchoolSessionsRecorded = datesSet.size * 2;
+    const totalSchoolDaysRecorded = datesSet.size;
 
     // 4. Fetch term summary attendance
     const { data: termData } = await service
@@ -100,13 +102,13 @@ export async function GET(req: NextRequest) {
     (termData || []).forEach((t) => {
       termSummaryMap[t.student_id] = {
         times_present: t.times_present ?? 0,
-        times_opened: t.times_opened ?? (totalSchoolSessionsRecorded || 130),
+        times_opened: t.times_opened ?? (totalSchoolDaysRecorded || 65),
         times_absent: t.times_absent ?? 0,
       };
     });
 
     // 5. Build merged student attendance list
-    const defaultTimesOpened = totalSchoolSessionsRecorded > 0 ? totalSchoolSessionsRecorded : 130;
+    const defaultTimesOpened = totalSchoolDaysRecorded > 0 ? totalSchoolDaysRecorded : 65;
 
     const result = students.map((s) => {
       const daily = dailyRecordsMap[s.id];
@@ -142,7 +144,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       students: result,
-      totalSessionsRecorded: totalSchoolSessionsRecorded,
+      totalSessionsRecorded: totalSchoolDaysRecorded,
       datesCount: datesSet.size,
     });
   } catch (err: any) {
@@ -210,10 +212,13 @@ export async function POST(req: NextRequest) {
 
       (allStudentRecords || []).forEach((r: any) => {
         datesSet.add(r.date);
-        syncMap[r.student_id] = (syncMap[r.student_id] || 0) + (r.am_present ? 1 : 0) + (r.pm_present ? 1 : 0);
+        // A school day counts as 1. If a student misses morning OR afternoon, it counts as 0 (absent).
+        if (r.am_present && r.pm_present) {
+          syncMap[r.student_id] = (syncMap[r.student_id] || 0) + 1;
+        }
       });
 
-      const totalRecordedTimes = Math.max(130, datesSet.size * 2);
+      const totalRecordedTimes = Math.max(65, datesSet.size);
 
       const summaryPayload = studentIds.map((sId: string) => {
         const present = syncMap[sId] || 0;
@@ -251,7 +256,7 @@ export async function POST(req: NextRequest) {
 
       // Omit days_opened, days_present, days_absent to strictly avoid schema cache errors
       const summaryPayload = records.map((r: any) => {
-        const opened = Math.max(0, Number(r.times_opened) || 130);
+        const opened = Math.max(0, Number(r.times_opened) || 65);
         const present = Math.min(opened, Math.max(0, Number(r.times_present) || 0));
         const absent = Math.max(0, opened - present);
 

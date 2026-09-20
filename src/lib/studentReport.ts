@@ -375,7 +375,34 @@ export async function fetchStudentReport({
     sessionResultsMap.get(r.subject_id)![r.term] = Number(r.total) || 0;
   });
 
-  const rows = (results ?? []).map((row: any) => {
+  // Only process rows that are approved or published, NEVER raw drafts or unapproved submitted records
+  const approvedOrPublishedResults = (results ?? []).filter((row: any) => {
+    const isApprovedOrPublished =
+      row.status === "approved" ||
+      row.status === "published" ||
+      row.tr_status === "published" ||
+      row.pr1_status === "published" ||
+      row.pr2_status === "published" ||
+      row.pr3_status === "published";
+
+    const hasPublishedSnapshot =
+      publishedMilestones.pr1 ||
+      publishedMilestones.pr2 ||
+      publishedMilestones.pr3 ||
+      publishedMilestones.tr;
+
+    // Pure draft must never be shown to students
+    if (row.status === "draft" && !isApprovedOrPublished && !hasPublishedSnapshot) {
+      return false;
+    }
+    if (row.status === "submitted" && !isApprovedOrPublished && !hasPublishedSnapshot) {
+      return false;
+    }
+
+    return isApprovedOrPublished || hasPublishedSnapshot;
+  });
+
+  const rows = approvedOrPublishedResults.map((row: any) => {
     const raw = normalizeBreakdown(row);
     const computed = calculateStudentResult(raw, undefined, { isSenior, className });
     const subjectName = row.subjects?.name ?? "Subject";
