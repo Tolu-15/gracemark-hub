@@ -9,7 +9,7 @@ export default function TeacherGradebookPage() {
   const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
   const [selectedSubject, setSelectedSubject] = useState("");
   const [term, setTerm] = useState("term1");
-  const [session, setSession] = useState("2025/2026");
+  const [session, setSession] = useState("2026/2027");
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -98,10 +98,8 @@ export default function TeacherGradebookPage() {
     init();
   }, []);
 
-  // 2. Load subjects for selected class
+  // 2. Load subjects
   useEffect(() => {
-    if (!selectedClass) return;
-
     async function loadSubjects() {
       try {
         const { data: subData } = await supabase
@@ -111,16 +109,13 @@ export default function TeacherGradebookPage() {
 
         const list = subData || [];
         setSubjects(list);
-        if (list.length > 0 && !selectedSubject) {
-          setSelectedSubject(list[0].id);
-        }
       } catch (err) {
         console.error("Load subjects error:", err);
       }
     }
 
     loadSubjects();
-  }, [selectedClass, selectedSubject]);
+  }, []);
 
   // 3. Load gradebook results via resilient server API
   const loadResults = useCallback(async () => {
@@ -228,6 +223,20 @@ export default function TeacherGradebookPage() {
             <option value="term1">1st Term</option>
             <option value="term2">2nd Term</option>
             <option value="term3">3rd Term</option>
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1 w-36">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Session
+          </label>
+          <select
+            value={session}
+            onChange={(e) => setSession(e.target.value)}
+            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
+          >
+            <option value="2026/2027">2026/2027</option>
+            <option value="2025/2026">2025/2026</option>
           </select>
         </div>
       </div>

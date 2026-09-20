@@ -47,7 +47,8 @@ export default function TeacherScoreEntryPage() {
 
   const [rows, setRows] = useState<StudentScoreRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [savingAction, setSavingAction] = useState<"none" | "draft" | "submit">("none");
+  const saving = savingAction !== "none";
   const [statusMsg, setStatusMsg] = useState("");
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "unsaved" | "saving" | "saved">("idle");
   const isDirtyRef = React.useRef(false);
@@ -373,7 +374,7 @@ export default function TeacherScoreEntryPage() {
   // Save draft or submit to admin
   async function handleSave(submit = false) {
     if (!rows.length) return;
-    setSaving(true);
+    setSavingAction(submit ? "submit" : "draft");
     setStatusMsg("");
 
     try {
@@ -406,7 +407,7 @@ export default function TeacherScoreEntryPage() {
 
       if (!recordsToSave.length && !deletedResultIds.length) {
         setStatusMsg("No scores have been entered for this subject yet. Please enter at least one score before saving.");
-        setSaving(false);
+        setSavingAction("none");
         return;
       }
 
@@ -426,14 +427,14 @@ export default function TeacherScoreEntryPage() {
       setStatusMsg(
         submit
           ? "Scores submitted to administration for review and approval!"
-          : "Draft scores saved successfully!"
+          : "✓ Draft scores saved successfully! (Scores remain in draft and are NOT submitted to admin)"
       );
       loadScores();
     } catch (err: any) {
       console.error("Save scores exception:", err);
       setStatusMsg(`Save failed: ${err.message}`);
     } finally {
-      setSaving(false);
+      setSavingAction("none");
       setTimeout(() => setStatusMsg(""), 5000);
     }
   }
@@ -482,7 +483,7 @@ export default function TeacherScoreEntryPage() {
             title="Save draft scores without submitting to admin"
           >
             <span>💾</span>
-            <span>{saving ? "Saving…" : "Save Draft"}</span>
+            <span>{savingAction === "draft" ? "Saving Draft…" : "Save Draft"}</span>
           </button>
           <button
             type="button"
@@ -495,7 +496,7 @@ export default function TeacherScoreEntryPage() {
             className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
           >
             <span>🚀</span>
-            <span>{saving ? "Submitting…" : "Submit to Admin"}</span>
+            <span>{savingAction === "submit" ? "Submitting to Admin…" : "Submit to Admin"}</span>
           </button>
         </div>
       </div>
