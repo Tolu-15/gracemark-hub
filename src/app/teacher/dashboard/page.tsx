@@ -29,16 +29,54 @@ export default function TeacherDashboardPage() {
         setTeacherName(profile.display_name);
       }
 
-      // Fetch assignments
-      const { data: assignments } = await supabase
-        .from("teacher_assignments")
-        .select("class_id, subject_id, classes(id, name), subjects(id, name)")
-        .eq("teacher_user_id", user.id);
+      // 1. Fetch Class Teacher duties
+      const [ctaRes, staRes, ctClassesRes, legacyAssignRes] = await Promise.all([
+        supabase
+          .from("class_teacher_assignments")
+          .select("class_id, classes(id, name)")
+          .eq("teacher_user_id", user.id)
+          .eq("status", "active"),
+        supabase
+          .from("subject_teacher_assignments")
+          .select("class_id, subject_id, classes(id, name), subjects(id, name)")
+          .eq("teacher_user_id", user.id)
+          .eq("status", "active"),
+        supabase
+          .from("classes")
+          .select("id, name")
+          .eq("class_teacher_id", user.id),
+        supabase
+          .from("teacher_assignments")
+          .select("class_id, subject_id, classes(id, name), subjects(id, name)")
+          .eq("teacher_user_id", user.id),
+      ]);
 
       const classMap = new Map<string, { id: string; name: string }>();
       const subjectMap = new Map<string, { id: string; name: string }>();
+      const classTeacherClassList: { id: string; name: string }[] = [];
 
-      (assignments || []).forEach((a: any) => {
+      // Add Class Teacher assignments
+      (ctaRes.data || []).forEach((c: any) => {
+        if (c.classes?.name) {
+          classMap.set(c.classes.id, c.classes);
+          classTeacherClassList.push(c.classes);
+        }
+      });
+      (ctClassesRes.data || []).forEach((c: any) => {
+        if (c.name) {
+          classMap.set(c.id, c);
+          if (!classTeacherClassList.some((x) => x.id === c.id)) {
+            classTeacherClassList.push(c);
+          }
+        }
+      });
+
+      // Add Subject Teacher assignments
+      (staRes.data || []).forEach((a: any) => {
+        if (a.classes?.name) classMap.set(a.classes.id, a.classes);
+        if (a.subjects?.name) subjectMap.set(a.subjects.id, a.subjects);
+      });
+      (legacyAssignRes.data || []).forEach((a: any) => {
         if (a.classes?.name) classMap.set(a.classes.id, a.classes);
         if (a.subjects?.name) subjectMap.set(a.subjects.id, a.subjects);
       });

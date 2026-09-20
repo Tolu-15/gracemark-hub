@@ -64,10 +64,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const displayName = String(body.displayName || body.name || "").trim() || email.split("@")[0];
+  const role = String(body.role || "student").trim().toLowerCase();
+
   const { data, error } = await service.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
+    user_metadata: {
+      display_name: displayName,
+      role,
+    },
   });
 
   if (error) {
@@ -82,6 +89,18 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+
+  // Ensure public.users row is always created
+  await service.from("users").upsert(
+    {
+      auth_id: data.user.id,
+      email,
+      display_name: displayName,
+      role,
+      status: "active",
+    },
+    { onConflict: "auth_id" }
+  );
 
   return NextResponse.json({
     user: { id: data.user.id, email: data.user.email ?? email },

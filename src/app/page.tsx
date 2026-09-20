@@ -63,7 +63,28 @@ export default function LoginPage() {
         await supabase.auth.setSession(signInData.session);
       }
 
-      const profile = await fetchUserProfileByAuthId(user.id);
+      let profile = await fetchUserProfileByAuthId(user.id);
+
+      if (!profile?.role) {
+        try {
+          const syncRes = await fetch("/api/auth/sync-profile", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${signInData.session?.access_token || ""}`,
+            },
+            body: JSON.stringify({ authId: user.id }),
+          });
+          if (syncRes.ok) {
+            const syncJson = await syncRes.json();
+            if (syncJson.ok && syncJson.profile) {
+              profile = syncJson.profile;
+            }
+          }
+        } catch (syncErr) {
+          console.warn("Self-heal sync profile error:", syncErr);
+        }
+      }
 
       if (!profile?.role) {
         setError(
