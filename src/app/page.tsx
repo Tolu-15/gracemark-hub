@@ -135,6 +135,17 @@ export default function LoginPage() {
         return;
       }
 
+      // For admin accounts: check for device cookie — redirect to OTP verify if absent
+      if (String(profile.role).trim() === "admin") {
+        const deviceCookie = document.cookie
+          .split(";")
+          .some((c) => c.trim().startsWith("gm_device="));
+        if (!deviceCookie) {
+          router.replace("/otp-verify");
+          return;
+        }
+      }
+
       router.replace(destinationForRole(String(profile.role).trim()));
     } catch (err: any) {
       console.error("[Auth Error]", err?.code, err?.message);

@@ -81,6 +81,11 @@ const studentNavItems: NavItem[] = [
     label: "Financial Report",
     href: "/student/financial-report",
   },
+  {
+    category: "Account",
+    label: "Change Password",
+    href: "/student/change-password",
+  },
 ];
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {

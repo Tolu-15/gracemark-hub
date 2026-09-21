@@ -94,6 +94,11 @@ const adminNavItems: NavItem[] = [
     label: "Portal Access Policy",
     href: "/admin/settings/portal-access",
   },
+  {
+    category: "Settings",
+    label: "Change Password",
+    href: "/admin/settings/change-password",
+  },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

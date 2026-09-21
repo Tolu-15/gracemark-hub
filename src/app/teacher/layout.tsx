@@ -89,6 +89,16 @@ const teacherNavItems: NavItem[] = [
       </svg>
     ),
   },
+  {
+    category: "Account",
+    label: "My Profile",
+    href: "/teacher/profile",
+  },
+  {
+    category: "Account",
+    label: "Change Password",
+    href: "/teacher/change-password",
+  },
 ];
 
 export default function TeacherLayout({ children }: { children: React.ReactNode }) {
