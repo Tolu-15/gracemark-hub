@@ -20,24 +20,24 @@ const dmSerif = DM_Serif_Display({
 });
 
 export const metadata: Metadata = {
-  title: "Gracemark Academy — Result Hub",
-  description: "Gracemark Academy Portal — Continuous Assessment, Results, Attendance & School Fees",
+  title: "GraceMark Academic Portal",
+  description: "GraceMark Academic Portal — Results, Attendance & Student Records for Gracemark Academy",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: "/assets/icons/favicon.jpg",
     apple: "/assets/icons/logo.jpg",
   },
   openGraph: {
-    title: "Gracemark Academy — Result Hub",
-    description: "Gracemark Academy Portal — Continuous Assessment, Results, Attendance & School Fees",
+    title: "GraceMark Academic Portal",
+    description: "GraceMark Academic Portal — Results, Attendance & Student Records for Gracemark Academy",
     url: "https://gracemarkportal.com.ng",
-    siteName: "Gracemark Academy Portal",
+    siteName: "GraceMark Academic Portal",
     images: [
       {
         url: "https://gracemarkportal.com.ng/assets/icons/logo.jpg",
         width: 512,
         height: 512,
-        alt: "Gracemark Academy Logo",
+        alt: "GraceMark Academic Portal Logo",
       },
     ],
     locale: "en_NG",
@@ -45,8 +45,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "Gracemark Academy — Result Hub",
-    description: "Gracemark Academy Portal — Continuous Assessment, Results, Attendance & School Fees",
+    title: "GraceMark Academic Portal",
+    description: "GraceMark Academic Portal — Results, Attendance & Student Records for Gracemark Academy",
     images: ["https://gracemarkportal.com.ng/assets/icons/logo.jpg"],
   },
 };
