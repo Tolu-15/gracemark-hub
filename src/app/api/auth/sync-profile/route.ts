@@ -62,6 +62,8 @@ export async function POST(req: NextRequest) {
       authUser.user_metadata?.role ||
       (email.includes("teacher") ? "teacher" : "student");
 
+    const staffId = authUser.user_metadata?.staff_id || null;
+
     const { data: newUser, error: insErr } = await service
       .from("users")
       .upsert(
@@ -70,6 +72,7 @@ export async function POST(req: NextRequest) {
           email: authUser.email,
           display_name: displayName,
           role,
+          staff_id: staffId,
           status: "active",
         },
         { onConflict: "auth_id" }

@@ -41,14 +41,26 @@ export default function LoginPage() {
       } catch (firstErr) {
         if (!rawInput.includes("@")) {
           const cleanRef = rawInput.replace(/^PAY-/i, "").replace(/\s+/g, "").toUpperCase();
-          const altSynthetic = `${cleanRef.replace(/[^A-Z0-9]/g, "").toLowerCase()}@student.gracemark.edu.ng`;
-          if (altSynthetic !== targetEmail) {
+          const clean = cleanRef.replace(/[^A-Z0-9]/gi, "").toLowerCase();
+          const candidates = [
+            `${clean}@teacher.gracemark.edu.ng`,
+            `${clean}@student.gracemark.edu.ng`,
+            `${cleanRef.toLowerCase()}@teacher.gracemark.edu.ng`,
+            `${cleanRef.toLowerCase()}@student.gracemark.edu.ng`,
+          ].filter((email, index, self) => email !== targetEmail && self.indexOf(email) === index);
+
+          let signedIn = false;
+          for (const cand of candidates) {
             try {
-              signInData = await signInWithEmail(altSynthetic, password);
+              signInData = await signInWithEmail(cand, password);
+              signedIn = true;
+              break;
             } catch {
-              throw firstErr;
+              // continue to next candidate
             }
-          } else {
+          }
+
+          if (!signedIn) {
             throw firstErr;
           }
         } else {

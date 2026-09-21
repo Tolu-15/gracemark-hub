@@ -93,8 +93,28 @@ export async function resolveUserLoginEmail(rawId: string): Promise<string> {
   if (trimmed.includes("@")) return trimmed.toLowerCase();
 
   const cleanRef = trimmed.replace(/^PAY-/i, "").replace(/\s+/g, "").toUpperCase();
+  const clean = cleanRef.replace(/[^A-Z0-9]/gi, "").toLowerCase();
 
-  // 1. Check users table by staff_id (for teachers and staff)
+  // 1. Try server API resolution (service role bypasses RLS safely)
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/auth/resolve-identifier", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: trimmed }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.ok && json.email) {
+          return json.email.toLowerCase();
+        }
+      }
+    } catch {
+      // offline/fallback to client resolution
+    }
+  }
+
+  // 2. Direct client query (if session or public read is permitted)
   try {
     const hyphenated = cleanRef.includes("-") ? cleanRef : cleanRef.replace(/^(GMT)(\d+)/i, "$1-$2");
     const unhyphenated = cleanRef.replace(/-/g, "");
@@ -107,13 +127,13 @@ export async function resolveUserLoginEmail(rawId: string): Promise<string> {
       .maybeSingle();
 
     if (staffUser?.email) {
-      return staffUser.email;
+      return staffUser.email.toLowerCase();
     }
   } catch {
     /* RLS unauthenticated fallback */
   }
 
-  // 2. Check students table by admission_no
+  // 3. Check students table by admission_no
   try {
     const { data: student } = await supabase
       .from("students")
@@ -124,13 +144,13 @@ export async function resolveUserLoginEmail(rawId: string): Promise<string> {
 
     const studentAny = student as any;
     if (studentAny?.users?.email) {
-      return studentAny.users.email;
+      return studentAny.users.email.toLowerCase();
     }
   } catch {
     /* RLS unauthenticated fallback */
   }
 
-  // 3. Check admissions table by admission_number
+  // 4. Check admissions table by admission_number
   try {
     const { data: adm } = await supabase
       .from("admissions")
@@ -140,15 +160,18 @@ export async function resolveUserLoginEmail(rawId: string): Promise<string> {
       .maybeSingle();
 
     if (adm?.parent_guardian_email) {
-      return adm.parent_guardian_email;
+      return adm.parent_guardian_email.toLowerCase();
     }
   } catch {
     /* RLS unauthenticated fallback */
   }
 
-  // 4. Fallback synthetic email format
-  const clean = cleanRef.replace(/\//g, "").replace(/-/g, "").toLowerCase();
-  if (/^gmat|^t\d+/i.test(cleanRef)) {
+  // 5. Fallback synthetic email format
+  const isTeacherPattern =
+    /^(GMT|GMAT|GMA-T|GM-T|TEA|STAFF|T\d+|T-)/i.test(cleanRef) ||
+    /^(gmt|gmat|tea|staff|t\d+)/i.test(clean);
+
+  if (isTeacherPattern) {
     return `${clean}@teacher.gracemark.edu.ng`;
   }
   return `${clean}@student.gracemark.edu.ng`;
