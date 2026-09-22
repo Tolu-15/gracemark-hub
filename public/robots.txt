@@ -1,0 +1,20 @@
+# robots.txt for GraceMark Academic Portal
+User-agent: *
+Allow: /
+Allow: /admission-form
+Allow: /form
+Allow: /forgot-password
+Disallow: /admin
+Disallow: /admin/*
+Disallow: /teacher
+Disallow: /teacher/*
+Disallow: /student
+Disallow: /student/*
+Disallow: /parent
+Disallow: /parent/*
+Disallow: /api
+Disallow: /api/*
+Disallow: /otp-verify
+Disallow: /change-password
+
+Sitemap: https://gracemarkportal.com.ng/sitemap.xml
