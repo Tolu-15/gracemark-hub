@@ -123,28 +123,34 @@ export default function OtpVerifyPage() {
   }
 
   return (
-    <div className="min-h-[100dvh] flex flex-col justify-between bg-[#020617] text-slate-100 relative overflow-x-hidden">
-      {/* Decorative background */}
-      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(ellipse_80%_60%_at_15%_10%,rgba(148,163,184,0.05)_0%,transparent_65%),radial-gradient(ellipse_60%_50%_at_88%_85%,rgba(245,158,11,0.08)_0%,transparent_60%)]" />
-      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle,rgba(148,163,184,0.05)_1px,transparent_1px)] bg-[size:28px_28px]" />
+    <div
+      className="min-h-[100dvh] flex flex-col justify-between relative overflow-x-hidden"
+      style={{
+        backgroundImage: "url('/assets/images/login-bg.jpg')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+      }}
+    >
+      {/* Dark overlay */}
+      <div className="fixed inset-0 pointer-events-none" style={{ backgroundColor: "rgba(7,17,32,0.72)" }} />
 
       <main className="flex-1 flex items-center justify-center p-4 sm:p-6 py-10 z-10">
-        <div className="w-full max-w-[420px] bg-[#0f172a]/95 backdrop-blur-md border border-slate-700/60 rounded-3xl shadow-2xl p-6 sm:p-8 relative">
+        <div className="w-full max-w-[420px] rounded-3xl shadow-2xl p-6 sm:p-8 relative" style={{ backgroundColor: "#ffffff", border: "1px solid rgba(7,17,32,0.12)", boxShadow: "0 32px 80px rgba(7,17,32,0.6)" }}>
 
-          {/* Icon */}
           <div className="flex justify-center mb-5">
-            <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-3xl">
-              🔐
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ backgroundColor: "rgba(7,17,32,0.08)", border: "1px solid rgba(7,17,32,0.15)" }}>
+              <svg className="w-8 h-8" fill="none" stroke="#071120" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg>
             </div>
           </div>
 
           <div className="text-center mb-6">
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight" style={{ color: "#071120" }}>
               New Device Detected
             </h1>
             <p className="text-xs text-slate-400 mt-2 leading-relaxed">
               A 6-digit verification code was sent to{" "}
-              <span className="text-amber-400 font-semibold">{emailHint || "your admin email"}</span>.
+              <span className="font-semibold" style={{ color: "#c9a84c" }}>{emailHint || "your admin email"}</span>.
               <br />Enter it below to continue.
             </p>
           </div>
@@ -157,7 +163,9 @@ export default function OtpVerifyPage() {
 
           {success ? (
             <div className="p-6 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-center space-y-3">
-              <div className="text-3xl">✅</div>
+              <div className="w-12 h-12 mx-auto rounded-full bg-emerald-500/20 flex items-center justify-center">
+                <svg className="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+              </div>
               <h3 className="text-sm font-bold text-emerald-300">Device Verified!</h3>
               <p className="text-xs text-slate-400">Redirecting to your dashboard…</p>
             </div>
@@ -176,8 +184,8 @@ export default function OtpVerifyPage() {
                     value={digit}
                     onChange={(e) => handleOtpChange(i, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                    className="w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-black bg-slate-900/80 border border-slate-700/80 rounded-xl text-white focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
-                    style={{ height: "3.25rem" }}
+                    className="w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-black rounded-xl transition-all"
+                    style={{ height: "3.25rem", backgroundColor: "#f8fafc", border: "1.5px solid #cbd5e1", color: "#071120", outline: "none" }}
                     autoComplete="one-time-code"
                   />
                 ))}
@@ -186,7 +194,8 @@ export default function OtpVerifyPage() {
               <button
                 type="submit"
                 disabled={verifying || otp.join("").length < 6}
-                className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 cursor-pointer transition-all disabled:opacity-50"
+                className="w-full py-3 rounded-xl text-xs uppercase tracking-wider cursor-pointer transition-all disabled:opacity-50 font-black"
+                style={{ backgroundColor: "#071120", color: "#ffffff", boxShadow: "0 4px 14px rgba(7,17,32,0.4)" }}
               >
                 {verifying ? "Verifying…" : "Verify & Continue →"}
               </button>

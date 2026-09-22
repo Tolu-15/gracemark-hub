@@ -734,7 +734,7 @@ export default function AdminStudentsPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 border border-slate-200">
             <div className="flex items-center gap-3 text-amber-600 mb-3">
               <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center font-bold text-lg">
-                🔑
+                Temporary password
               </div>
               <div>
                 <h3 className="font-bold text-base text-slate-900 tracking-tight">Reset Password</h3>
@@ -826,7 +826,7 @@ export default function AdminStudentsPage() {
             </div>
 
             <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-4">
-              🔒 <strong>Forced Change:</strong> The student must set their own secure password immediately upon logging in with this temporary code.
+              <strong>Forced Change:</strong> The student must set their own secure password immediately upon logging in with this temporary code.
             </p>
 
             <div className="flex justify-end">

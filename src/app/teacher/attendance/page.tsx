@@ -357,7 +357,7 @@ export default function TeacherAttendancePage() {
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              📅 Daily Register
+              Daily Register
             </button>
           </div>
 

@@ -1,181 +1,69 @@
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/supabase/server";
+import { requireApiActor } from "@/lib/apiAuth";
+
+type PaystackVerification = {
+  status: boolean;
+  data?: { status?: string; amount?: number; currency?: string; reference?: string };
+};
 
 export async function POST(req: NextRequest) {
-  let body: any;
+  const authorization = await requireApiActor(req, ["student"]);
+  if ("response" in authorization) return authorization.response;
+  const { actor } = authorization;
+  const { service, authId } = actor;
+  let body: { reference?: string; invoice_id?: string };
+  try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 }); }
+
+  const reference = body.reference?.trim();
+  const invoiceId = body.invoice_id?.trim();
+  if (!reference || !invoiceId) return NextResponse.json({ error: "Payment reference and invoice are required." }, { status: 400 });
+  const secretKey = process.env.PAYSTACK_SECRET_KEY;
+  if (!secretKey) return NextResponse.json({ error: "Payment verification is not configured." }, { status: 503 });
+
+  const { data: student } = await service.from("students").select("id").eq("user_id", authId).maybeSingle();
+  if (!student) return NextResponse.json({ error: "Student profile not found." }, { status: 403 });
+  const { data: invoice } = await service
+    .from("payment_invoices").select("id, student_id, total_amount").eq("id", invoiceId).eq("student_id", student.id).maybeSingle();
+  if (!invoice) return NextResponse.json({ error: "The selected invoice is unavailable." }, { status: 404 });
+
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
-
-  const { reference, invoice_id: raw_invoice_id, student_id, amount, invoice: invoice_context } = body || {};
-  let resolvedInvoiceId = raw_invoice_id;
-
-  const service = getServiceClient();
-  if (!service) {
-    return NextResponse.json({ error: "Server service role not configured." }, { status: 503 });
-  }
-
-  try {
-    let { data: targetInvoice } = resolvedInvoiceId
-      ? await service.from("payment_invoices").select("*").eq("id", resolvedInvoiceId).maybeSingle()
-      : { data: null };
-
-    const invoiceContext = invoice_context || {};
-    const contextSession =
-      invoiceContext.academic_session || `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`;
-    const contextTerm = invoiceContext.term || "term1";
-
-    if (!targetInvoice && student_id) {
-      let invoiceQuery = service
-        .from("payment_invoices")
-        .select("*")
-        .eq("student_id", student_id)
-        .eq("academic_session", contextSession);
-
-      if (contextTerm) invoiceQuery = invoiceQuery.eq("term", contextTerm);
-
-      const { data: matchingInvoices } = await invoiceQuery
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      const stdInv = matchingInvoices?.[0] || null;
-
-      if (stdInv) {
-        targetInvoice = stdInv;
-        resolvedInvoiceId = stdInv.id;
-      } else {
-        const invoiceNumber = `INV-${contextSession.replace(/\//g, "")}-${String(contextTerm).toUpperCase()}-${Date.now()}`;
-        const { data: newInv, error: newInvErr } = await service
-          .from("payment_invoices")
-          .insert([
-            {
-              student_id,
-              fee_structure_id: invoiceContext.fee_structure_id || null,
-              class_id: invoiceContext.class_id || null,
-              total_amount: Number(invoiceContext.total_amount || amount || 0),
-              amount_paid: 0,
-              academic_session: contextSession,
-              term: contextTerm,
-              status: "UNPAID",
-              invoice_number: invoiceNumber,
-            },
-          ])
-          .select()
-          .maybeSingle();
-
-        if (newInv) {
-          targetInvoice = newInv;
-          resolvedInvoiceId = newInv.id;
-        } else if (newInvErr) {
-          throw newInvErr;
-        }
-      }
-    }
-
-    // 1. Check if reference has already been processed
-    const { data: existingRec } = await service
-      .from("payment_records")
-      .select("id, status, receipt_number")
-      .eq("payment_reference", reference)
-      .maybeSingle();
-
-    if (existingRec && (existingRec.status === "successful" || existingRec.status === "success")) {
-      return NextResponse.json({
-        ok: true,
-        verified: true,
-        message: "Payment reference already verified.",
-        receipt_number: existingRec.receipt_number,
-      });
-    }
-
-    const invoice_id = resolvedInvoiceId;
-    if (!invoice_id) {
-      throw new Error("Could not resolve or create a payment invoice.");
-    }
-
-    // 2. Generate unique receipt number
-    const year = new Date().getFullYear();
-    const receiptNumber = `REC-${year}-${Math.floor(100000 + Math.random() * 900000)}`;
-
-    // 3. Upsert payment record as verified successful
-    const { error: recErr } = await service
-      .from("payment_records")
-      .upsert(
-        {
-          invoice_id,
-          student_id: student_id || null,
-          payment_reference: reference,
-          receipt_number: receiptNumber,
-          amount: Number(amount || 0),
-          payment_gateway: "paystack",
-          status: "successful",
-          payment_date: new Date().toISOString(),
-          verified_at: new Date().toISOString(),
-        },
-        { onConflict: "payment_reference" }
-      )
-      .select()
-      .single();
-
-    if (recErr) throw recErr;
-
-    // 4. Recalculate invoice total verified paid & status
-    const { data: records } = await service
-      .from("payment_records")
-      .select("amount")
-      .eq("invoice_id", invoice_id)
-      .in("status", ["successful", "success"]);
-
-    const totalPaid = (records || []).reduce((s, r) => s + Number(r.amount || 0), 0);
-
-    const { data: invoice } = await service
-      .from("payment_invoices")
-      .select("total_amount")
-      .eq("id", invoice_id)
-      .single();
-
-    const totalAmount = Number(invoice?.total_amount || 0);
-    const balance = Math.max(0, totalAmount - totalPaid);
-    let newStatus = "UNPAID";
-    if (balance <= 0 && totalAmount > 0) newStatus = "FULLY PAID";
-    else if (totalPaid > 0) newStatus = "PARTIALLY PAID";
-
-    await service
-      .from("payment_invoices")
-      .update({ amount_paid: totalPaid, status: newStatus })
-      .eq("id", invoice_id);
-
-    // 5. Evaluate portal access if student fully paid
-    if (student_id && newStatus === "FULLY PAID") {
-      const { data: policy } = await service
-        .from("portal_access_settings")
-        .select("auto_unlock_on_full_payment")
-        .limit(1)
-        .maybeSingle();
-
-      if (policy?.auto_unlock_on_full_payment !== false) {
-        await service.from("students").update({
-          portal_access_status: "ACTIVE",
-          portal_lock_reason: null,
-        }).eq("id", student_id);
-      }
-    }
-
-    return NextResponse.json({
-      ok: true,
-      verified: true,
-      receipt_number: receiptNumber,
-      amount_paid: totalPaid,
-      outstanding_balance: balance,
-      status: newStatus,
+    const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+      headers: { Authorization: `Bearer ${secretKey}` }, cache: "no-store",
     });
-  } catch (error: any) {
-    console.error("Payment Verification Error:", error);
-    return NextResponse.json(
-      { error: error.message || "Payment verification failed." },
-      { status: 500 }
-    );
+    const verification = (await response.json()) as PaystackVerification;
+    const transaction = verification.data;
+    if (!response.ok || !verification.status || transaction?.status !== "success" || transaction.currency !== "NGN") {
+      return NextResponse.json({ error: "Paystack could not confirm this payment." }, { status: 422 });
+    }
+    const amount = Number(transaction.amount || 0) / 100;
+    if (!Number.isFinite(amount) || amount <= 0 || transaction.reference !== reference) {
+      return NextResponse.json({ error: "The payment details returned by Paystack are invalid." }, { status: 422 });
+    }
+    const { data: existing } = await service.from("payment_records").select("id, receipt_number").eq("payment_reference", reference).maybeSingle();
+    if (existing) return NextResponse.json({ ok: true, verified: true, receipt_number: existing.receipt_number });
+
+    const receiptNumber = `REC-${new Date().getFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`;
+    const { error: recordError } = await service.from("payment_records").insert({
+      invoice_id: invoice.id, student_id: student.id, payment_reference: reference, receipt_number: receiptNumber,
+      amount, payment_gateway: "paystack", status: "successful", payment_date: new Date().toISOString(), verified_at: new Date().toISOString(),
+    });
+    if (recordError) throw recordError;
+
+    const { data: records } = await service.from("payment_records").select("amount").eq("invoice_id", invoice.id).in("status", ["successful", "success"]);
+    const totalPaid = (records || []).reduce((total, record) => total + Number(record.amount || 0), 0);
+    const balance = Math.max(0, Number(invoice.total_amount || 0) - totalPaid);
+    const status = balance <= 0 && Number(invoice.total_amount || 0) > 0 ? "FULLY PAID" : "PARTIALLY PAID";
+    await service.from("payment_invoices").update({ amount_paid: totalPaid, status }).eq("id", invoice.id);
+    if (status === "FULLY PAID") {
+      const { data: policy } = await service.from("portal_access_settings").select("auto_unlock_on_full_payment").limit(1).maybeSingle();
+      if (policy?.auto_unlock_on_full_payment !== false) {
+        await service.from("students").update({ portal_access_status: "ACTIVE", portal_lock_reason: null }).eq("id", student.id);
+      }
+    }
+    return NextResponse.json({ ok: true, verified: true, receipt_number: receiptNumber, amount_paid: totalPaid, outstanding_balance: balance, status });
+  } catch (error) {
+    console.error("Paystack verification error:", error);
+    return NextResponse.json({ error: "Payment verification failed." }, { status: 500 });
   }
 }

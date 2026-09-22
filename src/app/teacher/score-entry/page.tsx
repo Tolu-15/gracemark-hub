@@ -321,9 +321,10 @@ export default function TeacherScoreEntryPage() {
         });
 
         if (recordsToSave.length > 0 || deletedResultIds.length > 0) {
+          const { data: sessionData } = await supabase.auth.getSession();
           const res = await fetch("/api/results/save", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
             body: JSON.stringify({ records: recordsToSave, deletedResultIds }),
           });
           if (res.ok) {
@@ -411,9 +412,10 @@ export default function TeacherScoreEntryPage() {
         return;
       }
 
+      const { data: sessionData } = await supabase.auth.getSession();
       const res = await fetch("/api/results/save", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
         body: JSON.stringify({ records: recordsToSave, deletedResultIds }),
       });
 
@@ -482,7 +484,7 @@ export default function TeacherScoreEntryPage() {
             className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold rounded-xl text-xs shadow-2xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
             title="Save draft scores without submitting to admin"
           >
-            <span>💾</span>
+            <span aria-hidden="true">Save</span>
             <span>{savingAction === "draft" ? "Saving Draft…" : "Save Draft"}</span>
           </button>
           <button
@@ -495,7 +497,7 @@ export default function TeacherScoreEntryPage() {
             }}
             className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
           >
-            <span>🚀</span>
+            <span aria-hidden="true">Submit</span>
             <span>{savingAction === "submit" ? "Submitting to Admin…" : "Submit to Admin"}</span>
           </button>
         </div>
@@ -505,7 +507,7 @@ export default function TeacherScoreEntryPage() {
       {!isEditable && (
         <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-base">🔒</span>
+            <span className="text-base" aria-hidden="true">Locked</span>
             <span>
               <strong>Score Editing Locked for {selectedTerm}:</strong> Only the active school term can be edited. Contact an administrator to unlock this term.
             </span>

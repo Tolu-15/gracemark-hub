@@ -98,14 +98,16 @@ export default function StudentSchoolFeesPage() {
         callback: async function (response: any) {
           setPaymentMsg("Payment received! Verifying transaction with bank...");
           try {
+            const { data: sessionData } = await getSupabaseBrowserClient().auth.getSession();
             const verifyRes = await fetch("/api/verify-paystack-payment", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${sessionData.session?.access_token || ""}`,
+              },
               body: JSON.stringify({
                 reference: response.reference,
-                studentId: student.id,
-                invoiceId: financeData?.invoice?.id,
-                amountPaid: amount,
+                invoice_id: financeData?.invoice?.id,
               }),
             });
 

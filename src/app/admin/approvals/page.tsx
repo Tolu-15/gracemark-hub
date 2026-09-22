@@ -320,9 +320,10 @@ export default function AdminApprovalsPage() {
 
       const resultIds = allResultsList.map((r: any) => r.id);
 
+      const { data: sessionData } = await supabase.auth.getSession();
       const res = await fetch("/api/results/batch-publish", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
         body: JSON.stringify({
           snapshots,
           resultIds,
@@ -350,9 +351,10 @@ export default function AdminApprovalsPage() {
     }
 
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
       const res = await fetch("/api/results/unpublish", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
         body: JSON.stringify({
           classId: selectedClass,
           milestone: selectedMilestone,

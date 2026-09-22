@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/supabase/server";
+import { requireApiActor } from "@/lib/apiAuth";
 
 export async function POST(req: NextRequest) {
+  const authorization = await requireApiActor(req, ["admin"]);
+  if ("response" in authorization) return authorization.response;
+  const { service } = authorization.actor;
   let body: any;
   try {
     body = await req.json();
@@ -10,11 +13,6 @@ export async function POST(req: NextRequest) {
   }
 
   const { snapshots = [], resultIds = [], statusCol = {} } = body || {};
-
-  const service = getServiceClient();
-  if (!service) {
-    return NextResponse.json({ error: "Server service role not configured." }, { status: 503 });
-  }
 
   try {
     // 1. Upsert into published_snapshots

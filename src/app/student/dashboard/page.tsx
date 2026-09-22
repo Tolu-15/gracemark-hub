@@ -334,7 +334,7 @@ export default function StudentDashboardPage() {
       <header className="bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-20 shrink-0">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
-            Welcome, {student?.name || "Student"} 👋
+            Welcome, {student?.name || "Student"}
           </h1>
           <p className="text-sm text-slate-500 mt-1">
             Academic session: <span className="font-semibold text-emerald-700">{session}</span>
@@ -405,7 +405,7 @@ export default function StudentDashboardPage() {
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${results.length > 0 ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-slate-100 text-slate-500"}`}>
-              {results.length > 0 ? "📑" : "⏳"}
+              {results.length > 0 ? "Reports available" : "No reports yet"}
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -475,7 +475,7 @@ export default function StudentDashboardPage() {
         ) : results.length === 0 ? (
           <div className="p-10 text-center bg-white border border-slate-200/80 rounded-2xl shadow-xs">
             <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-3 text-xl">
-              🔒
+              Locked
             </div>
             <h4 className="font-bold text-slate-900 text-base">Results Awaiting Publication</h4>
             <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">

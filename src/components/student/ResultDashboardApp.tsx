@@ -408,7 +408,7 @@ export default function ResultDashboardApp({
         {!hasAnyPublished ? (
           <div className="my-12 p-8 sm:p-12 text-center max-w-xl mx-auto bg-slate-50 border border-slate-200/80 rounded-2xl shadow-xs">
             <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
-              🔒
+              Locked
             </div>
             <h3 className="text-lg font-bold text-slate-900 mb-1">
               No Results Published Yet
@@ -420,7 +420,7 @@ export default function ResultDashboardApp({
         ) : !isCurrentTabPublished ? (
           <div className="my-12 p-8 sm:p-12 text-center max-w-xl mx-auto bg-slate-50 border border-slate-200/80 rounded-2xl shadow-xs">
             <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
-              🔒
+              Locked
             </div>
             <h3 className="text-lg font-bold text-slate-900 mb-1">
               {reportTitle} Not Published Yet

@@ -94,22 +94,28 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <div className="min-h-[100dvh] flex flex-col justify-between bg-[#020617] text-slate-100 relative overflow-x-hidden">
-      {/* Decorative Radial Background */}
-      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(ellipse_80%_60%_at_15%_10%,rgba(148,163,184,0.05)_0%,transparent_65%),radial-gradient(ellipse_60%_50%_at_88%_85%,rgba(201,168,76,0.08)_0%,transparent_60%)]" />
-      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle,rgba(148,163,184,0.08)_1px,transparent_1px)] bg-[size:28px_28px]" />
+    <div
+      className="min-h-[100dvh] flex flex-col justify-between relative overflow-x-hidden"
+      style={{
+        backgroundImage: "url('/assets/images/login-bg.jpg')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+      }}
+    >
+      {/* Dark overlay */}
+      <div className="fixed inset-0 pointer-events-none" style={{ backgroundColor: "rgba(7,17,32,0.72)" }} />
 
       <main className="flex-1 flex items-center justify-center p-4 sm:p-6 py-10 z-10">
-        <div className="card w-full max-w-[440px] bg-[#0f172a]/95 backdrop-blur-md border border-slate-700/60 rounded-3xl shadow-2xl p-6 sm:p-8 relative animate-fade-in">
-          {/* Header */}
+        <div className="card w-full max-w-[440px] rounded-3xl p-6 sm:p-8 relative animate-fade-in" style={{ backgroundColor: "#ffffff", border: "1px solid rgba(7,17,32,0.12)", boxShadow: "0 32px 80px rgba(7,17,32,0.6)" }}>
           <div className="flex justify-center mb-5">
-            <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-2xl">
-              🛡️
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ backgroundColor: "rgba(7,17,32,0.08)", border: "1px solid rgba(7,17,32,0.15)" }}>
+              <svg className="w-8 h-8" fill="none" stroke="#071120" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
             </div>
           </div>
 
           <div className="text-center mb-6">
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight" style={{ color: "#071120" }}>
               Create Your New Password
             </h1>
             <p className="text-xs text-slate-400 mt-2 leading-relaxed">
@@ -125,7 +131,7 @@ export default function ChangePasswordPage() {
 
           {success ? (
             <div className="p-6 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-center space-y-3">
-              <div className="text-3xl">🎉</div>
+              <div className="text-3xl" aria-hidden="true">✓</div>
               <h3 className="text-sm font-bold text-emerald-300">Password Updated Successfully!</h3>
               <p className="text-xs text-slate-400">Redirecting to your portal dashboard…</p>
             </div>
@@ -150,7 +156,7 @@ export default function ChangePasswordPage() {
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 cursor-pointer"
                   >
-                    {showPassword ? "🙈" : "👁️"}
+                    {showPassword ? "Hide" : "Show"}
                   </button>
                 </div>
               </div>
@@ -174,7 +180,8 @@ export default function ChangePasswordPage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 cursor-pointer transition-all disabled:opacity-50"
+                  className="w-full py-3 rounded-xl text-xs uppercase tracking-wider cursor-pointer transition-all disabled:opacity-50 font-black"
+                  style={{ backgroundColor: "#071120", color: "#ffffff", boxShadow: "0 4px 14px rgba(7,17,32,0.4)" }}
                 >
                   {submitting ? "Securing Account…" : "Set Password & Continue"}
                 </button>

@@ -65,8 +65,8 @@ export async function sendOtpEmail(
           <tr><td align="center">
             <table width="100%" style="max-width:520px;background:#0f172a;border-radius:20px;overflow:hidden;">
               <tr>
-                <td style="padding:32px 36px;background:linear-gradient(135deg,#1e293b,#0f172a);border-bottom:1px solid #1e3a5f;">
-                  <p style="margin:0;font-size:13px;font-weight:700;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;">GraceMark Academic Portal</p>
+                <td style="padding:32px 36px;background:#071120;border-bottom:1px solid #1e3a5f;">
+                  <p style="margin:0;font-size:13px;font-weight:700;color:#c9a84c;letter-spacing:2px;text-transform:uppercase;">GraceMark Academic Portal</p>
                   <h1 style="margin:8px 0 0;font-size:22px;font-weight:900;color:#fff;">New Device Sign-In</h1>
                 </td>
               </tr>
@@ -76,12 +76,66 @@ export async function sendOtpEmail(
                     Hi <strong style="color:#fff;">${displayName}</strong>, a sign-in attempt was made from an unrecognised device or browser.
                     Use the code below to verify it's you.
                   </p>
-                  <div style="background:#1e293b;border:2px solid #334155;border-radius:16px;padding:24px;text-align:center;margin:24px 0;">
-                    <p style="margin:0 0 8px;font-size:11px;color:#64748b;letter-spacing:2px;text-transform:uppercase;font-weight:700;">Your Verification Code</p>
-                    <p style="margin:0;font-size:44px;font-weight:900;letter-spacing:12px;color:#f59e0b;font-family:monospace;">${otp}</p>
+                  <div style="background:#071120;border:2px solid #334155;border-radius:16px;padding:24px;text-align:center;margin:24px 0;">
+                    <p style="margin:0 0 8px;font-size:11px;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;font-weight:700;">Your Verification Code</p>
+                    <p style="margin:0;font-size:44px;font-weight:900;letter-spacing:12px;color:#c9a84c;font-family:monospace;">${otp}</p>
                   </div>
-                  <p style="margin:0 0 8px;font-size:12px;color:#94a3b8;">⏱ This code expires in <strong style="color:#f59e0b;">10 minutes</strong>.</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#94a3b8;">This code expires in <strong style="color:#c9a84c;">10 minutes</strong>.</p>
                   <p style="margin:0;font-size:12px;color:#64748b;">If you did not attempt to sign in, please change your password immediately and contact your school administrator.</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:20px 36px;border-top:1px solid #1e293b;">
+                  <p style="margin:0;font-size:11px;color:#475569;text-align:center;">GraceMark Academic Portal &bull; Automated Security Email</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  });
+}
+
+/** Sends a 6-digit OTP specifically for password reset verification. */
+export async function sendPasswordResetOtpEmail(
+  toEmail: string,
+  otp: string,
+  name?: string
+): Promise<void> {
+  const displayName = name || "User";
+
+  await sendEmail({
+    sender: { name: SENDER_NAME, email: SENDER_EMAIL },
+    to: [{ email: toEmail, name: displayName }],
+    subject: "GraceMark Portal — Password Reset Code",
+    htmlContent: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+      <body style="margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 16px;">
+          <tr><td align="center">
+            <table width="100%" style="max-width:520px;background:#0f172a;border-radius:20px;overflow:hidden;">
+              <tr>
+                <td style="padding:32px 36px;background:#071120;border-bottom:1px solid #1e3a5f;">
+                  <p style="margin:0;font-size:13px;font-weight:700;color:#c9a84c;letter-spacing:2px;text-transform:uppercase;">GraceMark Academic Portal</p>
+                  <h1 style="margin:8px 0 0;font-size:22px;font-weight:900;color:#fff;">Password Reset Request</h1>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:32px 36px;">
+                  <p style="margin:0 0 20px;font-size:14px;color:#cbd5e1;line-height:1.6;">
+                    Hello <strong style="color:#fff;">${displayName}</strong>, we received a request to reset your password.
+                    Use the 6-digit verification code below to authorize the password reset.
+                  </p>
+                  <div style="background:#071120;border:2px solid #334155;border-radius:16px;padding:24px;text-align:center;margin:24px 0;">
+                    <p style="margin:0 0 8px;font-size:11px;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;font-weight:700;">Password Reset Code</p>
+                    <p style="margin:0;font-size:44px;font-weight:900;letter-spacing:12px;color:#c9a84c;font-family:monospace;">${otp}</p>
+                  </div>
+                  <p style="margin:0 0 8px;font-size:12px;color:#94a3b8;">This code expires in <strong style="color:#c9a84c;">10 minutes</strong>.</p>
+                  <p style="margin:0;font-size:12px;color:#64748b;">If you did not request this password reset, you can safely ignore this email. Your current password remains unchanged.</p>
                 </td>
               </tr>
               <tr>
@@ -120,18 +174,18 @@ export async function sendPasswordChangedEmail(
           <tr><td align="center">
             <table width="100%" style="max-width:520px;background:#0f172a;border-radius:20px;overflow:hidden;">
               <tr>
-                <td style="padding:32px 36px;background:linear-gradient(135deg,#1e293b,#0f172a);border-bottom:1px solid #1e3a5f;">
-                  <p style="margin:0;font-size:13px;font-weight:700;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;">GraceMark Academic Portal</p>
-                  <h1 style="margin:8px 0 0;font-size:22px;font-weight:900;color:#fff;">Password Updated ✓</h1>
+                <td style="padding:32px 36px;background:#071120;border-bottom:1px solid #1e3a5f;">
+                  <p style="margin:0;font-size:13px;font-weight:700;color:#c9a84c;letter-spacing:2px;text-transform:uppercase;">GraceMark Academic Portal</p>
+                  <h1 style="margin:8px 0 0;font-size:22px;font-weight:900;color:#fff;">Password Updated</h1>
                 </td>
               </tr>
               <tr>
                 <td style="padding:32px 36px;">
                   <p style="margin:0 0 16px;font-size:14px;color:#cbd5e1;line-height:1.6;">
-                    Hi <strong style="color:#fff;">${name}</strong>, your <strong style="color:#10b981;">${roleLabel}</strong> account password was successfully changed.
+                    Hi <strong style="color:#fff;">${name}</strong>, your <strong style="color:#c9a84c;">${roleLabel}</strong> account password was successfully changed.
                   </p>
                   <p style="margin:0;font-size:12px;color:#64748b;">
-                    If you did not make this change, please contact the school administrator immediately at <a href="mailto:${SENDER_EMAIL}" style="color:#f59e0b;">${SENDER_EMAIL}</a>.
+                    If you did not make this change, please contact the school administrator immediately at <a href="mailto:${SENDER_EMAIL}" style="color:#c9a84c;">${SENDER_EMAIL}</a>.
                   </p>
                 </td>
               </tr>

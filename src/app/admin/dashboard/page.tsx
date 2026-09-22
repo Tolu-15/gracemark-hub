@@ -386,7 +386,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Financial Health Summary Banner */}
-      <div className="bg-gradient-to-r from-slate-900 to-slate-950 text-white p-6 rounded-2xl shadow-md">
+      <div className="text-white p-6 rounded-2xl shadow-md" style={{ backgroundColor: "#071120" }}>
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <div>
             <h3 className="text-lg font-bold">Tuition Revenue &amp; Collections</h3>
@@ -589,7 +589,7 @@ export default function AdminDashboardPage() {
                         : "bg-indigo-600 hover:bg-indigo-700 text-white border-transparent"
                     }`}
                   >
-                    {updatingTerm === t.term ? "Updating…" : t.allow_edit ? "🔒 Lock Term" : "🔓 Permit Edit"}
+                    {updatingTerm === t.term ? "Updating…" : t.allow_edit ? "Lock Term" : "Permit Edit"}
                   </button>
                 </div>
               );

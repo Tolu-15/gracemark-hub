@@ -186,7 +186,7 @@ export default function AdminStudentAccessPage() {
                               : "bg-emerald-50 text-emerald-700 border-emerald-200"
                           }`}
                         >
-                          {isLocked ? "🔒 Locked" : "🔓 Active"}
+                          {isLocked ? "Locked" : "Active"}
                         </span>
                       </td>
                       <td className="px-6 py-3.5 text-slate-500 italic">

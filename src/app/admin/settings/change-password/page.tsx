@@ -74,7 +74,7 @@ export default function AdminChangePasswordPage() {
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs p-6 sm:p-8">
         {success ? (
           <div className="text-center py-6 space-y-4">
-            <div className="text-5xl">🎉</div>
+            <div className="text-5xl" aria-hidden="true">✓</div>
             <h3 className="font-bold text-emerald-700">Password Updated Successfully!</h3>
             <p className="text-sm text-slate-500">Your new password is now active.</p>
             <button
@@ -112,7 +112,7 @@ export default function AdminChangePasswordPage() {
                   onClick={() => setShowCurrent(!showCurrent)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer text-base"
                 >
-                  {showCurrent ? "🙈" : "👁️"}
+                  {showCurrent ? "Hide" : "Show"}
                 </button>
               </div>
             </div>
@@ -137,7 +137,7 @@ export default function AdminChangePasswordPage() {
                   onClick={() => setShowNew(!showNew)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer text-base"
                 >
-                  {showNew ? "🙈" : "👁️"}
+                  {showNew ? "Hide" : "Show"}
                 </button>
               </div>
               {/* Password strength indicator */}

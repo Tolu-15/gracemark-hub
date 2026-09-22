@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/supabase/server";
 import { isTermEditable } from "@/lib/termPermissions";
+import { requireApiActor, requireTeacherAssignment } from "@/lib/apiAuth";
 
 export async function POST(req: NextRequest) {
+  const authorization = await requireApiActor(req, ["admin", "teacher"]);
+  if ("response" in authorization) return authorization.response;
+  const { actor } = authorization;
+
   let body: any;
   try {
     body = await req.json();
@@ -17,9 +21,47 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No records or deletions provided." }, { status: 400 });
   }
 
-  const service = getServiceClient();
-  if (!service) {
-    return NextResponse.json({ error: "Server service role not configured." }, { status: 503 });
+  const service = actor.service;
+
+  for (const record of records) {
+    const assigned = await requireTeacherAssignment(
+      actor,
+      String(record.class_id || ""),
+      String(record.subject_id || ""),
+      record.academic_session_id
+    );
+    if (!assigned) {
+      return NextResponse.json({ error: "You are not assigned to this class and subject." }, { status: 403 });
+    }
+  }
+
+  const studentClassPairs = new Map<string, string>();
+  for (const record of records) {
+    if (record.student_id && record.class_id) studentClassPairs.set(String(record.student_id), String(record.class_id));
+  }
+  if (studentClassPairs.size) {
+    const { data: students } = await service
+      .from("students")
+      .select("id, class_id")
+      .in("id", Array.from(studentClassPairs.keys()));
+    if (!students || students.length !== studentClassPairs.size || students.some((student) => student.class_id !== studentClassPairs.get(student.id))) {
+      return NextResponse.json({ error: "A score can only be saved for a student in the selected class." }, { status: 403 });
+    }
+  }
+
+  if (deletedResultIds.length && actor.role !== "admin") {
+    const { data: deletable } = await service
+      .from("results")
+      .select("id, class_id, subject_id, academic_session_id")
+      .in("id", deletedResultIds);
+    if (!deletable || deletable.length !== deletedResultIds.length) {
+      return NextResponse.json({ error: "One or more result records could not be verified." }, { status: 403 });
+    }
+    for (const record of deletable) {
+      if (!(await requireTeacherAssignment(actor, record.class_id, record.subject_id, record.academic_session_id))) {
+        return NextResponse.json({ error: "You cannot delete results outside your assignment." }, { status: 403 });
+      }
+    }
   }
 
   // Check if term being saved is permitted for score editing
