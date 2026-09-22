@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/supabase/server";
-import { createClient } from "@supabase/supabase-js";
-import { SUPABASE_URL } from "@/lib/supabase/client";
+import { requireApiActor } from "@/lib/apiAuth";
 
 /**
  * PATCH /api/teacher/profile
@@ -12,41 +10,11 @@ import { SUPABASE_URL } from "@/lib/supabase/client";
  */
 export async function PATCH(req: NextRequest) {
   try {
-    // Extract bearer token from Authorization header
-    const authHeader = req.headers.get("Authorization") || "";
-    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-
-    if (!token) {
-      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+    const authorization = await requireApiActor(req, ["teacher"]);
+    if ("response" in authorization) {
+      return authorization.response;
     }
-
-    // Build a user-scoped client to verify the token
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-    const userClient = createClient(SUPABASE_URL, anonKey, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-      auth: { persistSession: false },
-    });
-
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-    }
-
-    // Verify they are a teacher using the service client
-    const service = getServiceClient();
-    if (!service) {
-      return NextResponse.json({ error: "Service client not configured." }, { status: 503 });
-    }
-
-    const { data: profile } = await service
-      .from("users")
-      .select("role")
-      .eq("auth_id", user.id)
-      .maybeSingle();
-
-    if (!profile || profile.role !== "teacher") {
-      return NextResponse.json({ error: "Not authorised." }, { status: 403 });
-    }
+    const { actor } = authorization;
 
     const body = await req.json();
     const updates: Record<string, string> = {};
@@ -62,10 +30,10 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "No fields to update." }, { status: 400 });
     }
 
-    const { error: updateErr } = await service
+    const { error: updateErr } = await actor.service
       .from("users")
       .update(updates)
-      .eq("auth_id", user.id);
+      .eq("auth_id", actor.authId);
 
     if (updateErr) {
       return NextResponse.json({ error: updateErr.message }, { status: 400 });
