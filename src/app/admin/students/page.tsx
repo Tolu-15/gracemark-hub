@@ -233,7 +233,7 @@ export default function AdminStudentsPage() {
         admission_no: "",
         class_id: "",
         email: "",
-        password: "",
+        password: "gracemark",
       });
     }
     setIsModalOpen(true);
@@ -265,18 +265,14 @@ export default function AdminStudentsPage() {
           .eq("id", editingStudent.id);
 
         if (error) throw error;
-      } else {
-        // Create new student
-        let authUserId: string | null = null;
 
-        // Provision Auth User if email + password or admission_no + password provided
-        if (password) {
+        // If a new password was provided during edit, update their auth password
+        if (password.trim()) {
           const authEmail = email.trim() || `${admission_no.trim().replace(/[^A-Z0-9]/gi, "").toLowerCase()}@student.gracemark.edu.ng`;
           const { data: sessionData } = await supabase.auth.getSession();
           const token = sessionData?.session?.access_token;
-
           if (token) {
-            const res = await fetch("/api/admin/create-auth-user", {
+            await fetch("/api/admin/create-auth-user", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -284,24 +280,55 @@ export default function AdminStudentsPage() {
               },
               body: JSON.stringify({
                 email: authEmail,
-                password,
+                password: password.trim(),
+                name: name.trim(),
+                role: "student",
               }),
             });
+          }
+        }
+      } else {
+        // Create new student with automatic default password 'gracemark'
+        const studentPassword = password.trim() || "gracemark";
+        const cleanAdm = admission_no.trim().replace(/[^A-Z0-9]/gi, "").toLowerCase();
+        const authEmail = email.trim() || `${cleanAdm}@student.gracemark.edu.ng`;
+        let authUserId: string | null = null;
 
-            if (res.ok) {
-              const resJson = await res.json();
-              authUserId = resJson.user?.id || null;
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
 
-              if (authUserId) {
-                // Insert profile into users table
-                await supabase.from("users").upsert({
-                  auth_id: authUserId,
-                  email: authEmail,
-                  display_name: name.trim(),
-                  role: "student",
-                });
-              }
+        if (token) {
+          const res = await fetch("/api/admin/create-auth-user", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              email: authEmail,
+              password: studentPassword,
+              name: name.trim(),
+              role: "student",
+            }),
+          });
+
+          if (res.ok) {
+            const resJson = await res.json();
+            authUserId = resJson.user?.id || null;
+
+            if (authUserId) {
+              await supabase.from("users").upsert({
+                auth_id: authUserId,
+                email: authEmail,
+                display_name: name.trim(),
+                role: "student",
+                status: "active",
+                must_change_password: false,
+              });
             }
+          } else {
+            const errJson = await res.json();
+            console.warn("Could not create auth user via API:", errJson);
           }
         }
 
@@ -830,20 +857,23 @@ export default function AdminStudentsPage() {
 
               {!editingStudent && (
                 <div className="pt-3 border-t border-slate-100 space-y-3">
-                  <div className="text-[11px] font-bold text-slate-600">
-                    Optional Portal Account Setup
+                  <div className="text-[11px] font-bold text-slate-700">
+                    Automatic Portal Account Setup
                   </div>
                   <div>
                     <label className="block font-bold text-slate-500 uppercase tracking-wider text-[10px] mb-1">
-                      Initial Password
+                      Portal Login Password (Default: gracemark)
                     </label>
                     <input
-                      type="password"
+                      type="text"
                       value={formData.password}
                       onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      placeholder="Leave blank to skip account creation"
+                      placeholder="gracemark"
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
                     />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      The student will sign in using their Admission Number and password: <strong className="text-slate-800 font-mono">gracemark</strong>
+                    </p>
                   </div>
                 </div>
               )}

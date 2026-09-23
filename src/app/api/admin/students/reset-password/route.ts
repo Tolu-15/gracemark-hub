@@ -28,9 +28,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Student profile not found." }, { status: 404 });
     }
 
-    // Generate random 5-digit pin, e.g. Gma@48291
-    const randomDigits = Math.floor(10000 + Math.random() * 90000);
-    const tempPassword = `Gma@${randomDigits}`;
+    // Use provided password or default to standard 'gracemark'
+    const tempPassword = String(body.password || body.tempPassword || "gracemark").trim() || "gracemark";
 
     let authUserId = student.user_id;
 
@@ -67,6 +66,7 @@ export async function POST(req: NextRequest) {
     // Update password in Supabase Auth securely
     const { error: authErr } = await service.auth.admin.updateUserById(authUserId, {
       password: tempPassword,
+      email_confirm: true,
     });
 
     if (authErr) {
@@ -76,17 +76,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Flag must_change_password = true on student record and users table
+    // Set must_change_password = false so student can log in directly
     await service
       .from("students")
-      .update({ must_change_password: true })
+      .update({ must_change_password: false })
       .eq("id", student.id);
 
     try {
       await service
         .from("users")
-        .update({ must_change_password: true })
-        .or(`auth_id.eq.${authUserId},id.eq.${authUserId}`);
+        .upsert(
+          {
+            auth_id: authUserId,
+            email: `${(student.admission_no || "").trim().replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}@student.gracemark.edu.ng`,
+            display_name: student.name,
+            role: "student",
+            status: "active",
+            must_change_password: false,
+          },
+          { onConflict: "auth_id" }
+        );
     } catch {
       // ignore
     }

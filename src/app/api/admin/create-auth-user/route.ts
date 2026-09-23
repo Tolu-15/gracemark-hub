@@ -56,10 +56,10 @@ export async function POST(req: NextRequest) {
   }
 
   const email = String(body.email || "").trim().toLowerCase();
-  const password = String(body.password || "");
-  if (!email || !password) {
+  const password = String(body.password || "gracemark").trim() || "gracemark";
+  if (!email) {
     return NextResponse.json(
-      { error: "Email and password are required." },
+      { error: "Email is required." },
       { status: 400 }
     );
   }
@@ -79,8 +79,42 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     const message = error.message || "Failed to create auth user.";
-    const status = /already|registered|exists/i.test(message) ? 409 : 400;
-    return NextResponse.json({ error: message }, { status });
+    if (/already|registered|exists/i.test(message)) {
+      try {
+        const { data: listData } = await service.auth.admin.listUsers();
+        const existing = listData?.users?.find(
+          (u) => u.email?.toLowerCase() === email.toLowerCase()
+        );
+        if (existing?.id) {
+          // Update password to requested/default password
+          await service.auth.admin.updateUserById(existing.id, {
+            password,
+            email_confirm: true,
+          });
+
+          // Ensure public.users row exists
+          await service.from("users").upsert(
+            {
+              auth_id: existing.id,
+              email,
+              display_name: displayName,
+              role,
+              status: "active",
+              must_change_password: false,
+            },
+            { onConflict: "auth_id" }
+          );
+
+          return NextResponse.json({
+            user: { id: existing.id, email: existing.email ?? email },
+            already_exists: true,
+          });
+        }
+      } catch (listErr) {
+        console.warn("Could not find existing user in auth:", listErr);
+      }
+    }
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 
   if (!data?.user?.id) {
@@ -98,6 +132,7 @@ export async function POST(req: NextRequest) {
       display_name: displayName,
       role,
       status: "active",
+      must_change_password: false,
     },
     { onConflict: "auth_id" }
   );

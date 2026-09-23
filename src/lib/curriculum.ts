@@ -1,78 +1,91 @@
 /**
  * Gracemark Academy Curriculum Management
- * Standard WAEC/NECO/UBEC Curriculum Configurations & Subject Presets
+ * Exact Junior & Senior Secondary School Subjects
  */
 
+// 12 Junior Class Subjects
 export const STANDARD_JSS_SUBJECTS = [
-  "English Language",
-  "Mathematics",
-  "Basic Science",
-  "Basic Technology",
-  "Civic Education",
-  "Social Studies",
   "Business Studies",
-  "Physical & Health Education (PHE)",
-  "Cultural & Creative Arts (CCA)",
-  "Agricultural Science",
-  "Home Economics",
-  "Computer Studies",
-  "Security Education",
   "Christian Religious Studies",
-  "French",
+  "Cultural and Creative Art",
+  "Digital Technology",
+  "English Language",
+  "History",
+  "Intermediate Science",
+  "Mathematics",
+  "Physical and Health Education",
+  "Social and Citizenship Studies",
+  "Trade",
+  "Yoruba",
+];
+
+// 19 Senior Class Subjects
+export const STANDARD_SSS_SUBJECTS = [
+  "Mathematics",
+  "English",
+  "Chemistry",
+  "Physics",
+  "Biology",
+  "Government",
+  "Literature",
+  "Account",
+  "Commerce",
+  "CRS",
+  "Economics",
+  "Further Math",
+  "Trade",
+  "Digital Technology",
+  "Agric",
+  "Technical Drawing",
+  "Yoruba",
+  "Marketing",
+  "Citizenship",
 ];
 
 export const SSS_CORE_SUBJECTS = [
-  "English Language",
   "Mathematics",
-  "Civic Education",
+  "English",
   "Economics",
+  "Citizenship",
+  "Trade",
+  "Digital Technology",
 ];
 
 export const SSS_SCIENCE_MAJORS = [
-  "Biology",
   "Chemistry",
   "Physics",
+  "Biology",
+  "Agric",
 ];
 
 export const SSS_SCIENCE_ELECTIVES = [
-  "Further Mathematics",
+  "Further Math",
   "Technical Drawing",
-  "Agricultural Science",
-  "Geography",
-  "Computer Studies",
-  "Food & Nutrition",
+  "Yoruba",
 ];
 
 export const SSS_ARTS_MAJORS = [
-  "Literature in English",
+  "Literature",
   "Government",
-  "Christian Religious Studies",
+  "CRS",
+  "Yoruba",
 ];
 
 export const SSS_ARTS_ELECTIVES = [
-  "History",
-  "Visual Arts",
-  "Music",
-  "French",
-  "Yoruba",
-  "Hausa",
-  "Igbo",
-  "Agricultural Science",
+  "Agric",
+  "Marketing",
 ];
 
 export const SSS_COMMERCIAL_MAJORS = [
+  "Account",
   "Commerce",
-  "Financial Accounting",
-  "Book Keeping",
+  "Marketing",
 ];
 
 export const SSS_COMMERCIAL_ELECTIVES = [
-  "Office Practice",
-  "Marketing",
-  "Store Management",
   "Government",
-  "Agricultural Science",
-  "Computer Studies",
+  "Agric",
+  "Yoruba",
 ];
 
 export function isJuniorClass(className?: string): boolean {
@@ -111,6 +124,6 @@ export function getSSSTrackDefaults(className?: string): {
   return {
     core: SSS_CORE_SUBJECTS,
     majors: ["Biology", "Government", "Commerce"],
-    electives: SSS_SCIENCE_ELECTIVES,
+    electives: ["Agric", "Marketing", "Further Math"],
   };
 }

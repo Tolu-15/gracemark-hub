@@ -235,7 +235,7 @@ export default function AdminTeachersPage() {
       staffId: nextId,
       phone: "",
       password: "gracemark",
-      mustChangePassword: true,
+      mustChangePassword: false,
     });
     setIsTeacherModalOpen(true);
   }

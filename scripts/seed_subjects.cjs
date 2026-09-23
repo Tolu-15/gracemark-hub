@@ -13,53 +13,36 @@ env.split("\n").forEach((line) => {
 const sb = createClient(envVars.SUPABASE_URL, envVars.SUPABASE_SERVICE_ROLE_KEY);
 
 const comprehensiveSubjects = [
-  // Core / General
-  "Mathematics",
-  "English Language",
-  "Civic Education",
-  "Computer Studies",
-  "Social Studies",
-
-  // Junior Secondary Specific
-  "Basic Science",
-  "Basic Technology",
-  "Physical & Health Education (PHE)",
-  "Cultural & Creative Arts (CCA)",
-  "Home Economics",
+  // Junior Class Subjects
   "Business Studies",
-  "Security Education",
+  "Christian Religious Studies",
+  "Cultural and Creative Art",
+  "Digital Technology",
+  "English Language",
+  "History",
+  "Intermediate Science",
+  "Mathematics",
+  "Physical and Health Education",
+  "Social and Citizenship Studies",
+  "Trade",
+  "Yoruba",
 
-  // Senior Sciences
-  "Biology",
+  // Senior Class Subjects
+  "English",
   "Chemistry",
   "Physics",
-  "Further Mathematics",
-  "Agricultural Science",
-  "Technical Drawing",
-  "Geography",
-  "Food & Nutrition",
-
-  // Senior Arts & Humanities
-  "Literature in English",
+  "Biology",
   "Government",
-  "History",
-  "Christian Religious Studies",
-  "Islamic Religious Studies",
-  "Visual Arts",
-  "Music",
-  "French",
-  "Yoruba",
-  "Hausa",
-  "Igbo",
-
-  // Senior Commercial
-  "Economics",
+  "Literature",
+  "Account",
   "Commerce",
-  "Financial Accounting",
-  "Book Keeping",
-  "Office Practice",
+  "CRS",
+  "Economics",
+  "Further Math",
+  "Agric",
+  "Technical Drawing",
   "Marketing",
-  "Store Management",
+  "Citizenship",
 ];
 
 async function seedSubjects() {

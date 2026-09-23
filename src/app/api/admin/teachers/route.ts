@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
           phone: phone?.trim() || null,
           role: "teacher",
           status: "active",
-          must_change_password: mustChangePassword !== false,
+          must_change_password: Boolean(mustChangePassword),
         },
         { onConflict: "auth_id" }
       )
