@@ -28,11 +28,19 @@ interface PromotionRecord {
   notes?: string | null;
 }
 
-function getNextClassLogical(className?: string): string {
+function getNextSessionLogical(sessionStr: string): string {
+  const match = sessionStr.match(/^(\d{4})\/(\d{4})$/);
+  if (!match) return sessionStr;
+  const start = parseInt(match[1], 10);
+  const end = parseInt(match[2], 10);
+  return `${start + 1}/${end + 1}`;
+}
+
+function getNextClassLogical(className?: string, jss3Track: string = "Science"): string {
   const name = String(className || "").trim().toUpperCase();
-  if (name.includes("JSS 1")) return name.replace("JSS 1", "JSS 2");
-  if (name.includes("JSS 2")) return name.replace("JSS 2", "JSS 3");
-  if (name.includes("JSS 3")) return "SSS 1";
+  if (name === "JSS 1" || name.startsWith("JSS 1")) return name.replace("JSS 1", "JSS 2");
+  if (name === "JSS 2" || name.startsWith("JSS 2")) return name.replace("JSS 2", "JSS 3");
+  if (name === "JSS 3" || name.startsWith("JSS 3")) return `SSS 1 ${jss3Track}`;
   if (name.includes("SSS 1")) return name.replace("SSS 1", "SSS 2");
   if (name.includes("SSS 2")) return name.replace("SSS 2", "SSS 3");
   if (name.includes("SSS 3")) return "ALUMNI (GRADUATED)";
@@ -42,13 +50,16 @@ function getNextClassLogical(className?: string): string {
 export default function AdminPromotionsPage() {
   const [loading, setLoading] = useState(true);
   const [currentSession, setCurrentSession] = useState("—");
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentTerm, setCurrentTerm] = useState("term1");
   const [classList, setClassList] = useState<ClassItem[]>([]);
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [history, setHistory] = useState<PromotionRecord[]>([]);
 
-  // Modal state
+  // Modal and config state
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [jss3Track, setJss3Track] = useState<"Science" | "Arts" | "Commercial">("Science");
+  const [targetNextSession, setTargetNextSession] = useState("");
   const [notes, setNotes] = useState("");
   const [processing, setProcessing] = useState(false);
 
@@ -60,6 +71,17 @@ export default function AdminPromotionsPage() {
       const trm = settings?.current_term || "term1";
       setCurrentSession(sess);
       setCurrentTerm(trm);
+      setTargetNextSession(getNextSessionLogical(sess));
+
+      // Fetch active session id
+      const { data: sessRow } = await supabase
+        .from("academic_sessions")
+        .select("id, name")
+        .eq("name", sess)
+        .maybeSingle();
+      if (sessRow?.id) {
+        setCurrentSessionId(sessRow.id);
+      }
 
       // Fetch classes
       const { data: clData, error: clErr } = await supabase
@@ -102,7 +124,7 @@ export default function AdminPromotionsPage() {
   });
 
   const eligibleCount = students.filter((s) => {
-    const next = getNextClassLogical(s.classes?.name);
+    const next = getNextClassLogical(s.classes?.name, jss3Track);
     return next !== "STAYS IN CLASS (CUSTOM)";
   }).length;
 
@@ -117,138 +139,65 @@ export default function AdminPromotionsPage() {
   const handleExecutePromotion = async () => {
     setProcessing(true);
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      const adminUserId = authData?.user?.id;
-
-      const summary: any[] = [];
       const classMap = new Map<string, ClassItem>();
       classList.forEach((c) => classMap.set(c.name.trim().toUpperCase(), c));
 
-      // Resolve current academic session id
-      const { data: sessRow } = await supabase
-        .from("academic_sessions")
-        .select("id, name")
-        .eq("name", currentSession)
-        .maybeSingle();
-      const currentSessionId = sessRow?.id;
-
+      const promotionsPayload: any[] = [];
       for (const student of students) {
         const currentClassName = student.classes?.name || "";
-        const nextClassName = getNextClassLogical(currentClassName);
+        const nextClassName = getNextClassLogical(currentClassName, jss3Track);
 
         if (nextClassName === "ALUMNI (GRADUATED)") {
-          const { error: updErr } = await supabase
-            .from("students")
-            .update({ is_alumni: true })
-            .eq("id", student.id);
-          if (updErr) throw updErr;
-
-          // Update current enrollment status to graduated
-          if (currentSessionId) {
-            await supabase
-              .from("student_enrollments")
-              .update({ status: "graduated" })
-              .eq("student_id", student.id)
-              .eq("academic_session_id", currentSessionId);
-          }
-
-          summary.push({
-            student_id: student.id,
-            name: student.name,
-            from_class: currentClassName,
-            to_class: "Alumni",
-            graduated: true,
+          promotionsPayload.push({
+            studentId: student.id,
+            studentName: student.name,
+            fromClassId: student.class_id,
+            action: "graduate",
           });
         } else if (nextClassName !== "STAYS IN CLASS (CUSTOM)") {
           let targetClass = classMap.get(nextClassName.toUpperCase());
           if (!targetClass) {
             targetClass = await ensureClassByName(nextClassName);
-            classMap.set(nextClassName.toUpperCase(), targetClass as ClassItem);
+            if (targetClass) classMap.set(nextClassName.toUpperCase(), targetClass as ClassItem);
           }
 
-          // 1. Mark previous enrollment as promoted
-          if (currentSessionId) {
-            await supabase
-              .from("student_enrollments")
-              .update({ status: "promoted" })
-              .eq("student_id", student.id)
-              .eq("academic_session_id", currentSessionId);
+          if (targetClass) {
+            promotionsPayload.push({
+              studentId: student.id,
+              studentName: student.name,
+              fromClassId: student.class_id,
+              toClassId: targetClass.id,
+              nextClassName,
+              action: "promote",
+            });
           }
-
-          // 2. Update current placement cache
-          const { error: updErr } = await supabase
-            .from("students")
-            .update({ class_id: targetClass.id })
-            .eq("id", student.id);
-          if (updErr) throw updErr;
-
-          summary.push({
-            student_id: student.id,
-            name: student.name,
-            from_class: currentClassName,
-            to_class: nextClassName,
-            graduated: false,
-          });
         }
       }
 
+      if (!promotionsPayload.length) {
+        alert("No valid promotions to execute.");
+        setProcessing(false);
+        return;
+      }
 
-      // Record promotion event
-      const { data: promotionRow, error: logErr } = await supabase
-        .from("promotions")
-        .insert({
-          session: currentSession,
-          promoted_by: adminUserId,
-          summary,
+      const res = await fetch("/api/admin/promotions/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          promotions: promotionsPayload,
+          currentSession,
+          currentSessionId,
+          nextSession: targetNextSession || currentSession,
           notes: notes.trim() || null,
-        })
-        .select("id")
-        .single();
-      if (logErr) throw logErr;
-
-      // Auto-enroll any students promoted into JSS classes into standard JSS curriculum
-      const promotedJssClasses = new Set<string>();
-      summary.forEach((s) => {
-        if (/JSS/i.test(s.to_class || "")) {
-          const tCls = classMap.get((s.to_class || "").toUpperCase());
-          if (tCls?.id) promotedJssClasses.add(tCls.id);
-        }
+        }),
       });
 
-      for (const jcId of Array.from(promotedJssClasses)) {
-        try {
-          await fetch("/api/admin/students/subject-enrollments", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "auto-enroll-jss",
-              classId: jcId,
-              sessionId: currentSessionId,
-              session: currentSession,
-            }),
-          });
-        } catch {
-          // ignore
-        }
+      const result = await res.json();
+      if (!res.ok || !result.ok) {
+        throw new Error(result.error || "Failed to execute promotions.");
       }
 
-      // Alumni records
-      const alumniRecords = summary
-        .filter((s) => s.graduated)
-        .map((s) => ({
-          student_id: s.student_id,
-          graduated_session: currentSession,
-          promotion_id: promotionRow.id,
-        }));
-
-      if (alumniRecords.length > 0) {
-        const { error: alErr } = await supabase
-          .from("alumni_students")
-          .insert(alumniRecords);
-        if (alErr) throw alErr;
-      }
-
-      alert("Academic student promotions executed successfully!");
+      alert(result.message || "Academic student promotions executed successfully!");
       setIsModalOpen(false);
       setNotes("");
       await loadData();
@@ -335,7 +284,7 @@ export default function AdminPromotionsPage() {
                     </tr>
                   ) : (
                     classList.map((c) => {
-                      const nextName = getNextClassLogical(c.name);
+                      const nextName = getNextClassLogical(c.name, jss3Track);
                       const count = studentCountMap.get(c.id) || 0;
                       let statusText = <span className="text-indigo-600 font-semibold">Ready to promote</span>;
                       if (count === 0) statusText = <span className="text-slate-400">Empty class</span>;
@@ -424,6 +373,32 @@ export default function AdminPromotionsPage() {
               </ul>
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-xs">
                 <strong>⚠ This cannot be undone.</strong> Make sure you have completed all result approvals before promoting.
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Target Academic Session</label>
+                  <input
+                    type="text"
+                    value={targetNextSession}
+                    onChange={(e) => setTargetNextSession(e.target.value)}
+                    placeholder="e.g. 2027/2028"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-indigo-500 font-mono"
+                  />
+                  <p className="text-[11px] text-slate-400">Canonical format: YYYY/YYYY</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">JSS 3 Placement Track</label>
+                  <select
+                    value={jss3Track}
+                    onChange={(e: any) => setJss3Track(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-indigo-500 bg-white"
+                  >
+                    <option value="Science">SSS 1 Science</option>
+                    <option value="Arts">SSS 1 Arts</option>
+                    <option value="Commercial">SSS 1 Commercial</option>
+                  </select>
+                  <p className="text-[11px] text-slate-400">Default track for JSS 3 graduates</p>
+                </div>
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-500">Notes (optional)</label>

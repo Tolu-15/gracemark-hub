@@ -53,9 +53,9 @@ export async function POST(req: NextRequest) {
     const { data: records } = await service.from("payment_records").select("amount").eq("invoice_id", invoice.id).in("status", ["successful", "success"]);
     const totalPaid = (records || []).reduce((total, record) => total + Number(record.amount || 0), 0);
     const balance = Math.max(0, Number(invoice.total_amount || 0) - totalPaid);
-    const status = balance <= 0 && Number(invoice.total_amount || 0) > 0 ? "FULLY PAID" : "PARTIALLY PAID";
+    const status = balance <= 0 && Number(invoice.total_amount || 0) > 0 ? "paid" : "partially_paid";
     await service.from("payment_invoices").update({ amount_paid: totalPaid, status }).eq("id", invoice.id);
-    if (status === "FULLY PAID") {
+    if (status === "paid") {
       const { data: policy } = await service.from("portal_access_settings").select("auto_unlock_on_full_payment").limit(1).maybeSingle();
       if (policy?.auto_unlock_on_full_payment !== false) {
         await service.from("students").update({ portal_access_status: "ACTIVE", portal_lock_reason: null }).eq("id", student.id);

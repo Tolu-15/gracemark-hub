@@ -34,56 +34,37 @@ export async function GET(req: NextRequest) {
     const className = classRow.name;
     const isSenior = isSeniorClass(className);
 
-    // 2. Resolve Students who were in this class during this session
+    // 2. Resolve Students who are enrolled in this class during this session (Single Source of Truth)
     const studentMap = new Map<string, { id: string; name: string; admission_no: string }>();
 
-    // Source A: student_enrollments for this class & session
-    if (session) {
-      const { data: enrollments } = await service
-        .from("student_enrollments")
-        .select("student_id, students(id, name, admission_no)")
-        .eq("class_id", classId)
-        .eq("session", session);
+    let enrollQuery = service
+      .from("student_enrollments")
+      .select("student_id, students(id, name, admission_no)")
+      .eq("class_id", classId)
+      .eq("status", "active");
 
-      (enrollments || []).forEach((e: any) => {
-        if (e.students?.id) {
-          studentMap.set(e.students.id, e.students);
-        }
-      });
+    if (session) {
+      enrollQuery = enrollQuery.eq("session", session);
     }
 
-    // Source B: results table for this class & session
-    let rQuery = service
-      .from("results")
-      .select("student_id, students(id, name, admission_no)")
-      .eq("class_id", classId);
-    if (session) rQuery = rQuery.eq("session", session);
-
-    const { data: resStudents } = await rQuery;
-    (resStudents || []).forEach((r: any) => {
-      if (r.students?.id) {
-        studentMap.set(r.students.id, r.students);
+    const { data: enrollments } = await enrollQuery;
+    (enrollments || []).forEach((e: any) => {
+      if (e.students?.id) {
+        studentMap.set(e.students.id, e.students);
       }
     });
 
-    // Source C: Active students in this class
-    const { data: stds } = await service
-      .from("students")
-      .select("id, name, admission_no")
-      .eq("class_id", classId);
+    // Fallback: If no student_enrollments row exists for this class, fallback to students table class_id cache
+    if (studentMap.size === 0) {
+      const { data: stds } = await service
+        .from("students")
+        .select("id, name, admission_no")
+        .eq("class_id", classId);
 
-    (stds || []).forEach((st: any) => {
-      if (st?.id && !studentMap.has(st.id)) {
-        if (!studentMap.size || !session) {
+      (stds || []).forEach((st: any) => {
+        if (st?.id) {
           studentMap.set(st.id, st);
         }
-      }
-    });
-
-    // If still empty (e.g. historical session with no specific enrollments logged), include current class students
-    if (studentMap.size === 0 && stds) {
-      stds.forEach((st: any) => {
-        if (st?.id) studentMap.set(st.id, st);
       });
     }
 
@@ -161,16 +142,7 @@ export async function GET(req: NextRequest) {
       }
     });
 
-    // 4. From legacy teacher_assignments for this class
-    const { data: taData } = await service
-      .from("teacher_assignments")
-      .select("subject_id, subjects(id, name)")
-      .eq("class_id", classId);
-    (taData || []).forEach((a: any) => {
-      if (a.subject_id && a.subjects?.name) {
-        subjectsMap.set(a.subject_id, a.subjects.name);
-      }
-    });
+
 
     // 5. If still no subjects found, load all subjects from database
     if (subjectsMap.size === 0) {

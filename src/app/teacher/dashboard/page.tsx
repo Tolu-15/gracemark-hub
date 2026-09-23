@@ -29,8 +29,8 @@ export default function TeacherDashboardPage() {
         setTeacherName(profile.display_name);
       }
 
-      // 1. Fetch Class Teacher duties
-      const [ctaRes, staRes, ctClassesRes, legacyAssignRes] = await Promise.all([
+      // 1. Fetch Class & Subject Teacher duties
+      const [ctaRes, staRes, ctClassesRes] = await Promise.all([
         supabase
           .from("class_teacher_assignments")
           .select("class_id, classes(id, name)")
@@ -45,10 +45,6 @@ export default function TeacherDashboardPage() {
           .from("classes")
           .select("id, name")
           .eq("class_teacher_id", user.id),
-        supabase
-          .from("teacher_assignments")
-          .select("class_id, subject_id, classes(id, name), subjects(id, name)")
-          .eq("teacher_user_id", user.id),
       ]);
 
       const classMap = new Map<string, { id: string; name: string }>();
@@ -73,10 +69,6 @@ export default function TeacherDashboardPage() {
 
       // Add Subject Teacher assignments
       (staRes.data || []).forEach((a: any) => {
-        if (a.classes?.name) classMap.set(a.classes.id, a.classes);
-        if (a.subjects?.name) subjectMap.set(a.subjects.id, a.subjects);
-      });
-      (legacyAssignRes.data || []).forEach((a: any) => {
         if (a.classes?.name) classMap.set(a.classes.id, a.classes);
         if (a.subjects?.name) subjectMap.set(a.subjects.id, a.subjects);
       });

@@ -94,7 +94,7 @@ export default function AdminBackupPage() {
     { name: "results", label: "Official Academic Results", desc: "CW, HW, Test, Project, Exam, Totals & Grades" },
     { name: "published_snapshots", label: "Published Report Snapshots", desc: "Frozen milestone snapshots for students" },
     { name: "users", label: "Staff & User Profiles", desc: "Teachers, Admins, Staff IDs (Passcodes sanitized)" },
-    { name: "teacher_assignments", label: "Class & Subject Delegations", desc: "Teacher assignments per session and class arm" },
+    { name: "class_teacher_assignments & subject_teacher_assignments", label: "Class & Subject Delegations", desc: "Teacher assignments per session and class arm" },
     { name: "fee_structures & fee_payments", label: "School Finance & Payments", desc: "Receipt logs, transactions, balances" },
     { name: "attendance & attendance_records", label: "School Attendance Registers", desc: "Daily morning/afternoon rolls, days present" },
     { name: "promotions", label: "Annual Class Promotions", desc: "Historical promotion logs and alumni graduation" },

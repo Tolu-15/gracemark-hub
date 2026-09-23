@@ -70,50 +70,33 @@ export default function StudentAssessmentsPage() {
   const [reviewAnswers, setReviewAnswers] = useState<AnswerReview[]>([]);
   const [reviewSubject, setReviewSubject] = useState("");
 
+  const [profileError, setProfileError] = useState<string | null>(null);
+
   const loadStudentData = async () => {
     setLoading(true);
+    setProfileError(null);
     try {
       const { data: authData } = await supabase.auth.getUser();
       const user = authData?.user;
       if (!user) return;
 
-      let { data: student } = await supabase
+      const { data: student } = await supabase
         .from("students")
         .select("id, class_id")
         .eq("user_id", user.id)
         .maybeSingle();
 
       if (!student) {
-        const displayName = user.user_metadata?.display_name || user.email?.split("@")[0] || "Student";
-        const admissionNo = "GMA" + Math.floor(100000 + Math.random() * 900000);
-        const { data: defaultClass } = await supabase.from("classes").select("id").limit(1).maybeSingle();
-
-        const { data: newStudent } = await supabase
-          .from("students")
-          .upsert(
-            [
-              {
-                user_id: user.id,
-                class_id: defaultClass?.id || null,
-                admission_no: admissionNo,
-                name: displayName,
-              },
-            ],
-            { onConflict: "user_id" }
-          )
-          .select("id, class_id")
-          .maybeSingle();
-
-        student = newStudent;
+        setProfileError("No student record found linked to your account. Please contact the Gracemark Academy administration.");
+        return;
       }
 
-      if (student) {
-        setStudentId(student.id);
-        setClassId(student.class_id || "");
-        await loadAssessments(student.id, student.class_id);
-      }
+      setStudentId(student.id);
+      setClassId(student.class_id || "");
+      await loadAssessments(student.id, student.class_id);
     } catch (err: any) {
       console.error("Failed to load student data:", err);
+      setProfileError(err.message || "Failed to load student data.");
     } finally {
       setLoading(false);
     }
@@ -121,55 +104,62 @@ export default function StudentAssessmentsPage() {
 
   const loadAssessments = async (sId: string, cId?: string) => {
     try {
-      let legacyList: any[] = [];
-      let cbtList: any[] = [];
-
-      if (cId) {
-        const [lRes, cRes] = await Promise.all([
-          supabase
-            .from("assessments")
-            .select("*, subjects(name)")
-            .eq("class_id", cId)
-            .eq("status", "published")
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("cbt_exams")
-            .select("*, subjects(name)")
-            .eq("class_id", cId)
-            .eq("is_published", true)
-            .order("created_at", { ascending: false }),
-        ]);
-
-        legacyList = lRes.data || [];
-        cbtList = (cRes.data || []).map((c: any) => ({
-          id: c.id,
-          title: c.title,
-          description: c.description,
-          assessment_type: "CBT Online Exam",
-          duration: c.duration_minutes,
-          total_marks: c.pass_mark * 2 || 100,
-          pass_mark: c.pass_mark,
-          instructions: c.description || "Complete all multiple choice questions before time runs out.",
-          subjects: c.subjects,
-          allow_result_view: true,
-          is_cbt: true,
-        }));
+      if (!cId) {
+        setAssessments([]);
+        return;
       }
 
-      const combined: StudentAssessment[] = [...legacyList, ...cbtList];
+      const { data: cbtData, error: cbtErr } = await supabase
+        .from("cbt_exams")
+        .select("*, subjects(name)")
+        .eq("class_id", cId)
+        .eq("is_published", true)
+        .order("created_at", { ascending: false });
 
-      // Check student submissions
-      for (const a of combined) {
-        const { data: sub } = await supabase
-          .from("assessment_submissions")
-          .select("id, status, total_score, percentage")
-          .eq("assessment_id", a.id)
-          .eq("student_id", sId)
-          .maybeSingle();
-        a.submission = sub || null;
+      if (cbtErr) throw cbtErr;
+
+      const exams: StudentAssessment[] = (cbtData || []).map((c: any) => ({
+        id: c.id,
+        title: c.title,
+        description: c.description,
+        assessment_type: "CBT Online Exam",
+        duration: c.duration_minutes || 30,
+        total_marks: c.pass_mark * 2 || 100,
+        pass_mark: c.pass_mark || 50,
+        instructions: c.description || "Complete all questions before time expires.",
+        subjects: c.subjects,
+        allow_result_view: true,
+        is_cbt: true,
+      }));
+
+      // Fetch student submissions for these exams
+      const examIds = exams.map((e) => e.id);
+      if (examIds.length > 0) {
+        const { data: subData } = await supabase
+          .from("cbt_submissions")
+          .select("id, exam_id, score, total_questions, passed, submitted_at")
+          .in("exam_id", examIds)
+          .eq("student_id", sId);
+
+        const subMap = new Map();
+        (subData || []).forEach((s) => subMap.set(s.exam_id, s));
+
+        exams.forEach((e) => {
+          const sub = subMap.get(e.id);
+          if (sub) {
+            e.submission = {
+              id: sub.id,
+              status: "graded",
+              total_score: sub.score,
+              percentage: sub.total_questions > 0 ? (sub.score / sub.total_questions) * 100 : 0,
+            };
+          } else {
+            e.submission = null;
+          }
+        });
       }
 
-      setAssessments(combined);
+      setAssessments(exams);
     } catch (err) {
       console.error("Load assessments error:", err);
     }
@@ -190,10 +180,10 @@ export default function StudentAssessmentsPage() {
   // Open Instructions
   const openInstructions = async (a: StudentAssessment) => {
     setSelectedAssessment(a);
-    const table = a.is_cbt ? "cbt_questions" : "assessment_questions";
-    const fk = a.is_cbt ? "exam_id" : "assessment_id";
-
-    const { count } = await supabase.from(table).select("id", { count: "exact", head: true }).eq(fk, a.id);
+    const { count } = await supabase
+      .from("cbt_questions")
+      .select("id", { count: "exact", head: true })
+      .eq("exam_id", a.id);
     setQuestionCount(count || 0);
     setView("instructions");
   };
@@ -205,31 +195,27 @@ export default function StudentAssessmentsPage() {
 
     setLoading(true);
     try {
-      let qList: AttemptQuestion[] = [];
-      if (selectedAssessment.is_cbt) {
-        const { data: qData, error: qErr } = await supabase
-          .from("cbt_questions")
-          .select("*")
-          .eq("exam_id", selectedAssessment.id)
-          .order("created_at", { ascending: true });
-        if (qErr) throw qErr;
+      const { data: qData, error: qErr } = await supabase
+        .from("cbt_questions")
+        .select("*")
+        .eq("exam_id", selectedAssessment.id)
+        .order("created_at", { ascending: true });
 
-        qList = (qData || []).map((q: any) => ({
-          id: q.id,
-          question: q.question_text,
-          question_type: "Multiple Choice",
-          options: Array.isArray(q.options) ? q.options : [],
-          correct_answer: String(q.correct_option_index),
-          marks: q.points || 1,
-        }));
-      } else {
-        const { data: questionsData, error: qErr } = await supabase
-          .from("assessment_questions")
-          .select("*")
-          .eq("assessment_id", selectedAssessment.id)
-          .order("position", { ascending: true });
-        if (qErr) throw qErr;
-        qList = questionsData || [];
+      if (qErr) throw qErr;
+
+      const qList: AttemptQuestion[] = (qData || []).map((q: any) => ({
+        id: q.id,
+        question: q.question_text,
+        question_type: "Multiple Choice",
+        options: Array.isArray(q.options) ? q.options : [],
+        correct_answer: String(q.correct_option_index),
+        marks: q.points || 1,
+      }));
+
+      if (!qList.length) {
+        alert("This exam currently has no questions configured.");
+        setLoading(false);
+        return;
       }
 
       setQuestions(qList);
@@ -243,47 +229,29 @@ export default function StudentAssessmentsPage() {
       const now = new Date();
       setStartTime(now);
 
-      // Create submission
-      let sId = "";
-      if (selectedAssessment.is_cbt) {
-        const { data: cbtSub } = await supabase
-          .from("cbt_submissions")
-          .upsert(
-            [
-              {
-                exam_id: selectedAssessment.id,
-                student_id: studentId,
-                score: 0,
-                total_questions: qList.length,
-                passed: false,
-                answers: {},
-              },
-            ],
-            { onConflict: "exam_id, student_id" }
-          )
-          .select()
-          .single();
-        sId = cbtSub?.id || "cbt_" + Date.now();
-      } else {
-        const { data: submission, error: subErr } = await supabase
-          .from("assessment_submissions")
-          .insert([
+      const { data: cbtSub, error: subErr } = await supabase
+        .from("cbt_submissions")
+        .upsert(
+          [
             {
-              assessment_id: selectedAssessment.id,
+              exam_id: selectedAssessment.id,
               student_id: studentId,
-              started_at: now.toISOString(),
-              status: "started",
+              score: 0,
+              total_questions: qList.length,
+              passed: false,
+              answers: {},
             },
-          ])
-          .select()
-          .single();
-        if (subErr) throw subErr;
-        sId = submission.id;
-      }
-      setSubmissionId(sId);
+          ],
+          { onConflict: "exam_id,student_id" }
+        )
+        .select()
+        .single();
+
+      if (subErr) throw subErr;
+      setSubmissionId(cbtSub.id);
 
       // Timer
-      const totalSecs = selectedAssessment.duration * 60;
+      const totalSecs = (selectedAssessment.duration || 30) * 60;
       setSecondsRemaining(totalSecs);
 
       if (timerRef.current) clearInterval(timerRef.current);
@@ -321,31 +289,17 @@ export default function StudentAssessmentsPage() {
 
     try {
       const submitTime = new Date();
-      const timeTaken = startTime ? Math.round((submitTime.getTime() - startTime.getTime()) / 1000) : 0;
-
-      let subjectiveExists = false;
       let autoMarksTotal = 0;
+      let totalPossibleMarks = 0;
 
-      const answersPayload = questions.map((q) => {
+      const answersPayload: AnswerReview[] = questions.map((q) => {
         const studentAns = studentAnswers[q.id] || "";
-        let isCorrect: boolean | null = null;
-        let awardedMarks: number | null = null;
-
-        const isAuto = ["Multiple Choice", "True / False", "Fill in the Blank"].includes(q.question_type);
-        if (isAuto) {
-          if (q.question_type === "Multiple Choice" || q.question_type === "True / False") {
-            isCorrect = String(studentAns).toLowerCase() === String(q.correct_answer).toLowerCase();
-          } else {
-            isCorrect = String(studentAns).trim().toLowerCase() === String(q.correct_answer).trim().toLowerCase();
-          }
-          awardedMarks = isCorrect ? q.marks : 0;
-          autoMarksTotal += awardedMarks;
-        } else {
-          subjectiveExists = true;
-        }
+        const isCorrect = String(studentAns).trim() === String(q.correct_answer).trim();
+        const awardedMarks = isCorrect ? q.marks : 0;
+        autoMarksTotal += awardedMarks;
+        totalPossibleMarks += q.marks;
 
         return {
-          submission_id: submissionId,
           question_id: q.id,
           student_answer: studentAns,
           awarded_marks: awardedMarks,
@@ -353,35 +307,51 @@ export default function StudentAssessmentsPage() {
         };
       });
 
-      const { error: insErr } = await supabase.from("assessment_answers").insert(answersPayload);
-      if (insErr) throw insErr;
+      const percentage = totalPossibleMarks > 0 ? (autoMarksTotal / totalPossibleMarks) * 100 : 0;
+      const isPassed = percentage >= (selectedAssessment?.pass_mark || 50);
 
-      let finalStatus = "graded";
-      const finalScore = autoMarksTotal;
-      if (subjectiveExists) finalStatus = "submitted";
-
-      const totalMarks = selectedAssessment?.total_marks || 1;
-      const percentage = totalMarks > 0 ? (finalScore / totalMarks) * 100 : 0;
-
+      // 1. Update cbt_submissions
       await supabase
-        .from("assessment_submissions")
-        .update({
-          submitted_at: submitTime.toISOString(),
-          total_score: finalScore,
-          percentage,
-          status: finalStatus,
-          time_taken: timeTaken,
-        })
-        .eq("id", submissionId);
+        .from("cbt_submissions")
+        .upsert(
+          {
+            exam_id: selectedAssessment?.id,
+            student_id: studentId,
+            score: autoMarksTotal,
+            total_questions: questions.length,
+            passed: isPassed,
+            answers: studentAnswers,
+            submitted_at: submitTime.toISOString(),
+          },
+          { onConflict: "exam_id,student_id" }
+        );
 
-      alert("Assessment submitted successfully!");
-
-      if (selectedAssessment?.allow_result_view || finalStatus === "graded") {
-        await openResultsReview(submissionId, selectedAssessment?.subjects?.name || "");
-      } else {
-        await loadAssessments(studentId, classId);
-        setView("list");
+      // 2. Automatically sync to Academic Gradebook Results via Server Bridge
+      try {
+        await fetch("/api/admin/exams/import-to-gradebook", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ examId: selectedAssessment?.id }),
+        });
+      } catch (syncErr) {
+        console.warn("Auto gradebook sync warning:", syncErr);
       }
+
+      alert("Assessment submitted and graded successfully!");
+
+      setReviewSubmission({
+        id: submissionId,
+        status: "graded",
+        total_score: autoMarksTotal,
+        assessments: {
+          total_marks: totalPossibleMarks,
+          pass_mark: selectedAssessment?.pass_mark || 50,
+        },
+      });
+      setReviewQuestions(questions);
+      setReviewAnswers(answersPayload);
+      setReviewSubject(selectedAssessment?.subjects?.name || "Subject Review");
+      setView("results");
     } catch (err: any) {
       alert("Failed to submit assessment: " + err.message);
     } finally {
@@ -395,22 +365,53 @@ export default function StudentAssessmentsPage() {
 
     try {
       const { data: sub, error } = await supabase
-        .from("assessment_submissions")
-        .select("*, assessments(*)")
+        .from("cbt_submissions")
+        .select("*, cbt_exams(*)")
         .eq("id", subId)
         .single();
       if (error) throw error;
-      setReviewSubmission(sub);
 
-      const a = sub.assessments;
-      if (a.allow_result_view || sub.status === "graded") {
-        const [qRes, ansRes] = await Promise.all([
-          supabase.from("assessment_questions").select("*").eq("assessment_id", a.id).order("position", { ascending: true }),
-          supabase.from("assessment_answers").select("*").eq("submission_id", subId),
-        ]);
-        setReviewQuestions(qRes.data || []);
-        setReviewAnswers(ansRes.data || []);
-      }
+      const exam = sub.cbt_exams;
+      const { data: qData } = await supabase
+        .from("cbt_questions")
+        .select("*")
+        .eq("exam_id", exam.id)
+        .order("created_at", { ascending: true });
+
+      const qList: AttemptQuestion[] = (qData || []).map((q: any) => ({
+        id: q.id,
+        question: q.question_text,
+        question_type: "Multiple Choice",
+        options: Array.isArray(q.options) ? q.options : [],
+        correct_answer: String(q.correct_option_index),
+        marks: q.points || 1,
+      }));
+
+      const storedAnswers = sub.answers || {};
+      let totalPossible = 0;
+      const reviewAns: AnswerReview[] = qList.map((q) => {
+        const studentAns = storedAnswers[q.id] || "";
+        const isCorrect = String(studentAns).trim() === String(q.correct_answer).trim();
+        totalPossible += q.marks;
+        return {
+          question_id: q.id,
+          student_answer: studentAns,
+          awarded_marks: isCorrect ? q.marks : 0,
+          is_correct: isCorrect,
+        };
+      });
+
+      setReviewSubmission({
+        id: sub.id,
+        status: "graded",
+        total_score: sub.score,
+        assessments: {
+          total_marks: totalPossible || 100,
+          pass_mark: exam.pass_mark || 50,
+        },
+      });
+      setReviewQuestions(qList);
+      setReviewAnswers(reviewAns);
 
       setView("results");
     } catch (err: any) {
@@ -460,16 +461,23 @@ export default function StudentAssessmentsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {loading ? (
-                  <div className="col-span-full p-8 text-center text-slate-500 bg-white border border-slate-200 rounded-xl shadow-sm">
-                    Loading assessments...
-                  </div>
-                ) : filteredAssessments.length === 0 ? (
-                  <div className="col-span-full p-8 text-center text-slate-500 bg-white border border-slate-200 rounded-xl shadow-sm">
-                    No assessments assigned to your class.
-                  </div>
-                ) : (
+              {profileError ? (
+                <div className="p-8 text-center bg-white border border-rose-200 rounded-xl shadow-sm">
+                  <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-3 text-lg font-bold">!</div>
+                  <h3 className="text-base font-bold text-slate-800">Student Profile Not Linked</h3>
+                  <p className="text-sm text-slate-500 mt-1 max-w-md mx-auto">{profileError}</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {loading ? (
+                    <div className="col-span-full p-8 text-center text-slate-500 bg-white border border-slate-200 rounded-xl shadow-sm">
+                      Loading assessments...
+                    </div>
+                  ) : filteredAssessments.length === 0 ? (
+                    <div className="col-span-full p-8 text-center text-slate-500 bg-white border border-slate-200 rounded-xl shadow-sm">
+                      No assessments assigned to your class.
+                    </div>
+                  ) : (
                   filteredAssessments.map((a) => {
                     const sub = a.submission;
                     const isGraded = sub?.status === "graded";
@@ -553,6 +561,7 @@ export default function StudentAssessmentsPage() {
                   })
                 )}
               </div>
+              )}
             </div>
           )}
 

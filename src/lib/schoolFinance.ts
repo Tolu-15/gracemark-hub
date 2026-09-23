@@ -19,14 +19,27 @@ export function formatDate(dateString: string | null | undefined): string {
   return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 }
 
-export function calculatePaymentStatus(totalAmount: number, amountPaid: number): "FULLY PAID" | "PARTIALLY PAID" | "UNPAID" {
+export type CanonicalPaymentStatus = "draft" | "issued" | "partially_paid" | "paid" | "overdue" | "cancelled";
+
+export function formatPaymentStatus(status: string | null | undefined): string {
+  const s = String(status || "").toLowerCase();
+  if (s === "paid" || s === "fully paid") return "FULLY PAID";
+  if (s === "partially_paid" || s === "partially paid") return "PARTIALLY PAID";
+  if (s === "overdue") return "OVERDUE";
+  if (s === "cancelled") return "CANCELLED";
+  if (s === "draft") return "DRAFT";
+  return "UNPAID";
+}
+
+export function calculatePaymentStatus(totalAmount: number, amountPaid: number, dueDate?: string | null): CanonicalPaymentStatus {
   const total = Number(totalAmount || 0);
   const paid = Number(amountPaid || 0);
   const balance = Math.max(0, total - paid);
 
-  if (balance <= 0 && total > 0) return "FULLY PAID";
-  if (paid > 0 && balance > 0) return "PARTIALLY PAID";
-  return "UNPAID";
+  if (balance <= 0 && total > 0) return "paid";
+  if (paid > 0 && balance > 0) return "partially_paid";
+  if (dueDate && new Date(dueDate).getTime() < Date.now()) return "overdue";
+  return "issued";
 }
 
 export async function getCurrentAcademicSessionAndTerm() {
@@ -189,7 +202,7 @@ export async function getStudentCurrentInvoice(studentId: string) {
           term: invTerm,
           total_amount: expectedFee,
           amount_paid: 0,
-          status: "UNPAID",
+          status: "issued",
           invoice_number: invoiceNumber,
         },
       ])

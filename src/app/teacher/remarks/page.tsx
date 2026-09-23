@@ -100,21 +100,6 @@ export default function TeacherRemarksPage() {
         // table not ready yet
       }
 
-      // 4. legacy teacher_assignments
-      try {
-        const { data: assignments } = await supabase
-          .from("teacher_assignments")
-          .select("class_id, classes(id, name)")
-          .in("teacher_user_id", idList);
-
-        (assignments || []).forEach((asg: any) => {
-          if (asg.classes?.id && asg.classes?.name) {
-            uniqueClassesMap.set(asg.classes.id, asg.classes);
-          }
-        });
-      } catch (e) {
-        // fallback
-      }
 
       const classList = Array.from(uniqueClassesMap.values()).sort((a, b) => a.name.localeCompare(b.name));
       setClasses(classList);

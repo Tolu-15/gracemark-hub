@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isTermEditable } from "@/lib/termPermissions";
 import { requireApiActor, requireTeacherAssignment } from "@/lib/apiAuth";
+import { validateRawScores } from "@/lib/gradingEngine";
 
 export async function POST(req: NextRequest) {
   const authorization = await requireApiActor(req, ["admin", "teacher"]);
@@ -46,6 +47,39 @@ export async function POST(req: NextRequest) {
       .in("id", Array.from(studentClassPairs.keys()));
     if (!students || students.length !== studentClassPairs.size || students.some((student) => student.class_id !== studentClassPairs.get(student.id))) {
       return NextResponse.json({ error: "A score can only be saved for a student in the selected class." }, { status: 403 });
+    }
+  }
+
+  // Validate score bounds for all records to guarantee data integrity
+  for (const record of records) {
+    if (record.cw !== undefined && record.cw !== null && (Number(record.cw) < 0 || Number(record.cw) > 10)) {
+      return NextResponse.json({ error: `Classwork score (${record.cw}) exceeds the maximum allowed score of 10.` }, { status: 400 });
+    }
+    if (record.hw !== undefined && record.hw !== null && (Number(record.hw) < 0 || Number(record.hw) > 5)) {
+      return NextResponse.json({ error: `Homework score (${record.hw}) exceeds the maximum allowed score of 5.` }, { status: 400 });
+    }
+    if (record.test !== undefined && record.test !== null && (Number(record.test) < 0 || Number(record.test) > 10)) {
+      return NextResponse.json({ error: `Test score (${record.test}) exceeds the maximum allowed score of 10.` }, { status: 400 });
+    }
+    if (record.project !== undefined && record.project !== null && (Number(record.project) < 0 || Number(record.project) > 5)) {
+      return NextResponse.json({ error: `Project score (${record.project}) exceeds the maximum allowed score of 5.` }, { status: 400 });
+    }
+    if (record.exam !== undefined && record.exam !== null && (Number(record.exam) < 0 || Number(record.exam) > 70)) {
+      return NextResponse.json({ error: `Exam score (${record.exam}) exceeds the maximum allowed score of 70.` }, { status: 400 });
+    }
+    if (record.total !== undefined && record.total !== null && (Number(record.total) < 0 || Number(record.total) > 100)) {
+      return NextResponse.json({ error: `Total score (${record.total}) exceeds the maximum allowed score of 100.` }, { status: 400 });
+    }
+
+    if (record.score_breakdown && typeof record.score_breakdown === "object") {
+      const { valid, issues } = validateRawScores(record.score_breakdown);
+      if (!valid && issues.length > 0) {
+        const first = issues[0];
+        return NextResponse.json(
+          { error: `Score for ${first.field.toUpperCase()} item ${first.index + 1} (${first.value}) exceeds the maximum allowed score of ${first.max}.` },
+          { status: 400 }
+        );
+      }
     }
   }
 

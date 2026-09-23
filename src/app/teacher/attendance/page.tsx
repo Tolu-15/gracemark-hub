@@ -21,7 +21,7 @@ export default function TeacherAttendancePage() {
   // Term and session state
   const [currentSession, setCurrentSession] = useState("2026/2027");
   const [currentTerm, setCurrentTerm] = useState("term2");
-  const [defaultTimesOpened, setDefaultTimesOpened] = useState(65);
+  const [defaultTimesOpened, setDefaultTimesOpened] = useState(120);
 
   // Daily mode state
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -99,20 +99,6 @@ export default function TeacherAttendancePage() {
         }
       }
 
-      // 3. Fallback to teacher_assignments
-      if (!list.length) {
-        const { data: assignments } = await supabase
-          .from("teacher_assignments")
-          .select("class_id, classes(id, name)")
-          .in("teacher_user_id", idList);
-
-        const map = new Map<string, { id: string; name: string }>();
-        (assignments || []).forEach((a: any) => {
-          if (a.classes?.name) map.set(a.classes.id, a.classes);
-        });
-        list = Array.from(map.values());
-      }
-
       setClasses(list);
       if (list.length > 0 && !selectedClass) {
         setSelectedClass(list[0].id);
@@ -132,7 +118,9 @@ export default function TeacherAttendancePage() {
         throw new Error("Failed to load attendance from server.");
       }
       const data = await res.json();
-      if (data.students) {
+      if (data.students && data.students.length > 0) {
+        const serverOpened = Number(data.students[0]?.timesOpened) || 120;
+        setDefaultTimesOpened(serverOpened);
         setStudents(
           data.students.map((s: any) => ({
             student_id: s.student_id,
@@ -141,7 +129,7 @@ export default function TeacherAttendancePage() {
             am: s.am ?? true,
             pm: s.pm ?? true,
             timesPresent: s.timesPresent ?? 0,
-            timesOpened: s.timesOpened || defaultTimesOpened,
+            timesOpened: Number(s.timesOpened) || serverOpened,
           }))
         );
       } else {

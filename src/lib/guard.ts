@@ -80,11 +80,24 @@ export async function verifyRoleAccess(
     if (role === "student") {
       const { data: student } = await supabase
         .from("students")
-        .select("portal_access_status")
+        .select("id, portal_access_status")
         .eq("user_id", session.user.id)
         .maybeSingle();
 
-      const isLocked = student?.portal_access_status === "LOCKED";
+      let isLocked = student?.portal_access_status === "LOCKED";
+
+      if (student?.id) {
+        try {
+          const { evaluateStudentPortalAccess } = await import("./schoolFinance");
+          const evalResult = await evaluateStudentPortalAccess(student.id);
+          if (evalResult?.isLocked) {
+            isLocked = true;
+          }
+        } catch (evalErr) {
+          console.warn("evaluateStudentPortalAccess warning:", evalErr);
+        }
+      }
+
       if (isLocked && !isAllowedFinancialPath(currentPath)) {
         return { redirect: "/student/locked" };
       }

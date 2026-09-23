@@ -188,12 +188,6 @@ export async function POST(req: NextRequest) {
         }
 
         insertedList.push(newAssignment);
-
-        // Backward compatibility: sync classes.class_teacher_id
-        await service
-          .from("classes")
-          .update({ class_teacher_id: teacherUserId })
-          .eq("id", cid);
       }
 
       return NextResponse.json({ ok: true, assignment: insertedList[0], assignments: insertedList });
@@ -241,18 +235,6 @@ export async function POST(req: NextRequest) {
       if (insErr) {
         return NextResponse.json({ ok: false, error: insErr.message }, { status: 400 });
       }
-
-      // Backward compatibility: ensure teacher_assignments has this link
-      await service
-        .from("teacher_assignments")
-        .upsert(
-          {
-            teacher_user_id: teacherUserId,
-            class_id: classId,
-            subject_id: subjectId,
-          },
-          { onConflict: "teacher_user_id,class_id,subject_id" }
-        );
 
       return NextResponse.json({ ok: true, assignment: newAssignment });
     }

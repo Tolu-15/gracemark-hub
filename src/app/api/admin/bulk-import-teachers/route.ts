@@ -57,10 +57,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Fetch all classes and subjects for mapping
-  const [{ data: allClasses }, { data: allSubjects }] = await Promise.all([
+  // Fetch all classes, subjects and active session for mapping
+  const [{ data: allClasses }, { data: allSubjects }, { data: activeSession }] = await Promise.all([
     service.from("classes").select("id, name"),
     service.from("subjects").select("id, name"),
+    service.from("academic_sessions").select("id, name").eq("status", "active").limit(1).maybeSingle(),
   ]);
 
   const normalizeStr = (str: string) =>
@@ -199,38 +200,35 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 5. Update teacher assignments
-      await service.from("teacher_assignments").delete().eq("teacher_user_id", authUserId);
+      // 5. Update teacher assignments in subject_teacher_assignments
+      if (activeSession?.id) {
+        await service
+          .from("subject_teacher_assignments")
+          .update({ status: "ended", end_date: new Date().toISOString().split("T")[0] })
+          .eq("teacher_user_id", authUserId)
+          .eq("academic_session_id", activeSession.id)
+          .eq("status", "active");
 
-      const assignmentsToInsert: any[] = [];
-      if (matchedClassIds.length > 0) {
-        for (const cId of matchedClassIds) {
-          if (matchedSubjectIds.length > 0) {
+        const assignmentsToInsert: any[] = [];
+        if (matchedClassIds.length > 0 && matchedSubjectIds.length > 0) {
+          for (const cId of matchedClassIds) {
             for (const sId of matchedSubjectIds) {
               assignmentsToInsert.push({
+                academic_session_id: activeSession.id,
+                session: activeSession.name,
                 teacher_user_id: authUserId,
                 class_id: cId,
                 subject_id: sId,
+                status: "active",
+                start_date: new Date().toISOString().split("T")[0],
               });
             }
-          } else {
-            assignmentsToInsert.push({
-              teacher_user_id: authUserId,
-              class_id: cId,
-            });
           }
         }
-      } else if (matchedSubjectIds.length > 0) {
-        for (const sId of matchedSubjectIds) {
-          assignmentsToInsert.push({
-            teacher_user_id: authUserId,
-            subject_id: sId,
-          });
-        }
-      }
 
-      if (assignmentsToInsert.length > 0) {
-        await service.from("teacher_assignments").insert(assignmentsToInsert);
+        if (assignmentsToInsert.length > 0) {
+          await service.from("subject_teacher_assignments").insert(assignmentsToInsert);
+        }
       }
 
       results.push({

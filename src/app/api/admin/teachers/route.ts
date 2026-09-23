@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase/server";
+import { sendTeacherWelcomeEmail } from "@/lib/email";
+
+const GOOGLE_FORM_URL = "https://forms.gle/bhiJ4CUkXJbHRP5p6";
 
 export async function GET(req: NextRequest) {
   const service = getServiceClient();
@@ -46,7 +49,17 @@ export async function GET(req: NextRequest) {
       subjectAssignments: staMap.get(t.auth_id) || [],
     }));
 
-    return NextResponse.json({ ok: true, teachers: enriched });
+    let maxNum = 0;
+    (teachers || []).forEach((t: any) => {
+      const match = String(t.staff_id || "").match(/(?:GMT|GMA-?T-?)(\d+)/i) || String(t.email || "").match(/gmt(\d+)/i);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (n > maxNum) maxNum = n;
+      }
+    });
+    const nextStaffId = `GMT${String(maxNum + 1).padStart(3, "0")}`;
+
+    return NextResponse.json({ ok: true, teachers: enriched, nextStaffId });
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
@@ -60,23 +73,28 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { name, staffId, phone, password, mustChangePassword } = body;
+    const { name, staffId, email, password, mustChangePassword } = body;
 
     if (!name?.trim()) {
       return NextResponse.json({ ok: false, error: "Teacher full name is required." }, { status: 400 });
     }
 
-    // Standardize or auto-generate GMT Staff ID
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      return NextResponse.json({ ok: false, error: "A valid teacher email address is required." }, { status: 400 });
+    }
+
+    // Standardize or auto-generate GMT Staff ID based on highest existing count
     let cleanStaffId = String(staffId || "").trim().toUpperCase();
     if (!cleanStaffId) {
       const { data: allTeachers } = await service
         .from("users")
-        .select("staff_id")
+        .select("staff_id, email")
         .eq("role", "teacher");
 
       let maxNum = 0;
       (allTeachers || []).forEach((t: any) => {
-        const match = String(t.staff_id || "").match(/GMT-?(\d+)/i) || String(t.staff_id || "").match(/GMA-T-(\d+)/i);
+        const match = String(t.staff_id || "").match(/(?:GMT|GMA-?T-?)(\d+)/i) || String(t.email || "").match(/gmt(\d+)/i);
         if (match) {
           const n = parseInt(match[1], 10);
           if (n > maxNum) maxNum = n;
@@ -85,14 +103,12 @@ export async function POST(req: NextRequest) {
       cleanStaffId = `GMT${String(maxNum + 1).padStart(3, "0")}`;
     }
 
-    const cleanNumber = cleanStaffId.replace(/[^A-Z0-9]/g, "").toLowerCase();
-    const syntheticEmail = `${cleanNumber}@teacher.gracemark.edu.ng`;
     const initialPassword = password?.trim() || "gracemark";
 
     // 1. Create or update user in Supabase Auth Admin using service role
     let authUserId: string | null = null;
     const { data: authData, error: authError } = await service.auth.admin.createUser({
-      email: syntheticEmail,
+      email: cleanEmail,
       password: initialPassword,
       email_confirm: true,
       user_metadata: {
@@ -107,7 +123,7 @@ export async function POST(req: NextRequest) {
       if (/already|exists|registered/i.test(authError.message)) {
         const { data: listData } = await service.auth.admin.listUsers();
         const existing = listData?.users?.find(
-          (u) => u.email?.toLowerCase() === syntheticEmail.toLowerCase()
+          (u) => u.email?.toLowerCase() === cleanEmail
         );
         if (existing?.id) {
           authUserId = existing.id;
@@ -134,13 +150,12 @@ export async function POST(req: NextRequest) {
       .upsert(
         {
           auth_id: authUserId,
-          email: syntheticEmail,
+          email: cleanEmail,
           display_name: name.trim(),
           staff_id: cleanStaffId,
-          phone: phone?.trim() || null,
           role: "teacher",
           status: "active",
-          must_change_password: Boolean(mustChangePassword),
+          must_change_password: Boolean(mustChangePassword ?? true),
         },
         { onConflict: "auth_id" }
       )
@@ -149,11 +164,32 @@ export async function POST(req: NextRequest) {
 
     if (uErr) throw uErr;
 
+    // 3. Dispatch welcome email with credentials and Google Form allocation link
+    let emailSent = false;
+    let emailError: string | null = null;
+    try {
+      await sendTeacherWelcomeEmail({
+        toEmail: cleanEmail,
+        name: name.trim(),
+        staffId: cleanStaffId,
+        password: initialPassword,
+        formUrl: GOOGLE_FORM_URL,
+      });
+      emailSent = true;
+    } catch (mailErr: any) {
+      console.warn("[admin/teachers] Welcome email delivery warning:", mailErr.message);
+      emailError = mailErr.message;
+    }
+
     return NextResponse.json({
       ok: true,
       teacher: userRow,
       staff_id: cleanStaffId,
-      message: `Teacher registered successfully with ID ${cleanStaffId}`,
+      emailSent,
+      emailError,
+      message: emailSent
+        ? `Teacher ${name.trim()} (${cleanStaffId}) registered successfully! Welcome email with login details and subject allocation form sent to ${cleanEmail}.`
+        : `Teacher ${name.trim()} (${cleanStaffId}) registered successfully. (Note: Email could not be delivered: ${emailError || "Check Brevo API key"})`,
     });
   } catch (err: any) {
     console.error("Register teacher error:", err);
@@ -169,7 +205,7 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { teacherId, authId, status, personal_email, phone, display_name } = body;
+    const { teacherId, authId, status, email, personal_email, phone, display_name } = body;
 
     const id = teacherId || authId;
     if (!id) {
@@ -178,6 +214,7 @@ export async function PATCH(req: NextRequest) {
 
     const updates: Record<string, any> = {};
     if (status !== undefined) updates.status = status;
+    if (email !== undefined) updates.email = email.trim().toLowerCase();
     if (personal_email !== undefined) updates.personal_email = personal_email;
     if (phone !== undefined) updates.phone = phone;
     if (display_name !== undefined) updates.display_name = display_name;

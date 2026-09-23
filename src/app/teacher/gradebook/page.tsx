@@ -66,17 +66,18 @@ export default function TeacherGradebookPage() {
           console.warn("classes lookup failed in gradebook:", e);
         }
 
-        // 3. Fallback: teacher_assignments
+        // 3. Check subject_teacher_assignments
         try {
-          const { data: assignments } = await supabase
-            .from("teacher_assignments")
+          const { data: sta } = await supabase
+            .from("subject_teacher_assignments")
             .select("class_id, classes(id, name)")
-            .in("teacher_user_id", idList);
-          (assignments || []).forEach((a: any) => {
+            .in("teacher_user_id", idList)
+            .eq("status", "active");
+          (sta || []).forEach((a: any) => {
             if (a.classes?.id && a.classes?.name) classMap.set(a.classes.id, a.classes);
           });
         } catch (e) {
-          // fallback
+          console.warn("STA lookup failed in gradebook:", e);
         }
 
         // 4. Fallback: if no class teacher assignment found, query classes for selection

@@ -73,15 +73,22 @@ export default function AdminSubjectsPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: subjectsData, error: sErr }, { data: asgData, error: aErr }] =
+      const [{ data: subjectsData, error: sErr }, { data: asgData }, { data: usersData }] =
         await Promise.all([
           supabase.from("subjects").select("*").order("name", { ascending: true }),
           supabase
-            .from("teacher_assignments")
-            .select("subject_id, teacher_user_id, users(display_name)"),
+            .from("subject_teacher_assignments")
+            .select("subject_id, teacher_user_id")
+            .eq("status", "active"),
+          supabase.from("users").select("auth_id, display_name"),
         ]);
 
       if (sErr) throw sErr;
+
+      const userNameMap = new Map<string, string>();
+      (usersData || []).forEach((u: any) => {
+        if (u.auth_id) userNameMap.set(u.auth_id, u.display_name || "Teacher");
+      });
 
       // Group teachers by subject_id
       const teacherMap = new Map<string, Set<string>>();
@@ -90,7 +97,7 @@ export default function AdminSubjectsPage() {
           if (!teacherMap.has(a.subject_id)) {
             teacherMap.set(a.subject_id, new Set());
           }
-          const teacherName = a.users?.display_name || "Teacher";
+          const teacherName = userNameMap.get(a.teacher_user_id) || "Teacher";
           teacherMap.get(a.subject_id)!.add(teacherName);
         }
       });

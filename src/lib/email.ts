@@ -85,8 +85,9 @@ export async function sendOtpEmail(
                 </td>
               </tr>
               <tr>
-                <td style="padding:20px 36px;border-top:1px solid #1e293b;">
-                  <p style="margin:0;font-size:11px;color:#475569;text-align:center;">GraceMark Academic Portal &bull; Automated Security Email</p>
+                <td style="padding:20px 36px;border-top:1px solid #1e293b;text-align:center;">
+                  <p style="margin:0;font-size:11px;color:#94a3b8;">GraceMark Academic Portal &bull; <a href="https://www.gracemarkportal.com.ng/" style="color:#38bdf8;text-decoration:none;">www.gracemarkportal.com.ng</a></p>
+                  <p style="margin:6px 0 0;font-size:10px;font-weight:700;color:#64748b;letter-spacing:1.5px;text-transform:uppercase;">Powered by <span style="color:#cbd5e1;">TDev</span></p>
                 </td>
               </tr>
             </table>
@@ -139,8 +140,9 @@ export async function sendPasswordResetOtpEmail(
                 </td>
               </tr>
               <tr>
-                <td style="padding:20px 36px;border-top:1px solid #1e293b;">
-                  <p style="margin:0;font-size:11px;color:#475569;text-align:center;">GraceMark Academic Portal &bull; Automated Security Email</p>
+                <td style="padding:20px 36px;border-top:1px solid #1e293b;text-align:center;">
+                  <p style="margin:0;font-size:11px;color:#94a3b8;">GraceMark Academic Portal &bull; <a href="https://www.gracemarkportal.com.ng/" style="color:#38bdf8;text-decoration:none;">www.gracemarkportal.com.ng</a></p>
+                  <p style="margin:6px 0 0;font-size:10px;font-weight:700;color:#64748b;letter-spacing:1.5px;text-transform:uppercase;">Powered by <span style="color:#cbd5e1;">TDev</span></p>
                 </td>
               </tr>
             </table>
@@ -190,8 +192,9 @@ export async function sendPasswordChangedEmail(
                 </td>
               </tr>
               <tr>
-                <td style="padding:20px 36px;border-top:1px solid #1e293b;">
-                  <p style="margin:0;font-size:11px;color:#475569;text-align:center;">GraceMark Academic Portal &bull; Automated Security Email</p>
+                <td style="padding:20px 36px;border-top:1px solid #1e293b;text-align:center;">
+                  <p style="margin:0;font-size:11px;color:#94a3b8;">GraceMark Academic Portal &bull; <a href="https://www.gracemarkportal.com.ng/" style="color:#38bdf8;text-decoration:none;">www.gracemarkportal.com.ng</a></p>
+                  <p style="margin:6px 0 0;font-size:10px;font-weight:700;color:#64748b;letter-spacing:1.5px;text-transform:uppercase;">Powered by <span style="color:#cbd5e1;">TDev</span></p>
                 </td>
               </tr>
             </table>
@@ -202,3 +205,188 @@ export async function sendPasswordChangedEmail(
     `,
   });
 }
+
+/** Sends a welcome email to a newly created teacher with login credentials and class/subject allocation form link. */
+export async function sendTeacherWelcomeEmail(params: {
+  toEmail: string;
+  name: string;
+  staffId: string;
+  password: string;
+  formUrl?: string;
+}): Promise<void> {
+  const formUrl = params.formUrl || "https://forms.gle/bhiJ4CUkXJbHRP5p6";
+  const loginUrl = "https://www.gracemarkportal.com.ng/";
+
+  await sendEmail({
+    sender: { name: SENDER_NAME, email: SENDER_EMAIL },
+    to: [{ email: params.toEmail, name: params.name }],
+    subject: "GraceMark Academy — Staff Portal Access & Subject Allocation",
+    htmlContent: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>GraceMark Academy Staff Portal</title>
+      </head>
+      <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:36px 16px;">
+          <tr>
+            <td align="center">
+              <table width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;box-shadow:0 10px 25px -5px rgba(0,0,0,0.06),0 8px 10px -6px rgba(0,0,0,0.04);">
+                
+                <!-- Gold Top Brand Accent -->
+                <tr>
+                  <td style="height:4px;background:#c9a84c;font-size:0;line-height:0;">&nbsp;</td>
+                </tr>
+
+                <!-- Header -->
+                <tr>
+                  <td style="padding:32px 36px 26px;background:#0f172a;text-align:left;">
+                    <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#c9a84c;letter-spacing:2px;text-transform:uppercase;">
+                      GraceMark Academy
+                    </p>
+                    <h1 style="margin:0;font-size:22px;font-weight:800;color:#ffffff;line-height:1.3;">
+                      Staff Portal Account &amp; Onboarding
+                    </h1>
+                    <p style="margin:6px 0 0;font-size:13px;color:#94a3b8;">
+                      Official Academic &amp; Result Management Portal
+                    </p>
+                  </td>
+                </tr>
+
+                <!-- Main Content Body -->
+                <tr>
+                  <td style="padding:32px 36px;">
+                    <p style="margin:0 0 16px;font-size:15px;color:#0f172a;line-height:1.6;">
+                      Dear <strong style="color:#0f172a;">${params.name}</strong>,
+                    </p>
+                    <p style="margin:0 0 20px;font-size:14px;color:#475569;line-height:1.6;">
+                      Welcome to the teaching staff at <strong>GraceMark Academy</strong>. An official teacher account has been provisioned for you on the school portal.
+                    </p>
+
+                    <!-- Important Notice Callout: "pls go through this info" -->
+                    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-left:4px solid #2563eb;border-radius:10px;padding:16px 20px;margin:22px 0;">
+                      <p style="margin:0;font-size:14px;font-weight:800;color:#1e40af;">
+                        📌 Important: Please go through this info carefully
+                      </p>
+                      <p style="margin:4px 0 0;font-size:13px;color:#1e3a8a;line-height:1.5;">
+                        Follow the two simple steps below to access your account and submit the subjects and classes you handle this session.
+                      </p>
+                    </div>
+
+                    <!-- Step 1: Sign-In Credentials -->
+                    <div style="margin:26px 0;">
+                      <div style="margin-bottom:10px;">
+                        <span style="display:inline-block;background:#0f172a;color:#ffffff;font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;margin-right:6px;">STEP 1</span>
+                        <span style="font-size:14px;font-weight:700;color:#0f172a;">Your Sign-In Credentials</span>
+                      </div>
+
+                      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px 22px;">
+                        <table width="100%" cellpadding="6" cellspacing="0" style="font-size:13px;">
+                          <tr>
+                            <td style="color:#64748b;width:130px;font-weight:600;">Teacher ID:</td>
+                            <td>
+                              <span style="font-family:Consolas,'Courier New',monospace;font-size:14px;font-weight:800;color:#0284c7;background:#e0f2fe;padding:2px 10px;border-radius:6px;border:1px solid #bae6fd;">
+                                ${params.staffId}
+                              </span>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="color:#64748b;font-weight:600;">Login Email:</td>
+                            <td>
+                              <strong style="color:#0f172a;font-size:14px;">${params.toEmail}</strong>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="color:#64748b;font-weight:600;">Initial Password:</td>
+                            <td>
+                              <span style="font-family:Consolas,'Courier New',monospace;font-size:14px;font-weight:800;color:#b45309;background:#fef3c7;padding:2px 10px;border-radius:6px;border:1px solid #fde68a;">
+                                ${params.password}
+                              </span>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="color:#64748b;font-weight:600;">Portal Login URL:</td>
+                            <td>
+                              <a href="${loginUrl}" target="_blank" style="color:#2563eb;font-weight:700;text-decoration:underline;">
+                                ${loginUrl}
+                              </a>
+                            </td>
+                          </tr>
+                        </table>
+
+                        <p style="margin:14px 0 0;font-size:12px;color:#64748b;line-height:1.5;">
+                          <em>Tip: You can sign in with either your <strong>Teacher ID</strong> (${params.staffId}) or your <strong>Email Address</strong>.</em>
+                        </p>
+                      </div>
+
+                      <!-- Sign In Button -->
+                      <div style="text-align:center;margin:18px 0 0;">
+                        <a href="${loginUrl}" target="_blank" style="display:inline-block;background:#0f172a;color:#ffffff;padding:13px 30px;border-radius:10px;font-weight:700;font-size:13px;text-decoration:none;letter-spacing:0.3px;box-shadow:0 3px 10px rgba(15,23,42,0.18);">
+                          Sign In to Portal &rarr;
+                        </a>
+                      </div>
+                    </div>
+
+                    <!-- Step 2: Subject & Class Allocation Form -->
+                    <div style="margin:30px 0 20px;">
+                      <div style="margin-bottom:10px;">
+                        <span style="display:inline-block;background:#c9a84c;color:#0f172a;font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;margin-right:6px;">STEP 2</span>
+                        <span style="font-size:14px;font-weight:700;color:#0f172a;">Submit Your Subjects &amp; Classes</span>
+                      </div>
+
+                      <div style="background:#fffbeb;border:1px solid #fef3c7;border-left:4px solid #c9a84c;border-radius:12px;padding:20px 22px;">
+                        <p style="margin:0 0 10px;font-size:13px;color:#78350f;line-height:1.6;">
+                          Please complete this form to submit the subjects you teach and the classes you handle this academic session so your student rosters, attendance register, and gradebooks can be set up:
+                        </p>
+
+                        <div style="text-align:center;margin:16px 0 12px;">
+                          <a href="${formUrl}" target="_blank" style="display:inline-block;background:#c9a84c;color:#0f172a;padding:12px 26px;border-radius:8px;font-weight:800;font-size:13px;text-decoration:none;letter-spacing:0.3px;box-shadow:0 2px 8px rgba(201,168,76,0.3);">
+                            Fill Subject &amp; Class Form &rarr;
+                          </a>
+                        </div>
+
+                        <p style="margin:8px 0 0;font-size:11px;color:#92400e;text-align:center;word-break:break-all;">
+                          Direct link: <a href="${formUrl}" target="_blank" style="color:#b45309;text-decoration:underline;">${formUrl}</a>
+                        </p>
+                      </div>
+                    </div>
+
+                    <!-- Security Reminder -->
+                    <div style="border-top:1px solid #f1f5f9;margin-top:28px;padding-top:18px;">
+                      <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.5;">
+                        🔒 <strong>Security Reminder:</strong> You may be requested to update your temporary password upon first login. Please keep your credentials confidential.
+                      </p>
+                    </div>
+
+                  </td>
+                </tr>
+
+                <!-- Footer with "Powered by TDev" -->
+                <tr>
+                  <td style="padding:24px 36px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
+                    <p style="margin:0;font-size:12px;font-weight:700;color:#334155;">
+                      GraceMark Academy Academic Portal
+                    </p>
+                    <p style="margin:4px 0 0;font-size:11px;color:#64748b;">
+                      Portal URL: <a href="${loginUrl}" target="_blank" style="color:#2563eb;text-decoration:none;">www.gracemarkportal.com.ng</a>
+                    </p>
+                    <div style="margin-top:16px;padding-top:12px;border-top:1px dashed #cbd5e1;">
+                      <p style="margin:0;font-size:11px;font-weight:800;color:#64748b;letter-spacing:1.5px;text-transform:uppercase;">
+                        Powered by <span style="color:#0f172a;font-weight:900;">TDev</span>
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `,
+  });
+}
+

@@ -68,14 +68,5 @@ export async function requireTeacherAssignment(
     .eq("status", "active");
   if (academicSessionId) assignment = assignment.eq("academic_session_id", academicSessionId);
   const { data } = await assignment.limit(1);
-  if (data?.length) return true;
-
-  const { data: legacy } = await actor.service
-    .from("teacher_assignments")
-    .select("id")
-    .eq("teacher_user_id", actor.authId)
-    .eq("class_id", classId)
-    .eq("subject_id", subjectId)
-    .limit(1);
-  return Boolean(legacy?.length);
+  return Boolean(data?.length);
 }

@@ -126,25 +126,8 @@ export default function TeacherScoreEntryPage() {
             subject_name: a.subjects?.name || "",
           }));
         }
-      } catch {
-        // Table not ready yet
-      }
-
-      // Fallback to legacy teacher_assignments
-      if (!parsedAssignments.length) {
-        const { data: legAssigns } = await supabase
-          .from("teacher_assignments")
-          .select("class_id, subject_id, classes(id, name), subjects(id, name)")
-          .eq("teacher_user_id", user.id);
-
-        if (legAssigns && legAssigns.length > 0) {
-          parsedAssignments = legAssigns.map((a: any) => ({
-            class_id: a.class_id,
-            class_name: a.classes?.name || "",
-            subject_id: a.subject_id,
-            subject_name: a.subjects?.name || "",
-          }));
-        }
+      } catch (err) {
+        console.warn("Could not query subject_teacher_assignments:", err);
       }
 
       setTeacherAssignments(parsedAssignments);
@@ -197,66 +180,29 @@ export default function TeacherScoreEntryPage() {
     setStatusMsg("");
 
     try {
-      // 1. Fetch students: Try student_subject_enrollments first for subject-specific roster
-      let studentList: { id: string; name: string; admission_no: string }[] = [];
-      try {
-        let subQuery = supabase
-          .from("student_subject_enrollments")
-          .select("student_id, students(id, name, admission_no)")
-          .eq("class_id", selectedClass)
-          .eq("subject_id", selectedSubject)
-          .eq("status", "enrolled");
+      // 1. Fetch students: Query student_subject_enrollments directly as the single source of truth
+      let subQuery = supabase
+        .from("student_subject_enrollments")
+        .select("student_id, students(id, name, admission_no)")
+        .eq("class_id", selectedClass)
+        .eq("subject_id", selectedSubject)
+        .eq("status", "enrolled");
 
-        if (currentSessionId) {
-          subQuery = subQuery.eq("academic_session_id", currentSessionId);
-        } else if (currentSession) {
-          subQuery = subQuery.eq("session", currentSession);
-        }
-
-        const { data: subEnrolled, error: subErr } = await subQuery;
-        if (!subErr && subEnrolled && subEnrolled.length > 0) {
-          studentList = subEnrolled
-            .map((e: any) => e.students)
-            .filter(Boolean)
-            .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
-        }
-      } catch {
-        // Fallback to class-level enrollment if table not available
+      if (currentSessionId) {
+        subQuery = subQuery.eq("academic_session_id", currentSessionId);
+      } else if (currentSession) {
+        subQuery = subQuery.eq("session", currentSession);
       }
 
-      // Safe Fallback: If no subject-specific enrollments exist yet, load all active students in the class
-      if (!studentList.length) {
-        if (currentSessionId) {
-          try {
-            const { data: enrollments, error: eErr } = await supabase
-              .from("student_enrollments")
-              .select("student_id, students(id, name, admission_no)")
-              .eq("class_id", selectedClass)
-              .eq("academic_session_id", currentSessionId)
-              .eq("status", "active");
-
-            if (!eErr && enrollments && enrollments.length > 0) {
-              studentList = enrollments
-                .map((e: any) => e.students)
-                .filter(Boolean)
-                .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
-            }
-          } catch {
-            // fallback
-          }
-        }
-
-        if (!studentList.length) {
-          const { data: students, error: sErr } = await supabase
-            .from("students")
-            .select("id, name, admission_no")
-            .eq("class_id", selectedClass)
-            .order("name", { ascending: true });
-
-          if (sErr) throw sErr;
-          studentList = students || [];
-        }
+      const { data: subEnrolled, error: subErr } = await subQuery;
+      if (subErr) {
+        throw new Error(subErr.message || "Failed to load student subject enrollments.");
       }
+
+      const studentList: { id: string; name: string; admission_no: string }[] = (subEnrolled || [])
+        .map((e: any) => e.students)
+        .filter(Boolean)
+        .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
 
       if (!studentList.length) {
         setRows([]);
@@ -326,6 +272,15 @@ export default function TeacherScoreEntryPage() {
         const recordsToSave: any[] = [];
         const deletedResultIds: string[] = [];
 
+        // Guard: check if any student has an invalid score exceeding max before auto-saving
+        for (const r of rows) {
+          const { valid } = validateRawScores(r.raw);
+          if (!valid) {
+            setAutoSaveStatus("unsaved");
+            return;
+          }
+        }
+
         rows.forEach((r) => {
           const tr = calculateTR(r.raw, { isSenior, className: selectedClassName });
           if (!tr.hasData) {
@@ -373,7 +328,33 @@ export default function TeacherScoreEntryPage() {
     return () => clearTimeout(timer);
   }, [rows, isEditable, selectedSubject, selectedClass, selectedTerm, currentSession, currentSessionId, isSenior, selectedClassName]);
 
-  // Update cell score in state
+  // Maximum allowed score helper per component
+  function getMaxScore(field: "cw" | "hw" | "tests" | "project" | "exam", subIndex: number): number {
+    if (field === "cw") return GRADING_CONFIG.cw.itemMax; // 10
+    if (field === "hw") return GRADING_CONFIG.hw.itemMax; // 10
+    if (field === "tests") return GRADING_CONFIG.tests.maxes[subIndex] ?? 15; // 15, 15, 30
+    if (field === "project") return GRADING_CONFIG.project.max; // 5
+    if (field === "exam") return GRADING_CONFIG.exam.max; // 70
+    return 100;
+  }
+
+  function getFieldLabel(field: "cw" | "hw" | "tests" | "project" | "exam", subIndex: number): string {
+    if (field === "cw") return `Classwork W${subIndex + 1}`;
+    if (field === "hw") return `Homework W${subIndex + 1}`;
+    if (field === "tests") return `Test ${subIndex + 1}`;
+    if (field === "project") return "Project";
+    if (field === "exam") return "Terminal Exam";
+    return field;
+  }
+
+  // Prevent unwanted keys such as negative sign, exponent, and plus
+  function preventInvalidKeys(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (["-", "+", "e", "E"].includes(e.key)) {
+      e.preventDefault();
+    }
+  }
+
+  // Update cell score in state with strict maximum boundary enforcement
   function updateScore(
     rowIndex: number,
     field: "cw" | "hw" | "tests" | "project" | "exam",
@@ -381,6 +362,31 @@ export default function TeacherScoreEntryPage() {
     val: string
   ) {
     if (!isEditable) return;
+
+    const max = getMaxScore(field, subIndex);
+    let finalVal = val;
+
+    if (val !== "") {
+      // Strip negative sign and non-numeric/non-decimal characters
+      const cleaned = val.replace(/[^0-9.]/g, "");
+      const num = parseFloat(cleaned);
+
+      if (Number.isFinite(num)) {
+        if (num < 0) {
+          finalVal = "0";
+        } else if (num > max) {
+          finalVal = String(max);
+          const label = getFieldLabel(field, subIndex);
+          setStatusMsg(`⚠️ ${label} cannot exceed the maximum score of ${max}. Value capped at ${max}.`);
+          setTimeout(() => setStatusMsg(""), 4000);
+        } else {
+          finalVal = cleaned;
+        }
+      } else {
+        finalVal = "";
+      }
+    }
+
     isDirtyRef.current = true;
     setAutoSaveStatus("unsaved");
     setRows((prev) => {
@@ -389,10 +395,10 @@ export default function TeacherScoreEntryPage() {
 
       if (field === "cw" || field === "hw" || field === "tests") {
         const arr = [...(row.raw[field] as any[])];
-        arr[subIndex] = val;
+        arr[subIndex] = finalVal;
         (row.raw as any)[field] = arr;
       } else {
-        row.raw[field] = val;
+        row.raw[field] = finalVal;
       }
 
       copy[rowIndex] = row;
@@ -407,6 +413,18 @@ export default function TeacherScoreEntryPage() {
     setStatusMsg("");
 
     try {
+      // Validate all scores before submitting or saving
+      for (const r of rows) {
+        const { valid, issues } = validateRawScores(r.raw);
+        if (!valid && issues.length > 0) {
+          const first = issues[0];
+          const label = getFieldLabel(first.field as any, first.index);
+          setStatusMsg(`❌ Cannot save: ${r.name} has an invalid score (${first.value}) for ${label}, which exceeds the maximum of ${first.max}.`);
+          setSavingAction("none");
+          return;
+        }
+      }
+
       const recordsToSave: any[] = [];
       const deletedResultIds: string[] = [];
 
@@ -835,10 +853,15 @@ export default function TeacherScoreEntryPage() {
                               type="number"
                               min={0}
                               max={10}
+                              step="any"
                               disabled={!isEditable}
                               value={row.raw.cw[i] ?? ""}
                               onChange={(e) => updateScore(rIdx, "cw", i, e.target.value)}
-                              className="w-8 h-7 text-center font-semibold text-xs border border-transparent hover:border-slate-300 focus:border-indigo-500 rounded bg-transparent focus:bg-white outline-none"
+                              onKeyDown={preventInvalidKeys}
+                              title={`Classwork W${i + 1} (Max: 10)`}
+                              className={`w-8 h-7 text-center font-semibold text-xs border rounded bg-transparent focus:bg-white outline-none transition ${
+                                Number(row.raw.cw[i]) > 10 ? "border-rose-500 bg-rose-50 text-rose-700 font-bold" : "border-transparent hover:border-slate-300 focus:border-indigo-500"
+                              }`}
                             />
                           </td>
                         ))}
@@ -851,10 +874,15 @@ export default function TeacherScoreEntryPage() {
                               type="number"
                               min={0}
                               max={10}
+                              step="any"
                               disabled={!isEditable}
                               value={row.raw.hw[i] ?? ""}
                               onChange={(e) => updateScore(rIdx, "hw", i, e.target.value)}
-                              className="w-8 h-7 text-center font-semibold text-xs border border-transparent hover:border-slate-300 focus:border-indigo-500 rounded bg-transparent focus:bg-white outline-none"
+                              onKeyDown={preventInvalidKeys}
+                              title={`Homework W${i + 1} (Max: 10)`}
+                              className={`w-8 h-7 text-center font-semibold text-xs border rounded bg-transparent focus:bg-white outline-none transition ${
+                                Number(row.raw.hw[i]) > 10 ? "border-rose-500 bg-rose-50 text-rose-700 font-bold" : "border-transparent hover:border-slate-300 focus:border-indigo-500"
+                              }`}
                             />
                           </td>
                         ))}
@@ -867,10 +895,15 @@ export default function TeacherScoreEntryPage() {
                               type="number"
                               min={0}
                               max={15}
+                              step="any"
                               disabled={!isEditable}
                               value={row.raw.tests[0] ?? ""}
                               onChange={(e) => updateScore(rIdx, "tests", 0, e.target.value)}
-                              className="w-9 h-7 text-center font-semibold text-xs border border-transparent hover:border-slate-300 focus:border-indigo-500 rounded bg-transparent focus:bg-white outline-none"
+                              onKeyDown={preventInvalidKeys}
+                              title="Test 1 (Max: 15)"
+                              className={`w-9 h-7 text-center font-semibold text-xs border rounded bg-transparent focus:bg-white outline-none transition ${
+                                Number(row.raw.tests[0]) > 15 ? "border-rose-500 bg-rose-50 text-rose-700 font-bold" : "border-transparent hover:border-slate-300 focus:border-indigo-500"
+                              }`}
                             />
                           </td>
                           {viewMode !== "pr1" && (
@@ -879,10 +912,15 @@ export default function TeacherScoreEntryPage() {
                                 type="number"
                                 min={0}
                                 max={15}
+                                step="any"
                                 disabled={!isEditable}
                                 value={row.raw.tests[1] ?? ""}
                                 onChange={(e) => updateScore(rIdx, "tests", 1, e.target.value)}
-                                className="w-9 h-7 text-center font-semibold text-xs border border-transparent hover:border-slate-300 focus:border-indigo-500 rounded bg-transparent focus:bg-white outline-none"
+                                onKeyDown={preventInvalidKeys}
+                                title="Test 2 (Max: 15)"
+                                className={`w-9 h-7 text-center font-semibold text-xs border rounded bg-transparent focus:bg-white outline-none transition ${
+                                  Number(row.raw.tests[1]) > 15 ? "border-rose-500 bg-rose-50 text-rose-700 font-bold" : "border-transparent hover:border-slate-300 focus:border-indigo-500"
+                                }`}
                               />
                             </td>
                           )}
@@ -892,10 +930,15 @@ export default function TeacherScoreEntryPage() {
                                 type="number"
                                 min={0}
                                 max={30}
+                                step="any"
                                 disabled={!isEditable}
                                 value={row.raw.tests[2] ?? ""}
                                 onChange={(e) => updateScore(rIdx, "tests", 2, e.target.value)}
-                                className="w-9 h-7 text-center font-semibold text-xs border border-transparent hover:border-slate-300 focus:border-indigo-500 rounded bg-transparent focus:bg-white outline-none"
+                                onKeyDown={preventInvalidKeys}
+                                title="Test 3 (Max: 30)"
+                                className={`w-9 h-7 text-center font-semibold text-xs border rounded bg-transparent focus:bg-white outline-none transition ${
+                                  Number(row.raw.tests[2]) > 30 ? "border-rose-500 bg-rose-50 text-rose-700 font-bold" : "border-transparent hover:border-slate-300 focus:border-indigo-500"
+                                }`}
                               />
                             </td>
                           )}
@@ -909,10 +952,15 @@ export default function TeacherScoreEntryPage() {
                             type="number"
                             min={0}
                             max={5}
+                            step="any"
                             disabled={!isEditable}
                             value={row.raw.project ?? ""}
                             onChange={(e) => updateScore(rIdx, "project", 0, e.target.value)}
-                            className="w-9 h-7 text-center font-semibold text-xs border border-transparent hover:border-slate-300 focus:border-indigo-500 rounded bg-transparent focus:bg-white outline-none"
+                            onKeyDown={preventInvalidKeys}
+                            title="Project (Max: 5)"
+                            className={`w-9 h-7 text-center font-semibold text-xs border rounded bg-transparent focus:bg-white outline-none transition ${
+                              Number(row.raw.project) > 5 ? "border-rose-500 bg-rose-50 text-rose-700 font-bold" : "border-transparent hover:border-slate-300 focus:border-indigo-500"
+                            }`}
                           />
                         </td>
                       )}
@@ -924,10 +972,15 @@ export default function TeacherScoreEntryPage() {
                             type="number"
                             min={0}
                             max={70}
+                            step="any"
                             disabled={!isEditable}
                             value={row.raw.exam ?? ""}
                             onChange={(e) => updateScore(rIdx, "exam", 0, e.target.value)}
-                            className="w-10 h-7 text-center font-bold text-xs border border-transparent hover:border-slate-300 focus:border-indigo-500 rounded bg-transparent focus:bg-white outline-none"
+                            onKeyDown={preventInvalidKeys}
+                            title="Terminal Exam (Max: 70)"
+                            className={`w-10 h-7 text-center font-bold text-xs border rounded bg-transparent focus:bg-white outline-none transition ${
+                              Number(row.raw.exam) > 70 ? "border-rose-500 bg-rose-50 text-rose-700 font-bold" : "border-transparent hover:border-slate-300 focus:border-indigo-500"
+                            }`}
                           />
                         </td>
                       )}

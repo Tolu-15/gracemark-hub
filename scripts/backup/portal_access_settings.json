@@ -1,0 +1,10 @@
+[
+  {
+    "id": "a5c00006-7b10-4ead-9697-c5d48cd73254",
+    "restrict_outstanding_fees": false,
+    "lock_after_due_date": false,
+    "grace_period_days": 7,
+    "auto_unlock_on_full_payment": true,
+    "updated_at": "2026-08-07T19:33:19.566684+00:00"
+  }
+]

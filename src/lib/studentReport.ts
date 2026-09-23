@@ -416,34 +416,18 @@ export async function fetchStudentReport({
     sessionResultsMap.get(r.subject_id)![r.term] = Number(r.total) || 0;
   });
 
-  // Only process rows that are approved or published, NEVER raw drafts or unapproved submitted records
-  const approvedOrPublishedResults = (results ?? []).filter((row: any) => {
-    const isApprovedOrPublished =
-      row.status === "approved" ||
+  // Single Source of Truth: Only process rows that are officially PUBLISHED (never raw drafts or unapproved records)
+  const publishedResults = (results ?? []).filter((row: any) => {
+    return (
       row.status === "published" ||
       row.tr_status === "published" ||
       row.pr1_status === "published" ||
       row.pr2_status === "published" ||
-      row.pr3_status === "published";
-
-    const hasPublishedSnapshot =
-      publishedMilestones.pr1 ||
-      publishedMilestones.pr2 ||
-      publishedMilestones.pr3 ||
-      publishedMilestones.tr;
-
-    // Pure draft must never be shown to students
-    if (row.status === "draft" && !isApprovedOrPublished && !hasPublishedSnapshot) {
-      return false;
-    }
-    if (row.status === "submitted" && !isApprovedOrPublished && !hasPublishedSnapshot) {
-      return false;
-    }
-
-    return isApprovedOrPublished || hasPublishedSnapshot;
+      row.pr3_status === "published"
+    );
   });
 
-  let rows = approvedOrPublishedResults.map((row: any) => {
+  let rows = publishedResults.map((row: any) => {
     const raw = normalizeBreakdown(row);
     const computed = calculateStudentResult(raw, undefined, { isSenior, className });
     const subjectName = row.subjects?.name ?? "Subject";
@@ -496,83 +480,7 @@ export async function fetchStudentReport({
     };
   });
 
-  // If no rows found in results table but snapshots exist in published_snapshots, hydrate rows from snapshots!
-  if (rows.length === 0) {
-    const activeSnap =
-      publishedSnapshotsMap.pr2 ||
-      publishedSnapshotsMap.pr1 ||
-      publishedSnapshotsMap.pr3 ||
-      publishedSnapshotsMap.tr;
-
-    if (activeSnap && Array.isArray(activeSnap.subjects)) {
-      activeSnap.subjects.forEach((sub: any, idx: number) => {
-        const subName = sub.subject_name || "Subject";
-        const cw = sub.cw ?? 0;
-        const hw = sub.hw ?? 0;
-        const test = sub.test ?? 0;
-        const project = sub.project ?? 0;
-        const exam = sub.exam ?? 0;
-        const total = sub.total ?? 0;
-        const grade = sub.grade || "—";
-        const remark = sub.remark || "—";
-        const percentage = sub.percentage ?? total;
-
-        const prData = {
-          cw,
-          hw,
-          test,
-          totalCa: total,
-          percentage,
-          grade,
-          status: remark,
-        };
-
-        const getPrForType = (type: string) => {
-          const sObj =
-            publishedSnapshotsMap[type]?.subjects?.find((s: any) => s.subject_name === subName) ||
-            publishedSnapshotsMap[type]?.subjects?.[idx];
-          if (sObj) {
-            return {
-              cw: sObj.cw ?? 0,
-              hw: sObj.hw ?? 0,
-              test: sObj.test ?? 0,
-              totalCa: sObj.total ?? 0,
-              percentage: sObj.percentage ?? sObj.total,
-              grade: sObj.grade || "—",
-              status: sObj.remark || "—",
-            };
-          }
-          return prData;
-        };
-
-        rows.push({
-          subject: subName,
-          subjectId: `snap-${idx}`,
-          cw,
-          hw,
-          test,
-          project,
-          exam,
-          total,
-          term1_total: null,
-          term2_total: null,
-          term3_total: null,
-          annualAverage: null,
-          grade,
-          remark,
-          pr: prData,
-          prs: {
-            pr1: getPrForType("pr1"),
-            pr2: getPrForType("pr2"),
-            pr3: getPrForType("pr3"),
-          },
-          classAverage: null as any,
-          high: null as any,
-          low: null as any,
-        });
-      });
-    }
-  }
+  // Snapshots are retained strictly for immutable historical export and offline viewing, not as a publication gating bypass.
 
   // Include any enrolled subjects from student_subject_enrollments that do not have an approved result yet
   try {
@@ -694,7 +602,7 @@ export async function fetchStudentReport({
           if (dr.pm_present) presCount++;
         });
         timesPresent = presCount;
-        timesOpened = Math.max(130, datesSet.size * 2);
+        timesOpened = Math.max(120, datesSet.size * 2);
         timesAbsent = Math.max(0, timesOpened - timesPresent);
       }
     } catch {
@@ -702,7 +610,7 @@ export async function fetchStudentReport({
     }
   }
 
-  timesOpened = timesOpened || 130;
+  timesOpened = timesOpened || 120;
   timesPresent = timesPresent ?? 0;
   timesAbsent = timesAbsent ?? Math.max(0, timesOpened - timesPresent);
   const daysOpened = Math.round(timesOpened / 2);

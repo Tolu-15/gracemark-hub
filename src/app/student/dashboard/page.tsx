@@ -220,9 +220,8 @@ export default function StudentDashboardPage() {
         });
 
         const hasAnyPublished = publishedMilestones.pr1 || publishedMilestones.pr2 || publishedMilestones.pr3 || publishedMilestones.tr;
-        const hasApproved = (data || []).some((r: any) => r.status === "approved");
 
-        if (!hasAnyPublished && !hasApproved) {
+        if (!hasAnyPublished) {
           setResults([]);
           setActiveMilestoneTitle("Results Awaiting Publication");
           return;
@@ -237,8 +236,6 @@ export default function StudentDashboardPage() {
           ? "pr2"
           : publishedMilestones.pr1
           ? "pr1"
-          : hasApproved
-          ? "tr"
           : "none";
 
         if (activeMilestone === "none") {
@@ -259,7 +256,7 @@ export default function StudentDashboardPage() {
         setActiveMilestoneTitle(title);
 
         const formatted = (data || [])
-          .filter((r: any) => r.status === "approved" || r.status === "published" || r.pr1_status === "published" || r.pr2_status === "published" || r.pr3_status === "published" || r.tr_status === "published")
+          .filter((r: any) => r.status === "published" || r.pr1_status === "published" || r.pr2_status === "published" || r.pr3_status === "published" || r.tr_status === "published")
           .map((r: any) => {
             const raw = normalizeBreakdown(r);
             const computed = calculateStudentResult(raw, undefined, {

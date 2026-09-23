@@ -147,9 +147,10 @@ export default function TeacherAssessmentsPage() {
 
       // Fetch teacher assignments
       const { data: assignments } = await supabase
-        .from("teacher_assignments")
+        .from("subject_teacher_assignments")
         .select("class_id, subject_id, classes(name), subjects(name)")
-        .eq("teacher_user_id", user.id);
+        .eq("teacher_user_id", user.id)
+        .eq("status", "active");
 
       const classesMap = new Map<string, string>();
       const subjectsMap = new Map<string, string>();

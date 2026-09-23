@@ -65,7 +65,7 @@ export default function AdminTeachersPage() {
   const [teacherFormData, setTeacherFormData] = useState({
     name: "",
     staffId: "",
-    phone: "",
+    email: "",
     password: "gracemark",
     mustChangePassword: true,
   });
@@ -233,9 +233,9 @@ export default function AdminTeachersPage() {
     setTeacherFormData({
       name: "",
       staffId: nextId,
-      phone: "",
+      email: "",
       password: "gracemark",
-      mustChangePassword: false,
+      mustChangePassword: true,
     });
     setIsTeacherModalOpen(true);
   }
@@ -246,7 +246,7 @@ export default function AdminTeachersPage() {
     setTeacherFormData({
       name: t.display_name || "",
       staffId: t.staff_id || "",
-      phone: t.phone || "",
+      email: t.email || "",
       password: "",
       mustChangePassword: Boolean(t.must_change_password),
     });
@@ -267,7 +267,7 @@ export default function AdminTeachersPage() {
           body: JSON.stringify({
             name: teacherFormData.name.trim(),
             staffId: teacherFormData.staffId.trim().toUpperCase(),
-            phone: teacherFormData.phone.trim(),
+            email: teacherFormData.email.trim().toLowerCase(),
             password: teacherFormData.password.trim() || "gracemark",
             mustChangePassword: teacherFormData.mustChangePassword,
           }),
@@ -287,7 +287,7 @@ export default function AdminTeachersPage() {
             authId: editingTeacher.auth_id,
             display_name: teacherFormData.name.trim(),
             staff_id: teacherFormData.staffId.trim().toUpperCase() || null,
-            phone: teacherFormData.phone.trim() || null,
+            email: teacherFormData.email.trim().toLowerCase() || null,
           }),
         });
 
@@ -573,7 +573,7 @@ export default function AdminTeachersPage() {
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                     <th className="px-6 py-3.5">Teacher ID & Name</th>
-                    <th className="px-4 py-3.5">Phone Number</th>
+                    <th className="px-4 py-3.5">Email Address</th>
                     <th className="px-4 py-3.5">Status</th>
                     <th className="px-4 py-3.5">Active Duties ({selectedSession})</th>
                     <th className="px-6 py-3.5 text-right">Actions</th>
@@ -618,8 +618,8 @@ export default function AdminTeachersPage() {
                             </div>
                           </td>
 
-                          <td className="px-4 py-3.5 text-xs text-slate-700 font-medium">
-                            {t.phone || "—"}
+                          <td className="px-4 py-3.5 text-xs text-slate-700 font-medium font-mono">
+                            {t.email || "—"}
                           </td>
 
                           <td className="px-4 py-3.5">
@@ -1423,15 +1423,19 @@ export default function AdminTeachersPage() {
 
                 <div>
                   <label className="block font-bold text-slate-700 uppercase tracking-wider text-[10px] mb-1">
-                    Phone Number
+                    Email Address *
                   </label>
                   <input
-                    type="tel"
-                    value={teacherFormData.phone}
-                    onChange={(e) => setTeacherFormData({ ...teacherFormData, phone: e.target.value })}
-                    placeholder="e.g. 08012345678"
+                    type="email"
+                    required
+                    value={teacherFormData.email}
+                    onChange={(e) => setTeacherFormData({ ...teacherFormData, email: e.target.value })}
+                    placeholder="e.g. teacher@gmail.com"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-slate-900"
                   />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Credentials and subject/class form link will be sent here
+                  </span>
                 </div>
               </div>
 

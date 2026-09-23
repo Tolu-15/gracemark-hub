@@ -15,24 +15,26 @@ export async function POST(req: NextRequest) {
   const { snapshots = [], resultIds = [], statusCol = {} } = body || {};
 
   try {
-    // 1. Upsert into published_snapshots
+    // 1. Primary Source of Truth: Set status = 'published' in results table
+    const updatePayload: Record<string, any> = { ...statusCol, status: "published" };
+    if (resultIds.length > 0) {
+      const { error: resErr } = await service
+        .from("results")
+        .update(updatePayload)
+        .in("id", resultIds);
+      if (resErr) {
+        console.error("results publication update error:", resErr);
+        throw resErr;
+      }
+    }
+
+    // 2. Secondary Cache: Upsert into published_snapshots for historical snapshots
     if (snapshots.length > 0) {
       const { error: snapErr } = await service
         .from("published_snapshots")
         .upsert(snapshots, { onConflict: "term,session,student_id,report_type" });
       if (snapErr) {
-        console.warn("published_snapshots upsert error:", snapErr);
-      }
-    }
-
-    // 2. Update status in results table
-    if (resultIds.length > 0 && Object.keys(statusCol).length > 0) {
-      const { error: resErr } = await service
-        .from("results")
-        .update(statusCol)
-        .in("id", resultIds);
-      if (resErr) {
-        console.warn("results update error:", resErr);
+        console.warn("published_snapshots secondary cache upsert warning:", snapErr);
       }
     }
 
