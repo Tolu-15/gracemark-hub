@@ -3,7 +3,7 @@
  * Exact Junior & Senior Secondary School Subjects
  */
 
-// 12 Junior Class Subjects
+// 12 Junior Class Subjects (Official order & periods)
 export const STANDARD_JSS_SUBJECTS = [
   "Business Studies",
   "Christian Religious Studies",
@@ -19,7 +19,22 @@ export const STANDARD_JSS_SUBJECTS = [
   "Yoruba",
 ];
 
-// 19 Senior Class Subjects
+export const JSS_SUBJECT_PERIODS: Record<string, number> = {
+  "Business Studies": 2,
+  "Christian Religious Studies": 3,
+  "Cultural and Creative Art": 2,
+  "Digital Technology": 3,
+  "English Language": 5,
+  "History": 2,
+  "Intermediate Science": 4,
+  "Mathematics": 6,
+  "Physical and Health Education": 2,
+  "Social and Citizenship Studies": 3,
+  "Trade": 2,
+  "Yoruba": 3,
+};
+
+// 19 Senior Class Subjects (Official order & periods)
 export const STANDARD_SSS_SUBJECTS = [
   "Mathematics",
   "English",
@@ -41,6 +56,58 @@ export const STANDARD_SSS_SUBJECTS = [
   "Marketing",
   "Citizenship",
 ];
+
+export const SSS_SUBJECT_PERIODS: Record<string, number> = {
+  "Mathematics": 6,
+  "English": 5,
+  "Chemistry": 4,
+  "Physics": 4,
+  "Biology": 4,
+  "Government": 4,
+  "Literature": 4,
+  "Account": 4,
+  "Commerce": 4,
+  "CRS": 4,
+  "Economics": 3,
+  "Further Math": 3,
+  "Trade": 2,
+  "Digital Technology": 3,
+  "Agric": 3,
+  "Technical Drawing": 3,
+  "Yoruba": 3,
+  "Marketing": 3,
+  "Citizenship": 3,
+};
+
+export type SubjectLevel = "junior" | "senior" | "both";
+
+/**
+ * Determines whether a subject belongs to Junior (JSS), Senior (SSS), or Both.
+ */
+export function getSubjectLevel(name: string): SubjectLevel {
+  const clean = name.trim().toLowerCase();
+  const inJss = STANDARD_JSS_SUBJECTS.some((s) => s.toLowerCase() === clean);
+  const inSss = STANDARD_SSS_SUBJECTS.some((s) => s.toLowerCase() === clean);
+
+  if (inJss && inSss) return "both";
+  if (inJss) return "junior";
+  if (inSss) return "senior";
+  return "both";
+}
+
+/**
+ * Gets the official curriculum weekly periods for a given subject.
+ */
+export function getSubjectPeriods(name: string, level?: "junior" | "senior"): number | null {
+  const clean = name.trim();
+  if (level === "junior" || (!level && JSS_SUBJECT_PERIODS[clean])) {
+    return JSS_SUBJECT_PERIODS[clean] || null;
+  }
+  if (level === "senior" || (!level && SSS_SUBJECT_PERIODS[clean])) {
+    return SSS_SUBJECT_PERIODS[clean] || null;
+  }
+  return null;
+}
 
 export const SSS_CORE_SUBJECTS = [
   "Mathematics",

@@ -4,6 +4,11 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase/client";
 import { StudentRecord, ClassRecord } from "@/types/database";
+import {
+  STANDARD_JSS_SUBJECTS,
+  STANDARD_SSS_SUBJECTS,
+  isJuniorClass,
+} from "@/lib/curriculum";
 
 export default function AdminStudentsPage() {
   const [students, setStudents] = useState<StudentRecord[]>([]);
@@ -84,9 +89,26 @@ export default function AdminStudentsPage() {
     setSubjectModalMsg("");
     setLoadingSubjects(true);
     try {
-      // 1. Load all available subjects
+      // 1. Load all available subjects and sort by curriculum level
       const { data: subs } = await supabase.from("subjects").select("id, name").order("name");
-      setAvailableSubjects(subs || []);
+      const isJunior = isJuniorClass(s.classes?.name);
+      const sortedSubs = [...(subs || [])].sort((a, b) => {
+        if (isJunior) {
+          const idxA = STANDARD_JSS_SUBJECTS.findIndex((n) => n.toLowerCase() === a.name.toLowerCase());
+          const idxB = STANDARD_JSS_SUBJECTS.findIndex((n) => n.toLowerCase() === b.name.toLowerCase());
+          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+          if (idxA !== -1) return -1;
+          if (idxB !== -1) return 1;
+        } else {
+          const idxA = STANDARD_SSS_SUBJECTS.findIndex((n) => n.toLowerCase() === a.name.toLowerCase());
+          const idxB = STANDARD_SSS_SUBJECTS.findIndex((n) => n.toLowerCase() === b.name.toLowerCase());
+          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+          if (idxA !== -1) return -1;
+          if (idxB !== -1) return 1;
+        }
+        return a.name.localeCompare(b.name);
+      });
+      setAvailableSubjects(sortedSubs);
 
       // 2. Load existing enrollments for this student
       const res = await fetch(`/api/admin/students/subject-enrollments?studentId=${s.id}`);
@@ -1117,8 +1139,16 @@ export default function AdminStudentsPage() {
                       key={sub.id}
                       className="py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50 px-2 rounded-lg"
                     >
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-2">
                         <span className="font-semibold text-slate-800">{sub.name}</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-slate-100 text-slate-500">
+                          {STANDARD_JSS_SUBJECTS.some((j) => j.toLowerCase() === sub.name.toLowerCase()) &&
+                          STANDARD_SSS_SUBJECTS.some((s) => s.toLowerCase() === sub.name.toLowerCase())
+                            ? "JSS & SSS"
+                            : STANDARD_JSS_SUBJECTS.some((j) => j.toLowerCase() === sub.name.toLowerCase())
+                            ? "JSS"
+                            : "SSS"}
+                        </span>
                         {currentStatus === "enrolled" && (
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                             Enrolled
