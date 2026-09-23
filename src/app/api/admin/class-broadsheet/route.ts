@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase/server";
-import { isSeniorClass } from "@/lib/gradingEngine";
+import { isSeniorClass, getGradeAndRemark } from "@/lib/gradingEngine";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const service = getServiceClient();
@@ -10,7 +12,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const classId = searchParams.get("classId");
-  const session = searchParams.get("session") || "";
+  const session = (searchParams.get("session") || "").trim();
   const term = searchParams.get("term") || "term1"; // term1, term2, term3, or annual
 
   if (!classId) {
@@ -33,9 +35,9 @@ export async function GET(req: NextRequest) {
     const isSenior = isSeniorClass(className);
 
     // 2. Resolve Students who were in this class during this session
-    let studentList: { id: string; name: string; admission_no: string }[] = [];
+    const studentMap = new Map<string, { id: string; name: string; admission_no: string }>();
 
-    // Try student_enrollments first
+    // Source A: student_enrollments for this class & session
     if (session) {
       const { data: enrollments } = await service
         .from("student_enrollments")
@@ -43,42 +45,49 @@ export async function GET(req: NextRequest) {
         .eq("class_id", classId)
         .eq("session", session);
 
-      if (enrollments && enrollments.length > 0) {
-        studentList = enrollments
-          .map((e: any) => e.students)
-          .filter(Boolean);
+      (enrollments || []).forEach((e: any) => {
+        if (e.students?.id) {
+          studentMap.set(e.students.id, e.students);
+        }
+      });
+    }
+
+    // Source B: results table for this class & session
+    let rQuery = service
+      .from("results")
+      .select("student_id, students(id, name, admission_no)")
+      .eq("class_id", classId);
+    if (session) rQuery = rQuery.eq("session", session);
+
+    const { data: resStudents } = await rQuery;
+    (resStudents || []).forEach((r: any) => {
+      if (r.students?.id) {
+        studentMap.set(r.students.id, r.students);
       }
-    }
+    });
 
-    // Try results table if student_enrollments is empty
-    if (!studentList.length && session) {
-      const { data: resStudents } = await service
-        .from("results")
-        .select("student_id, students(id, name, admission_no)")
-        .eq("class_id", classId)
-        .eq("session", session);
+    // Source C: Active students in this class
+    const { data: stds } = await service
+      .from("students")
+      .select("id, name, admission_no")
+      .eq("class_id", classId);
 
-      if (resStudents && resStudents.length > 0) {
-        const seen = new Set<string>();
-        resStudents.forEach((r: any) => {
-          if (r.students && !seen.has(r.student_id)) {
-            seen.add(r.student_id);
-            studentList.push(r.students);
-          }
-        });
+    (stds || []).forEach((st: any) => {
+      if (st?.id && !studentMap.has(st.id)) {
+        if (!studentMap.size || !session) {
+          studentMap.set(st.id, st);
+        }
       }
+    });
+
+    // If still empty (e.g. historical session with no specific enrollments logged), include current class students
+    if (studentMap.size === 0 && stds) {
+      stds.forEach((st: any) => {
+        if (st?.id) studentMap.set(st.id, st);
+      });
     }
 
-    // Fallback to active students in class
-    if (!studentList.length) {
-      const { data: stds } = await service
-        .from("students")
-        .select("id, name, admission_no")
-        .eq("class_id", classId);
-      studentList = stds || [];
-    }
-
-    studentList.sort((a, b) => a.name.localeCompare(b.name));
+    const studentList = Array.from(studentMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 
     if (!studentList.length) {
       return NextResponse.json({
@@ -95,7 +104,7 @@ export async function GET(req: NextRequest) {
 
     const studentIds = studentList.map((s) => s.id);
 
-    // 3. Fetch all subjects taken by this class / students
+    // 3. Fetch all scores for these students in this session/term
     let resQuery = service
       .from("results")
       .select(`
@@ -115,42 +124,80 @@ export async function GET(req: NextRequest) {
     const { data: results, error: rErr } = await resQuery;
     if (rErr) throw rErr;
 
-    // Collect unique subjects
+    // Collect all subjects for this class and broadsheet
     const subjectsMap = new Map<string, string>();
+
+    // 1. From results
     (results || []).forEach((r: any) => {
       if (r.subject_id && r.subjects?.name) {
         subjectsMap.set(r.subject_id, r.subjects.name);
       }
     });
 
-    // Also check student_subject_enrollments for any additional subjects
-    const { data: subEnrolled } = await service
-      .from("student_subject_enrollments")
-      .select("subject_id, subjects(id, name)")
-      .eq("class_id", classId)
-      .eq("status", "enrolled");
+    // 2. From student_subject_enrollments
+    if (studentIds.length > 0) {
+      let sseQuery = service
+        .from("student_subject_enrollments")
+        .select("student_id, subject_id, subjects(id, name)")
+        .in("student_id", studentIds)
+        .eq("status", "enrolled");
+      if (session) sseQuery = sseQuery.eq("session", session);
+      const { data: sseData } = await sseQuery;
+      (sseData || []).forEach((se: any) => {
+        if (se.subject_id && se.subjects?.name) {
+          subjectsMap.set(se.subject_id, se.subjects.name);
+        }
+      });
+    }
 
-    (subEnrolled || []).forEach((se: any) => {
-      if (se.subject_id && se.subjects?.name) {
-        subjectsMap.set(se.subject_id, se.subjects.name);
+    // 3. From subject_teacher_assignments for this class
+    const { data: staData } = await service
+      .from("subject_teacher_assignments")
+      .select("subject_id, subjects(id, name)")
+      .eq("class_id", classId);
+    (staData || []).forEach((a: any) => {
+      if (a.subject_id && a.subjects?.name) {
+        subjectsMap.set(a.subject_id, a.subjects.name);
       }
     });
+
+    // 4. From legacy teacher_assignments for this class
+    const { data: taData } = await service
+      .from("teacher_assignments")
+      .select("subject_id, subjects(id, name)")
+      .eq("class_id", classId);
+    (taData || []).forEach((a: any) => {
+      if (a.subject_id && a.subjects?.name) {
+        subjectsMap.set(a.subject_id, a.subjects.name);
+      }
+    });
+
+    // 5. If still no subjects found, load all subjects from database
+    if (subjectsMap.size === 0) {
+      const { data: allSubs } = await service
+        .from("subjects")
+        .select("id, name")
+        .order("name", { ascending: true });
+      (allSubs || []).forEach((s: any) => {
+        subjectsMap.set(s.id, s.name);
+      });
+    }
 
     const subjectList = Array.from(subjectsMap.entries())
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
     // 4. Group results by student & subject
-    // studentId -> subjectId -> { total, grade, cw, test, exam }
+    // studentId -> subjectId -> score details
     const studentScoreMap = new Map<string, Map<string, {
       total: number | null;
       grade: string;
-      cw?: number;
-      test?: number;
-      exam?: number;
-      term1?: number;
-      term2?: number;
-      term3?: number;
+      cw?: number | null;
+      test?: number | null;
+      exam?: number | null;
+      term1?: number | null;
+      term2?: number | null;
+      term3?: number | null;
     }>>();
 
     if (term === "annual") {
@@ -161,21 +208,31 @@ export async function GET(req: NextRequest) {
         }
         const sMap = studentScoreMap.get(r.student_id)!;
         if (!sMap.has(r.subject_id)) {
-          sMap.set(r.subject_id, { total: null, grade: "—", term1: undefined, term2: undefined, term3: undefined });
+          sMap.set(r.subject_id, {
+            total: null,
+            grade: "—",
+            cw: null,
+            test: null,
+            exam: null,
+            term1: null,
+            term2: null,
+            term3: null,
+          });
         }
         const subData = sMap.get(r.subject_id)!;
         const tot = r.total !== null && r.total !== undefined ? Number(r.total) : null;
-        if (r.term === "term1") subData.term1 = tot ?? undefined;
-        if (r.term === "term2") subData.term2 = tot ?? undefined;
-        if (r.term === "term3") subData.term3 = tot ?? undefined;
+        if (r.term === "term1") subData.term1 = tot;
+        if (r.term === "term2") subData.term2 = tot;
+        if (r.term === "term3") subData.term3 = tot;
 
-        // Calculate average across available terms
+        // Calculate average across valid terms
         const validTerms = [subData.term1, subData.term2, subData.term3].filter(
-          (v): v is number => v !== undefined && v !== null && Number.isFinite(v)
+          (v): v is number => v !== null && v !== undefined && Number.isFinite(v)
         );
         if (validTerms.length > 0) {
           subData.total = +(validTerms.reduce((a, b) => a + b, 0) / validTerms.length).toFixed(1);
-          subData.grade = r.grade || "—";
+          const computedGrade = getGradeAndRemark(subData.total, isSenior).grade;
+          subData.grade = r.grade && r.grade !== "—" ? r.grade : computedGrade;
         }
       });
     } else {
@@ -184,12 +241,14 @@ export async function GET(req: NextRequest) {
           studentScoreMap.set(r.student_id, new Map());
         }
         const sMap = studentScoreMap.get(r.student_id)!;
+        const tot = r.total !== null && r.total !== undefined ? Number(r.total) : null;
+        const computedGrade = tot !== null ? getGradeAndRemark(tot, isSenior).grade : "—";
         sMap.set(r.subject_id, {
-          total: r.total !== null && r.total !== undefined ? Number(r.total) : null,
-          grade: r.grade || "—",
-          cw: r.cw,
-          test: r.test,
-          exam: r.exam,
+          total: tot,
+          grade: r.grade && r.grade !== "—" ? r.grade : computedGrade,
+          cw: r.cw ?? null,
+          test: r.test ?? null,
+          exam: r.exam ?? null,
         });
       });
     }
@@ -197,7 +256,16 @@ export async function GET(req: NextRequest) {
     // 5. Build student broadsheet rows & calculate ranks
     const studentRows = studentList.map((st) => {
       const sMap = studentScoreMap.get(st.id) || new Map();
-      const subjectScores: Record<string, { total: number | null; grade: string }> = {};
+      const subjectScores: Record<string, {
+        total: number | null;
+        grade: string;
+        cw: number | null;
+        test: number | null;
+        exam: number | null;
+        term1?: number | null;
+        term2?: number | null;
+        term3?: number | null;
+      }> = {};
 
       let totalScoreSum = 0;
       let evaluatedCount = 0;
@@ -205,11 +273,29 @@ export async function GET(req: NextRequest) {
       subjectList.forEach((sub) => {
         const sc = sMap.get(sub.id);
         if (sc && sc.total !== null && Number.isFinite(sc.total)) {
-          subjectScores[sub.id] = { total: sc.total, grade: sc.grade };
+          subjectScores[sub.id] = {
+            total: sc.total,
+            grade: sc.grade,
+            cw: sc.cw ?? null,
+            test: sc.test ?? null,
+            exam: sc.exam ?? null,
+            term1: sc.term1 ?? null,
+            term2: sc.term2 ?? null,
+            term3: sc.term3 ?? null,
+          };
           totalScoreSum += sc.total;
           evaluatedCount++;
         } else {
-          subjectScores[sub.id] = { total: null, grade: "—" };
+          subjectScores[sub.id] = {
+            total: null,
+            grade: "—",
+            cw: null,
+            test: null,
+            exam: null,
+            term1: null,
+            term2: null,
+            term3: null,
+          };
         }
       });
 

@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, matches: students || [] });
     }
 
-    // Mode 2: Full OGSERA-style Career Profile for a specific student
+    // Mode 2: Full Student Results Career Profile for a specific student
     if (studentId) {
       // 1. Fetch student master record
       const { data: student, error: stdErr } = await service

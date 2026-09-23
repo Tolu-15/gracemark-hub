@@ -7,17 +7,18 @@ import { fetchStudentReport } from "@/lib/studentReport";
 import { getAcademicSessions } from "@/lib/academicSessions";
 import { getAppSettings } from "@/lib/appSettings";
 
-type ActiveTab = "ogsera-lookup" | "class-broadsheet";
+type ActiveTab = "student-results" | "class-broadsheet";
+type BroadsheetViewMode = "score-grade" | "score-only" | "breakdown";
 
 export default function AdminHistoricalResultsPage() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>("ogsera-lookup");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("student-results");
 
   // Catalog state
   const [sessions, setSessions] = useState<string[]>([]);
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
   const [currentSession, setCurrentSession] = useState("2025/2026");
 
-  // Tab 1: OGSERA Lookup State
+  // Tab 1: Student Results Lookup State
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -34,6 +35,7 @@ export default function AdminHistoricalResultsPage() {
   const [selectedBroadsheetSession, setSelectedBroadsheetSession] = useState("");
   const [selectedBroadsheetClass, setSelectedBroadsheetClass] = useState("");
   const [selectedBroadsheetTerm, setSelectedBroadsheetTerm] = useState("term1");
+  const [viewMode, setViewMode] = useState<BroadsheetViewMode>("score-grade");
   const [broadsheetData, setBroadsheetData] = useState<any | null>(null);
   const [loadingBroadsheet, setLoadingBroadsheet] = useState(false);
   const [broadsheetError, setBroadsheetError] = useState("");
@@ -66,7 +68,7 @@ export default function AdminHistoricalResultsPage() {
     init();
   }, []);
 
-  // Search students for OGSERA lookup
+  // Search students for Student Results lookup
   const handleSearchStudents = useCallback(async (q: string) => {
     setSearchQuery(q);
     if (!q.trim() || q.trim().length < 2) {
@@ -90,7 +92,7 @@ export default function AdminHistoricalResultsPage() {
     }
   }, []);
 
-  // Select student & load career
+  // Select student & load career results
   const handleSelectStudent = useCallback(async (sId: string) => {
     setSelectedStudentId(sId);
     setSearchResults([]);
@@ -165,15 +167,15 @@ export default function AdminHistoricalResultsPage() {
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
-              OGSERA Standard
+              Official Academic Records
             </span>
             <span className="text-xs text-slate-400 font-medium">Single Source of Truth</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-1">
-            Historical Results & Master Broadsheets
+            Student Results &amp; Master Broadsheets
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Lookup any student&apos;s lifelong academic career across sessions, print terminal reports with historical class binding, or generate official class broadsheets.
+            Lookup any student&apos;s academic results across past sessions, print terminal reports with historical class binding, or generate official class broadsheets.
           </p>
         </div>
 
@@ -181,14 +183,14 @@ export default function AdminHistoricalResultsPage() {
         <div className="flex items-center p-1 bg-slate-100 rounded-xl shrink-0">
           <button
             type="button"
-            onClick={() => setActiveTab("ogsera-lookup")}
+            onClick={() => setActiveTab("student-results")}
             className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              activeTab === "ogsera-lookup"
+              activeTab === "student-results"
                 ? "bg-white text-slate-900 shadow-xs"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            OGSERA Student Career
+            Student Results
           </button>
           <button
             type="button"
@@ -204,13 +206,13 @@ export default function AdminHistoricalResultsPage() {
         </div>
       </div>
 
-      {/* TAB 1: OGSERA Student Career Lookup */}
-      {activeTab === "ogsera-lookup" && (
+      {/* TAB 1: Student Results Lookup */}
+      {activeTab === "student-results" && (
         <div className="space-y-6">
           {/* Search Box */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs relative print:hidden">
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-              Learner Identifier (LIN) or Student Name Lookup
+              Student Admission No or Name Lookup
             </label>
             <div className="relative">
               <svg
@@ -252,7 +254,7 @@ export default function AdminHistoricalResultsPage() {
                       </div>
                     </div>
                     <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg">
-                      View Career &rarr;
+                      View Results &rarr;
                     </span>
                   </button>
                 ))}
@@ -260,10 +262,10 @@ export default function AdminHistoricalResultsPage() {
             )}
           </div>
 
-          {/* Student Career Profile View */}
+          {/* Student Results Profile View */}
           {loadingCareer ? (
             <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400">
-              Loading student career timeline…
+              Loading student results timeline…
             </div>
           ) : studentCareer ? (
             <div className="space-y-6">
@@ -317,10 +319,10 @@ export default function AdminHistoricalResultsPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                    Academic Trajectory & Session Records
+                    Academic Trajectory &amp; Session Records
                   </h4>
                   <span className="text-xs text-slate-500 font-medium">
-                    Strictly bound to historical class & subjects
+                    Strictly bound to historical class &amp; subjects
                   </span>
                 </div>
 
@@ -378,7 +380,7 @@ export default function AdminHistoricalResultsPage() {
                             onClick={() => handleOpenIndividualReport(sess.session, "term3", sess.historicalClass)}
                             className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-lg transition-colors cursor-pointer shadow-xs"
                           >
-                            3rd Term & Annual Report
+                            3rd Term &amp; Annual Report
                           </button>
                         </div>
                       </div>
@@ -416,7 +418,7 @@ export default function AdminHistoricalResultsPage() {
             </div>
           ) : (
             <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400">
-              Search for any student above to inspect their OGSERA lifelong academic history.
+              Search for any student above to view their academic results and history.
             </div>
           )}
         </div>
@@ -426,8 +428,8 @@ export default function AdminHistoricalResultsPage() {
       {activeTab === "class-broadsheet" && (
         <div className="space-y-6">
           {/* Controls Bar */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row items-end gap-4 print:hidden">
-            <div className="w-full md:w-56">
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-wrap items-end gap-4 print:hidden">
+            <div className="w-full sm:w-48">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Academic Session
               </label>
@@ -442,7 +444,7 @@ export default function AdminHistoricalResultsPage() {
               </select>
             </div>
 
-            <div className="w-full md:w-64">
+            <div className="w-full sm:w-56">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Class Roster
               </label>
@@ -457,7 +459,7 @@ export default function AdminHistoricalResultsPage() {
               </select>
             </div>
 
-            <div className="w-full md:w-52">
+            <div className="w-full sm:w-48">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Assessment Period
               </label>
@@ -473,11 +475,26 @@ export default function AdminHistoricalResultsPage() {
               </select>
             </div>
 
+            <div className="w-full sm:w-44">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Score Display View
+              </label>
+              <select
+                value={viewMode}
+                onChange={(e) => setViewMode(e.target.value as BroadsheetViewMode)}
+                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
+              >
+                <option value="score-grade">Score &amp; Grade (e.g. 78 A)</option>
+                <option value="score-only">Score Only (e.g. 78)</option>
+                <option value="breakdown">Breakdown (CA | Exam)</option>
+              </select>
+            </div>
+
             <button
               type="button"
               disabled={loadingBroadsheet}
               onClick={handleLoadBroadsheet}
-              className="w-full md:w-auto px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer disabled:opacity-50 transition-colors"
+              className="w-full sm:w-auto px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer disabled:opacity-50 transition-colors"
             >
               {loadingBroadsheet ? "Generating Broadsheet…" : "Generate Master Broadsheet"}
             </button>
@@ -493,7 +510,7 @@ export default function AdminHistoricalResultsPage() {
           {broadsheetData && (
             <div className="space-y-4">
               {/* Header & Print Action */}
-              <div className="flex items-center justify-between bg-white border border-slate-200 p-4 rounded-2xl shadow-xs">
+              <div className="flex items-center justify-between bg-white border border-slate-200 p-4 rounded-2xl shadow-xs print:hidden">
                 <div>
                   <h3 className="font-extrabold text-base text-slate-900">
                     {broadsheetData.className} — Master Result Sheet
@@ -522,15 +539,33 @@ export default function AdminHistoricalResultsPage() {
 
               {/* Printable Broadsheet Table */}
               <div className="bg-white border border-slate-300 rounded-2xl overflow-x-auto shadow-sm printable-broadsheet-container">
-                <table className="w-full text-left border-collapse text-xs border border-slate-300">
+                {/* Official School Header block on printed document */}
+                <div className="p-4 bg-slate-50 border-b border-slate-300 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-black tracking-tight text-slate-900 uppercase">
+                      Gracemark Academy
+                    </h2>
+                    <p className="text-xs font-bold text-slate-700 tracking-wide mt-0.5">
+                      Official Class Master Broadsheet &bull; {broadsheetData.className} &bull; Session {broadsheetData.session} &bull; {broadsheetData.term === "annual" ? "Annual Master" : broadsheetData.term.toUpperCase()}
+                    </p>
+                  </div>
+                  <div className="text-right text-[11px] text-slate-600 font-medium">
+                    <div>Class Size: <strong className="text-slate-900">{broadsheetData.studentsCount} Students</strong></div>
+                    <div>Total Subjects: <strong className="text-slate-900">{broadsheetData.subjectsCount}</strong> &bull; Class Avg: <strong className="text-indigo-700">{broadsheetData.classAverage}%</strong></div>
+                  </div>
+                </div>
+
+                <table className="w-full text-left border-collapse text-xs border-t border-slate-300">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-300 text-[10px] font-extrabold uppercase text-slate-700">
                       <th className="p-2 border-r border-slate-300 text-center w-8">#</th>
                       <th className="p-2 border-r border-slate-300 w-24">Adm No</th>
                       <th className="p-2 border-r border-slate-300 min-w-44">Student Name</th>
                       {broadsheetData.subjects.map((sub: any) => (
-                        <th key={sub.id} className="p-2 border-r border-slate-300 text-center min-w-16">
-                          <span title={sub.name}>{sub.name.slice(0, 8)}</span>
+                        <th key={sub.id} className="p-2 border-r border-slate-300 text-center min-w-24">
+                          <div className="font-extrabold text-[11px] leading-tight text-slate-800" title={sub.name}>
+                            {sub.name}
+                          </div>
                         </th>
                       ))}
                       <th className="p-2 border-r border-slate-300 text-center w-16 bg-slate-200">Total</th>
@@ -559,14 +594,39 @@ export default function AdminHistoricalResultsPage() {
                           </td>
                           {broadsheetData.subjects.map((sub: any) => {
                             const sc = r.subjectScores[sub.id];
+                            const hasScore = sc?.total !== null && sc?.total !== undefined;
+                            const isFail = hasScore && sc.total < 40;
+
                             return (
                               <td
                                 key={sub.id}
-                                className={`p-2 border-r border-slate-300 text-center font-mono font-medium ${
-                                  sc?.total !== null && sc?.total < 40 ? "text-rose-600 bg-rose-50/30" : ""
+                                className={`p-2 border-r border-slate-300 text-center font-mono ${
+                                  isFail ? "text-rose-600 bg-rose-50/40" : "text-slate-800"
                                 }`}
                               >
-                                {sc?.total !== null ? sc.total : "—"}
+                                {hasScore ? (
+                                  viewMode === "score-grade" ? (
+                                    <div className="flex items-center justify-center gap-1">
+                                      <span className="font-bold text-xs">{sc.total}</span>
+                                      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1 py-0.5 rounded">
+                                        {sc.grade}
+                                      </span>
+                                    </div>
+                                  ) : viewMode === "breakdown" ? (
+                                    <div>
+                                      <div className="text-[9px] text-slate-400 font-sans">
+                                        CA:{(sc.cw ?? 0) + (sc.test ?? 0)} | Ex:{sc.exam ?? "—"}
+                                      </div>
+                                      <div className="font-bold text-xs text-slate-900">
+                                        {sc.total} <span className="text-[9px] text-indigo-600 font-bold">({sc.grade})</span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <span className="font-bold text-xs">{sc.total}</span>
+                                  )
+                                ) : (
+                                  <span className="text-slate-300 font-sans">—</span>
+                                )}
                               </td>
                             );
                           })}
@@ -591,7 +651,7 @@ export default function AdminHistoricalResultsPage() {
                             Subject Average
                           </td>
                           {broadsheetData.subjects.map((sub: any) => (
-                            <td key={sub.id} className="p-2 border-r border-slate-300 text-center font-mono">
+                            <td key={sub.id} className="p-2 border-r border-slate-300 text-center font-mono font-bold text-indigo-900">
                               {broadsheetData.subjectStats[sub.id]?.avg ?? "—"}
                             </td>
                           ))}
@@ -628,11 +688,11 @@ export default function AdminHistoricalResultsPage() {
                 <div className="p-6 grid grid-cols-2 gap-12 pt-12 border-t border-slate-200 text-xs">
                   <div>
                     <div className="border-b border-slate-400 pb-1 w-64 mb-1"></div>
-                    <span className="font-bold text-slate-800 uppercase tracking-wide">Class Teacher Signature & Date</span>
+                    <span className="font-bold text-slate-800 uppercase tracking-wide">Class Teacher Signature &amp; Date</span>
                   </div>
                   <div className="text-right">
                     <div className="border-b border-slate-400 pb-1 w-64 ml-auto mb-1"></div>
-                    <span className="font-bold text-slate-800 uppercase tracking-wide">Principal Signature & Official Stamp</span>
+                    <span className="font-bold text-slate-800 uppercase tracking-wide">Principal Signature &amp; Official Stamp</span>
                   </div>
                 </div>
               </div>

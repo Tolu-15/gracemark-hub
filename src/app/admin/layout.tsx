@@ -46,7 +46,7 @@ const adminNavItems: NavItem[] = [
   },
   {
     category: "Academics & Staff",
-    label: "Historical Lookup & Broadsheets",
+    label: "Student Results & Broadsheets",
     href: "/admin/historical-results",
   },
   {
