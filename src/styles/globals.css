@@ -34,3 +34,39 @@ body {
   color: var(--ink);
   background-color: #f1f5f9;
 }
+
+@media print {
+  .portal-sidebar,
+  .portal-nav-backdrop,
+  #portalSidebar,
+  #portalMobileHamburgerBtn,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  .portal-app {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+    background: #ffffff !important;
+  }
+
+  .portal-main {
+    overflow: visible !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .printable-broadsheet-container {
+    border: 1px solid #94a3b8 !important;
+    box-shadow: none !important;
+  }
+}
+

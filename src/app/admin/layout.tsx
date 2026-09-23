@@ -45,6 +45,11 @@ const adminNavItems: NavItem[] = [
     href: "/admin/promotions",
   },
   {
+    category: "Academics & Staff",
+    label: "Historical Lookup & Broadsheets",
+    href: "/admin/historical-results",
+  },
+  {
     category: "Students & Portal",
     label: "Manage Students",
     href: "/admin/students",
@@ -93,6 +98,11 @@ const adminNavItems: NavItem[] = [
     category: "Settings",
     label: "Portal Access Policy",
     href: "/admin/settings/portal-access",
+  },
+  {
+    category: "Settings",
+    label: "Database Backup & Recovery",
+    href: "/admin/backup",
   },
   {
     category: "Settings",

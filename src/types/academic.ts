@@ -87,3 +87,24 @@ export interface StaffProfile {
   must_change_password?: boolean;
   created_at?: string;
 }
+
+export type SubjectEnrollmentStatus = "enrolled" | "dropped" | "exempted";
+
+export interface StudentSubjectEnrollment {
+  id: string;
+  student_id: string;
+  subject_id: string;
+  academic_session_id?: string | null;
+  session: string;
+  class_id?: string | null;
+  enrollment_id?: string | null;
+  status: SubjectEnrollmentStatus;
+  is_active: boolean;
+  dropped_at?: string | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  subjects?: { id: string; name: string } | null;
+  students?: { id: string; name: string; admission_no: string } | null;
+  classes?: { id: string; name: string } | null;
+}

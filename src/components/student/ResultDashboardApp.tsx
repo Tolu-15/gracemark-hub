@@ -20,6 +20,7 @@ interface ResultDashboardAppProps {
   };
   initialTerm?: string;
   initialSession?: string;
+  initialReport?: any;
   onClose?: () => void;
 }
 
@@ -35,6 +36,9 @@ function scoreColour(total: any) {
 
 function GradeBadge({ grade }: { grade?: string | null }) {
   const g = String(grade || "—").toUpperCase();
+  if (g === "—" || g === "PENDING" || g === "N/A") {
+    return <span className="text-slate-400 font-mono text-xs font-semibold">—</span>;
+  }
   let badgeClass = "rd-badge-f";
   if (g.startsWith("A")) badgeClass = "rd-badge-a";
   else if (g.startsWith("B")) badgeClass = "rd-badge-b";
@@ -82,14 +86,15 @@ export default function ResultDashboardApp({
   student,
   initialTerm = "term1",
   initialSession = "",
+  initialReport,
   onClose,
 }: ResultDashboardAppProps) {
-  const [term, setTerm] = useState(initialTerm);
-  const [session, setSession] = useState(initialSession);
+  const [term, setTerm] = useState(initialReport?.term || initialTerm);
+  const [session, setSession] = useState(initialReport?.session || initialSession);
   const [sessionsList, setSessionsList] = useState<string[]>([]);
   const [tab, setTab] = useState<"all" | "pr1" | "pr2" | "pr3" | "tr">("all");
-  const [report, setReport] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [report, setReport] = useState<any>(initialReport || null);
+  const [loading, setLoading] = useState(!initialReport);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -135,7 +140,7 @@ export default function ResultDashboardApp({
         setSessionsList(names);
         if (names.length > 0) {
           // If current selected session is not in student's allowed sessions, set to latest
-          setSession((prev) => (prev && names.includes(prev) ? prev : names[names.length - 1]));
+          setSession((prev: string) => (prev && names.includes(prev) ? prev : names[names.length - 1]));
         }
       } catch (e) {
         console.warn("Could not load student enrolled sessions in ResultDashboardApp", e);
@@ -634,17 +639,17 @@ export default function ResultDashboardApp({
                       <td className="p-3 font-semibold text-slate-900 border-r border-slate-200">{s.subject}</td>
                       {(tab === "all" || tab === "tr") && (
                         <>
-                          <td className="p-2 text-center border-r border-slate-200 font-mono">{s.cw}</td>
-                          <td className="p-2 text-center border-r border-slate-200 font-mono">{s.hw}</td>
-                          <td className="p-2 text-center border-r border-slate-200 font-mono">{s.test}</td>
-                          <td className="p-2 text-center border-r border-slate-200 font-mono">{s.project}</td>
-                          <td className="p-2 text-center border-r border-slate-200 font-mono">{s.exam}</td>
+                          <td className="p-2 text-center border-r border-slate-200 font-mono">{s.cw !== null && s.cw !== undefined ? s.cw : "—"}</td>
+                          <td className="p-2 text-center border-r border-slate-200 font-mono">{s.hw !== null && s.hw !== undefined ? s.hw : "—"}</td>
+                          <td className="p-2 text-center border-r border-slate-200 font-mono">{s.test !== null && s.test !== undefined ? s.test : "—"}</td>
+                          <td className="p-2 text-center border-r border-slate-200 font-mono">{s.project !== null && s.project !== undefined ? s.project : "—"}</td>
+                          <td className="p-2 text-center border-r border-slate-200 font-mono">{s.exam !== null && s.exam !== undefined ? s.exam : "—"}</td>
                           <td className={`p-2 text-center border-r border-slate-200 font-bold font-mono ${scoreColour(s.total)}`}>
-                            {s.total}
+                            {s.total !== null && s.total !== undefined ? s.total : "—"}
                           </td>
                           {report.term === "term3" && (
                             <td className="p-2 text-center border-r border-slate-200 font-mono font-bold text-indigo-700">
-                              {s.annualAverage ?? "—"}
+                              {s.annualAverage !== null && s.annualAverage !== undefined ? s.annualAverage : "—"}
                             </td>
                           )}
                           <td className="p-2 text-center border-r border-slate-200">

@@ -197,37 +197,65 @@ export default function TeacherScoreEntryPage() {
     setStatusMsg("");
 
     try {
-      // 1. Fetch students: Try student_enrollments first if currentSessionId is known
+      // 1. Fetch students: Try student_subject_enrollments first for subject-specific roster
       let studentList: { id: string; name: string; admission_no: string }[] = [];
-      if (currentSessionId) {
-        try {
-          const { data: enrollments, error: eErr } = await supabase
-            .from("student_enrollments")
-            .select("student_id, students(id, name, admission_no)")
-            .eq("class_id", selectedClass)
-            .eq("academic_session_id", currentSessionId)
-            .eq("status", "active");
+      try {
+        let subQuery = supabase
+          .from("student_subject_enrollments")
+          .select("student_id, students(id, name, admission_no)")
+          .eq("class_id", selectedClass)
+          .eq("subject_id", selectedSubject)
+          .eq("status", "enrolled");
 
-          if (!eErr && enrollments && enrollments.length > 0) {
-            studentList = enrollments
-              .map((e: any) => e.students)
-              .filter(Boolean)
-              .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
-          }
-        } catch {
-          // fallback
+        if (currentSessionId) {
+          subQuery = subQuery.eq("academic_session_id", currentSessionId);
+        } else if (currentSession) {
+          subQuery = subQuery.eq("session", currentSession);
         }
+
+        const { data: subEnrolled, error: subErr } = await subQuery;
+        if (!subErr && subEnrolled && subEnrolled.length > 0) {
+          studentList = subEnrolled
+            .map((e: any) => e.students)
+            .filter(Boolean)
+            .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
+        }
+      } catch {
+        // Fallback to class-level enrollment if table not available
       }
 
+      // Safe Fallback: If no subject-specific enrollments exist yet, load all active students in the class
       if (!studentList.length) {
-        const { data: students, error: sErr } = await supabase
-          .from("students")
-          .select("id, name, admission_no")
-          .eq("class_id", selectedClass)
-          .order("name", { ascending: true });
+        if (currentSessionId) {
+          try {
+            const { data: enrollments, error: eErr } = await supabase
+              .from("student_enrollments")
+              .select("student_id, students(id, name, admission_no)")
+              .eq("class_id", selectedClass)
+              .eq("academic_session_id", currentSessionId)
+              .eq("status", "active");
 
-        if (sErr) throw sErr;
-        studentList = students || [];
+            if (!eErr && enrollments && enrollments.length > 0) {
+              studentList = enrollments
+                .map((e: any) => e.students)
+                .filter(Boolean)
+                .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
+            }
+          } catch {
+            // fallback
+          }
+        }
+
+        if (!studentList.length) {
+          const { data: students, error: sErr } = await supabase
+            .from("students")
+            .select("id, name, admission_no")
+            .eq("class_id", selectedClass)
+            .order("name", { ascending: true });
+
+          if (sErr) throw sErr;
+          studentList = students || [];
+        }
       }
 
       if (!studentList.length) {

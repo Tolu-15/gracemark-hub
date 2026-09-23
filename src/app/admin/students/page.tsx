@@ -43,6 +43,15 @@ export default function AdminStudentsPage() {
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkMsg, setBulkMsg] = useState("");
 
+  // Subject Enrollment modal states
+  const [subjectModalStudent, setSubjectModalStudent] = useState<StudentRecord | null>(null);
+  const [subjectConfigs, setSubjectConfigs] = useState<Record<string, { status: "enrolled" | "dropped" | "exempted"; notes?: string }>>({});
+  const [availableSubjects, setAvailableSubjects] = useState<{ id: string; name: string }[]>([]);
+  const [loadingSubjects, setLoadingSubjects] = useState(false);
+  const [savingSubjects, setSavingSubjects] = useState(false);
+  const [subjectModalMsg, setSubjectModalMsg] = useState("");
+  const [syncingJss, setSyncingJss] = useState(false);
+
   async function handleConfirmPasswordReset() {
     if (!resetModalStudent) return;
     setResettingPassword(true);
@@ -67,6 +76,116 @@ export default function AdminStudentsPage() {
       alert("Error resetting password: " + err.message);
     } finally {
       setResettingPassword(false);
+    }
+  }
+
+  async function handleOpenSubjectModal(s: StudentRecord) {
+    setSubjectModalStudent(s);
+    setSubjectModalMsg("");
+    setLoadingSubjects(true);
+    try {
+      // 1. Load all available subjects
+      const { data: subs } = await supabase.from("subjects").select("id, name").order("name");
+      setAvailableSubjects(subs || []);
+
+      // 2. Load existing enrollments for this student
+      const res = await fetch(`/api/admin/students/subject-enrollments?studentId=${s.id}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.ok && json.enrollments) {
+          const map: Record<string, { status: "enrolled" | "dropped" | "exempted"; notes?: string }> = {};
+          json.enrollments.forEach((e: any) => {
+            map[e.subject_id] = { status: e.status || "enrolled", notes: e.notes || "" };
+          });
+          setSubjectConfigs(map);
+        }
+      }
+    } catch (err: any) {
+      console.error("Failed to load subject enrollments:", err);
+    } finally {
+      setLoadingSubjects(false);
+    }
+  }
+
+  async function handleApplyTrackDefaults() {
+    if (!subjectModalStudent) return;
+    const className = subjectModalStudent.classes?.name || "";
+    try {
+      const res = await fetch("/api/admin/students/subject-enrollments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get-track-defaults", className }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.ok) {
+          const newMap = { ...subjectConfigs };
+          (json.core || []).forEach((c: { id: string }) => {
+            newMap[c.id] = { status: "enrolled" };
+          });
+          (json.majors || []).forEach((m: { id: string }) => {
+            newMap[m.id] = { status: "enrolled" };
+          });
+          setSubjectConfigs(newMap);
+          setSubjectModalMsg("Loaded track default core & majors! Select any electives, then click Save.");
+        }
+      }
+    } catch (err: any) {
+      console.error("Error loading track defaults:", err);
+    }
+  }
+
+  async function handleSaveSubjectEnrollments() {
+    if (!subjectModalStudent) return;
+    setSavingSubjects(true);
+    setSubjectModalMsg("");
+    try {
+      const res = await fetch("/api/admin/students/subject-enrollments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save-student-subjects",
+          studentId: subjectModalStudent.id,
+          classId: subjectModalStudent.class_id,
+          subjectStatuses: subjectConfigs,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Failed to save subject enrollments");
+      setSubjectModalMsg("Subjects saved successfully!");
+      setTimeout(() => {
+        setSubjectModalStudent(null);
+      }, 900);
+    } catch (err: any) {
+      setSubjectModalMsg(`Error: ${err.message}`);
+    } finally {
+      setSavingSubjects(false);
+    }
+  }
+
+  async function handleSyncAllJss() {
+    if (!confirm("This will auto-enroll all students in JSS 1, JSS 2, and JSS 3 into the standard JSS curriculum. Proceed?")) {
+      return;
+    }
+    setSyncingJss(true);
+    setBulkMsg("");
+    try {
+      const jssClasses = classes.filter((c) => /JSS/i.test(c.name));
+      let totalEnrolled = 0;
+      for (const jc of jssClasses) {
+        const res = await fetch("/api/admin/students/subject-enrollments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "auto-enroll-jss", classId: jc.id }),
+        });
+        const d = await res.json();
+        if (d.ok) totalEnrolled += d.enrolledStudentsCount || 0;
+      }
+      setBulkMsg(`Successfully synced standard JSS curriculum across ${jssClasses.length} junior classes!`);
+    } catch (err: any) {
+      setBulkMsg(`Failed to sync JSS subjects: ${err.message}`);
+    } finally {
+      setSyncingJss(false);
     }
   }
 
@@ -467,6 +586,20 @@ export default function AdminStudentsPage() {
             <span>{bulkUploading ? "Importing…" : "Bulk Excel Upload"}</span>
           </button>
 
+          {/* Sync JSS Subjects */}
+          <button
+            type="button"
+            disabled={syncingJss}
+            onClick={handleSyncAllJss}
+            className="px-3.5 py-2 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-semibold shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            title="Auto-enroll all JSS students into standard JSS curriculum"
+          >
+            <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+            <span>{syncingJss ? "Syncing JSS…" : "Sync JSS Subjects"}</span>
+          </button>
+
           <button
             type="button"
             onClick={() => handleOpenModal()}
@@ -581,6 +714,14 @@ export default function AdminStudentsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-3.5 text-right space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSubjectModal(s)}
+                        className="text-emerald-600 hover:text-emerald-800 font-semibold cursor-pointer"
+                        title="Manage Enrolled & Dropped Subjects"
+                      >
+                        Subjects
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -837,6 +978,195 @@ export default function AdminStudentsPage() {
               >
                 Close & Done
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Student Subject Enrollment Modal */}
+      {subjectModalStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6 border border-slate-200 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="font-bold text-base text-slate-900 tracking-tight">
+                  Subject Enrollment & Dropped Subjects
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  <span className="font-semibold text-slate-800">{subjectModalStudent.name}</span> &bull;{" "}
+                  <span className="font-mono text-slate-600">{subjectModalStudent.admission_no}</span> &bull;{" "}
+                  <span className="font-semibold text-indigo-600">{subjectModalStudent.classes?.name || "No Class"}</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubjectModalStudent(null)}
+                className="text-slate-400 hover:text-slate-600 text-lg leading-none cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Quick Actions Bar */}
+            <div className="py-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/50 -mx-6 px-6">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                Preset Tools
+              </span>
+              <div className="flex items-center gap-2">
+                {/JSS/i.test(subjectModalStudent.classes?.name || "") ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!subjectModalStudent.class_id) return;
+                      setLoadingSubjects(true);
+                      await fetch("/api/admin/students/subject-enrollments", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "auto-enroll-jss", classId: subjectModalStudent.class_id }),
+                      });
+                      await handleOpenSubjectModal(subjectModalStudent);
+                    }}
+                    className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-lg text-xs cursor-pointer"
+                  >
+                    Apply Standard JSS Curriculum
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleApplyTrackDefaults}
+                    className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-lg text-xs cursor-pointer"
+                  >
+                    Load Track Defaults (Core + Majors)
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allEnrolled: Record<string, { status: "enrolled" }> = {};
+                    availableSubjects.forEach((sub) => {
+                      allEnrolled[sub.id] = { status: "enrolled" };
+                    });
+                    setSubjectConfigs(allEnrolled);
+                  }}
+                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-lg text-xs cursor-pointer"
+                >
+                  Select All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSubjectConfigs({})}
+                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-lg text-xs cursor-pointer"
+                >
+                  Clear All
+                </button>
+              </div>
+            </div>
+
+            {subjectModalMsg && (
+              <div
+                className={`my-3 p-2.5 rounded-xl text-xs font-semibold ${
+                  subjectModalMsg.startsWith("Error")
+                    ? "bg-rose-50 text-rose-700 border border-rose-200"
+                    : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                }`}
+              >
+                {subjectModalMsg}
+              </div>
+            )}
+
+            {/* Subject List */}
+            <div className="flex-1 overflow-y-auto py-2 divide-y divide-slate-100 text-xs">
+              {loadingSubjects ? (
+                <div className="p-8 text-center text-slate-400">Loading curriculum subjects…</div>
+              ) : (
+                availableSubjects.map((sub) => {
+                  const cfg = subjectConfigs[sub.id];
+                  const currentStatus = cfg?.status || "none";
+                  return (
+                    <div
+                      key={sub.id}
+                      className="py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50 px-2 rounded-lg"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="font-semibold text-slate-800">{sub.name}</span>
+                        {currentStatus === "enrolled" && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            Enrolled
+                          </span>
+                        )}
+                        {currentStatus === "dropped" && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            Dropped
+                          </span>
+                        )}
+                        {currentStatus === "exempted" && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                            Exempted
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <select
+                          value={currentStatus}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSubjectConfigs((prev) => {
+                              const updated = { ...prev };
+                              if (val === "none") {
+                                delete updated[sub.id];
+                              } else {
+                                updated[sub.id] = {
+                                  status: val as "enrolled" | "dropped" | "exempted",
+                                  notes: prev[sub.id]?.notes,
+                                };
+                              }
+                              return updated;
+                            });
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold border cursor-pointer ${
+                            currentStatus === "enrolled"
+                              ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                              : currentStatus === "dropped"
+                              ? "bg-amber-50 text-amber-800 border-amber-300"
+                              : currentStatus === "exempted"
+                              ? "bg-slate-100 text-slate-700 border-slate-300"
+                              : "bg-white text-slate-500 border-slate-200"
+                          }`}
+                        >
+                          <option value="none">Not Enrolled</option>
+                          <option value="enrolled">Enrolled (Active)</option>
+                          <option value="dropped">Dropped (SSS)</option>
+                          <option value="exempted">Exempted</option>
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-4 border-t border-slate-100 mt-2">
+              <span className="text-xs text-slate-500 font-medium">
+                {Object.values(subjectConfigs).filter((c) => c.status === "enrolled").length} enrolled subjects
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSubjectModalStudent(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={savingSubjects}
+                  onClick={handleSaveSubjectEnrollments}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow-xs cursor-pointer disabled:opacity-50 text-xs"
+                >
+                  {savingSubjects ? "Saving…" : "Save Subject Roster"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

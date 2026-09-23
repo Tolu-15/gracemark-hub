@@ -206,6 +206,32 @@ export default function AdminPromotionsPage() {
         .single();
       if (logErr) throw logErr;
 
+      // Auto-enroll any students promoted into JSS classes into standard JSS curriculum
+      const promotedJssClasses = new Set<string>();
+      summary.forEach((s) => {
+        if (/JSS/i.test(s.to_class || "")) {
+          const tCls = classMap.get((s.to_class || "").toUpperCase());
+          if (tCls?.id) promotedJssClasses.add(tCls.id);
+        }
+      });
+
+      for (const jcId of Array.from(promotedJssClasses)) {
+        try {
+          await fetch("/api/admin/students/subject-enrollments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "auto-enroll-jss",
+              classId: jcId,
+              sessionId: currentSessionId,
+              session: currentSession,
+            }),
+          });
+        } catch {
+          // ignore
+        }
+      }
+
       // Alumni records
       const alumniRecords = summary
         .filter((s) => s.graduated)

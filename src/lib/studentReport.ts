@@ -256,20 +256,24 @@ export async function fetchStudentReport({
   student,
   term,
   session,
+  historicalClassId,
+  historicalClassName,
 }: {
   student: any;
   term: string;
   session: string;
+  historicalClassId?: string;
+  historicalClassName?: string;
 }) {
   if (!student?.id) throw new Error("Student profile not loaded.");
 
   const supabase = getSupabaseBrowserClient();
 
-  // 1. Resolve true session-specific class from student_enrollments
-  let classId = student.class_id;
-  let className = student.classes?.name ?? "—";
+  // 1. Resolve true session-specific class from parameters, enrollments, or historical results
+  let classId = historicalClassId || student.class_id;
+  let className = historicalClassName || (student.classes?.name ?? "—");
 
-  if (session) {
+  if (!historicalClassName && session) {
     try {
       const { data: enrollment } = await supabase
         .from("student_enrollments")
@@ -282,6 +286,22 @@ export async function fetchStudentReport({
         classId = enrollment.class_id;
         if ((enrollment as any).classes?.name) {
           className = (enrollment as any).classes.name;
+        }
+      } else {
+        // Fallback: check historical class recorded in results for this session
+        const { data: resClass } = await supabase
+          .from("results")
+          .select("class_id, classes(id, name)")
+          .eq("student_id", student.id)
+          .eq("session", session)
+          .limit(1)
+          .maybeSingle();
+
+        if (resClass?.class_id) {
+          classId = resClass.class_id;
+          if ((resClass as any).classes?.name) {
+            className = (resClass as any).classes.name;
+          }
         }
       }
     } catch (e) {
@@ -554,6 +574,57 @@ export async function fetchStudentReport({
     }
   }
 
+  // Include any enrolled subjects from student_subject_enrollments that do not have an approved result yet
+  try {
+    let sseQuery = supabase
+      .from("student_subject_enrollments")
+      .select("subject_id, subjects(name)")
+      .eq("student_id", student.id)
+      .eq("status", "enrolled");
+
+    if (session) {
+      sseQuery = sseQuery.eq("session", session);
+    }
+
+    const { data: enrolledData } = await sseQuery;
+    if (enrolledData && enrolledData.length > 0) {
+      const existingSubIds = new Set(rows.map((r: any) => r.subjectId));
+      enrolledData.forEach((ed: any) => {
+        if (!existingSubIds.has(ed.subject_id)) {
+          const subName = ed.subjects?.name || "Subject";
+          rows.push({
+            subject: subName,
+            subjectId: ed.subject_id,
+            cw: null,
+            hw: null,
+            test: null,
+            project: null,
+            exam: null,
+            total: null,
+            term1_total: null,
+            term2_total: null,
+            term3_total: null,
+            annualAverage: null,
+            grade: "—",
+            remark: "Pending Evaluation",
+            pr: { cw: "—", hw: "—", test: "—", totalCa: "—", percentage: "—", grade: "—", status: "Pending" },
+            prs: {
+              pr1: { cw: "—", hw: "—", test: "—", totalCa: "—", percentage: "—", grade: "—", status: "Pending" },
+              pr2: { cw: "—", hw: "—", test: "—", totalCa: "—", percentage: "—", grade: "—", status: "Pending" },
+              pr3: { cw: "—", hw: "—", test: "—", totalCa: "—", percentage: "—", grade: "—", status: "Pending" },
+            },
+            classAverage: "—",
+            high: "—",
+            low: "—",
+            isUnevaluated: true,
+          });
+        }
+      });
+    }
+  } catch (sseErr) {
+    console.warn("Could not fetch enrolled subjects:", sseErr);
+  }
+
   rows.sort((a: any, b: any) => a.subject.localeCompare(b.subject));
 
   let classSize = 0;
@@ -638,22 +709,28 @@ export async function fetchStudentReport({
   const daysPresent = Math.round(timesPresent / 2);
   const attendancePct = timesOpened > 0 ? Math.round((timesPresent / timesOpened) * 100) : 100;
 
-  const sumOfScores = rows.reduce((s: number, r: any) => {
-    const val = term === "term3" && r.annualAverage !== null ? r.annualAverage : r.total;
+  // Calculate sum and average strictly over evaluated subjects (NULL/missing excluded, explicit 0 included)
+  const evaluatedRows = rows.filter(
+    (r: any) => r.total !== null && r.total !== undefined && Number.isFinite(Number(r.total))
+  );
+
+  const sumOfScores = evaluatedRows.reduce((s: number, r: any) => {
+    const val = term === "term3" && r.annualAverage !== null ? r.annualAverage : Number(r.total);
     return s + val;
   }, 0);
 
-  const overallTotal = rows.length ? +sumOfScores.toFixed(1) : 0;
-  const percentage = rows.length ? +(sumOfScores / rows.length).toFixed(1) : 0;
+  const evaluatedCount = evaluatedRows.length;
+  const overallTotal = evaluatedCount > 0 ? +sumOfScores.toFixed(1) : 0;
+  const percentage = evaluatedCount > 0 ? +(sumOfScores / evaluatedCount).toFixed(1) : 0;
 
-  const strengths = rows
+  const strengths = evaluatedRows
     .filter((r: any) => {
       const g = String(r.grade || "").toUpperCase();
       return g === "A" || g === "B" || g === "A1" || g === "B2" || g === "B3";
     })
     .map((r: any) => r.subject);
 
-  const weaknesses = rows
+  const weaknesses = evaluatedRows
     .filter((r: any) => {
       const g = String(r.grade || "").toUpperCase();
       return g === "D" || g === "F" || g === "D7" || g === "E8" || g === "F9";
