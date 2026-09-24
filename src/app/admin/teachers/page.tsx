@@ -334,6 +334,28 @@ export default function AdminTeachersPage() {
     }
   }
 
+  async function handleDeleteTeacher(t: StaffProfile) {
+    const promptMsg = `Are you sure you want to PERMANENTLY delete teacher "${t.display_name}" (${t.staff_id || "GMT"})?\n\nThis will remove their profile from the database, delete their Supabase Auth login account, and clear any assigned class/subject duties.`;
+    if (!confirm(promptMsg)) return;
+
+    try {
+      const res = await fetch(`/api/admin/teachers?id=${encodeURIComponent(t.id || t.auth_id)}`, {
+        method: "DELETE",
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to delete teacher.");
+      }
+
+      alert(json.message || `Teacher ${t.display_name} has been deleted.`);
+      await loadTeachers();
+      await loadAssignments();
+    } catch (err: any) {
+      alert("Error deleting teacher: " + err.message);
+    }
+  }
+
   // Assign Class Teacher Handlers
   function handleOpenAssignClassModal(group: ClassGroup) {
     setTargetClassForAssignment(group);
@@ -669,6 +691,15 @@ export default function AdminTeachersPage() {
                               }`}
                             >
                               {isFormer ? "Reactivate" : "Mark Former"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTeacher(t)}
+                              className="text-rose-600 hover:text-rose-800 font-bold cursor-pointer"
+                              title="Permanently delete teacher and auth account"
+                            >
+                              Delete
                             </button>
                           </td>
                         </tr>

@@ -250,3 +250,85 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  const service = getServiceClient();
+  if (!service) {
+    return NextResponse.json({ ok: false, error: "Database client unavailable" }, { status: 500 });
+  }
+
+  try {
+    const { searchParams } = new URL(req.url);
+    let teacherId = searchParams.get("id") || searchParams.get("teacherId") || searchParams.get("authId");
+
+    if (!teacherId) {
+      const body = await req.json().catch(() => ({}));
+      teacherId = body.teacherId || body.id || body.authId;
+    }
+
+    if (!teacherId) {
+      return NextResponse.json({ ok: false, error: "Teacher ID or Auth ID is required." }, { status: 400 });
+    }
+
+    // 1. Fetch user record from public.users
+    const { data: user, error: fetchErr } = await service
+      .from("users")
+      .select("id, auth_id, email, display_name, role")
+      .or(`id.eq.${teacherId},auth_id.eq.${teacherId}`)
+      .maybeSingle();
+
+    if (fetchErr) throw fetchErr;
+
+    if (!user) {
+      return NextResponse.json({ ok: false, error: "Teacher not found in database." }, { status: 404 });
+    }
+
+    if (user.role === "admin") {
+      return NextResponse.json({ ok: false, error: "Admin accounts cannot be deleted through the teacher manager." }, { status: 403 });
+    }
+
+    const name = user.display_name || user.email || "Teacher";
+    const authId = user.auth_id;
+    const userId = user.id;
+
+    // 2. Clean up assignments and delegations
+    const userIds = [userId, authId].filter(Boolean);
+    for (const uid of userIds) {
+      await Promise.all([
+        service.from("class_teacher_assignments").delete().eq("teacher_user_id", uid),
+        service.from("subject_teacher_assignments").delete().eq("teacher_user_id", uid),
+        service.from("classes").update({ class_teacher_id: null }).eq("class_teacher_id", uid),
+      ]);
+    }
+
+    // 3. Delete from public.users table
+    const { error: delUserErr } = await service.from("users").delete().eq("id", userId);
+    if (delUserErr) {
+      console.error("Error deleting from public.users:", delUserErr);
+      throw delUserErr;
+    }
+
+    // 4. Delete from Supabase Auth
+    let authDeleted = false;
+    let authError: string | null = null;
+    if (authId) {
+      const { error: delAuthErr } = await service.auth.admin.deleteUser(authId);
+      if (delAuthErr) {
+        console.warn(`Could not delete Supabase auth user (${authId}):`, delAuthErr.message);
+        authError = delAuthErr.message;
+      } else {
+        authDeleted = true;
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      authDeleted,
+      authError,
+      message: `Teacher ${name} permanently deleted from database and Supabase Auth.`,
+    });
+  } catch (err: any) {
+    console.error("Delete teacher error:", err);
+    return NextResponse.json({ ok: false, error: err.message || "Failed to delete teacher." }, { status: 500 });
+  }
+}

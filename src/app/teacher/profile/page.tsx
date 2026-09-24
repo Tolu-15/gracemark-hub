@@ -28,15 +28,24 @@ export default function TeacherProfilePage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data } = await supabase
+      let { data, error } = await supabase
         .from("users")
         .select("display_name, email, personal_email, phone, staff_id, role")
         .eq("auth_id", user.id)
         .maybeSingle();
 
+      if (error) {
+        const fallback = await supabase
+          .from("users")
+          .select("display_name, email, phone, staff_id, role")
+          .eq("auth_id", user.id)
+          .maybeSingle();
+        data = fallback.data ? { ...fallback.data, personal_email: "" } : null;
+      }
+
       if (data) {
         setProfile(data);
-        setPersonalEmail(data.personal_email || "");
+        setPersonalEmail((data as any).personal_email || "");
         setPhone(data.phone || "");
       }
       setLoading(false);

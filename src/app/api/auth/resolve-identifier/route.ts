@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     try {
       const { data: student } = await service
         .from("students")
-        .select("id, user_id, admission_no, name")
+        .select("id, user_id, admission_no, full_name")
         .or(`admission_no.ilike.${cleanRef},admission_no.ilike.${rawId}`)
         .limit(1)
         .maybeSingle();
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
         if (student.user_id) {
           const { data: userProfile } = await service
             .from("users")
-            .select("email, auth_id")
+            .select("email, auth_id, id")
             .or(`auth_id.eq.${student.user_id},id.eq.${student.user_id}`)
             .limit(1)
             .maybeSingle();
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
         try {
           const { data: listData } = await service.auth.admin.listUsers();
           let existingAuthUser = listData?.users?.find(
-            (u) => u.email?.toLowerCase() === targetEmail.toLowerCase() || (student.user_id && u.id === student.user_id)
+            (u) => u.email?.toLowerCase() === targetEmail.toLowerCase()
           );
 
           if (!existingAuthUser) {
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
               password: "gracemark",
               email_confirm: true,
               user_metadata: {
-                display_name: student.name,
+                display_name: student.full_name || "Student",
                 role: "student",
               },
             });
@@ -90,26 +90,30 @@ export async function POST(req: NextRequest) {
           }
 
           if (existingAuthUser) {
-            // Ensure student.user_id points to existingAuthUser.id
-            if (student.user_id !== existingAuthUser.id) {
+            // Ensure public.users profile exists
+            const { data: upUser } = await service
+              .from("users")
+              .upsert(
+                {
+                  auth_id: existingAuthUser.id,
+                  email: targetEmail,
+                  display_name: student.full_name || "Student",
+                  role: "student",
+                  status: "active",
+                  must_change_password: false,
+                },
+                { onConflict: "auth_id" }
+              )
+              .select("id")
+              .single();
+
+            // Ensure student.user_id points to public.users(id)
+            if (upUser?.id && student.user_id !== upUser.id) {
               await service
                 .from("students")
-                .update({ user_id: existingAuthUser.id })
+                .update({ user_id: upUser.id })
                 .eq("id", student.id);
             }
-
-            // Ensure public.users profile exists
-            await service.from("users").upsert(
-              {
-                auth_id: existingAuthUser.id,
-                email: targetEmail,
-                display_name: student.name,
-                role: "student",
-                status: "active",
-                must_change_password: false,
-              },
-              { onConflict: "auth_id" }
-            );
           }
         } catch (provErr) {
           console.warn("Auto-provision auth check error:", provErr);
@@ -118,15 +122,15 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true, email: targetEmail });
       }
     } catch (err) {
-      console.warn("Resolve identifier students query error:", err);
+      console.warn("Resolve identifier student query error:", err);
     }
 
-    // 3. Check admissions table by admission_number
+    // 3. Fallback: check admissions table by admission_number
     try {
       const { data: adm } = await service
         .from("admissions")
-        .select("parent_guardian_email, admission_number, application_ref")
-        .or(`admission_number.ilike.${cleanRef},application_ref.ilike.${cleanRef}`)
+        .select("parent_guardian_email, admission_number")
+        .or(`admission_number.ilike.${cleanRef},admission_number.ilike.${rawId}`)
         .limit(1)
         .maybeSingle();
 
@@ -137,9 +141,14 @@ export async function POST(req: NextRequest) {
       console.warn("Resolve identifier admissions query error:", err);
     }
 
-    return NextResponse.json({ ok: false, email: null });
+    // 4. Default algorithmic email mapping for student admission number formats
+    if (/^[A-Z]{3,4}\d{4,8}$/i.test(cleanRef)) {
+      return NextResponse.json({ ok: true, email: `${cleanRef.toLowerCase()}@student.gracemark.edu.ng` });
+    }
+
+    return NextResponse.json({ ok: false, email: null }, { status: 404 });
   } catch (err: any) {
-    console.error("Resolve identifier error:", err);
+    console.error("Resolve identifier route error:", err);
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }

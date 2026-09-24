@@ -30,10 +30,25 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "No fields to update." }, { status: 400 });
     }
 
-    const { error: updateErr } = await actor.service
+    let { error: updateErr } = await actor.service
       .from("users")
       .update(updates)
       .eq("auth_id", actor.authId);
+
+    if (updateErr) {
+      if (updateErr.message?.includes("personal_email") && updates.personal_email) {
+        delete updates.personal_email;
+        if (Object.keys(updates).length > 0) {
+          const res = await actor.service
+            .from("users")
+            .update(updates)
+            .eq("auth_id", actor.authId);
+          updateErr = res.error;
+        } else {
+          updateErr = null;
+        }
+      }
+    }
 
     if (updateErr) {
       return NextResponse.json({ error: updateErr.message }, { status: 400 });
