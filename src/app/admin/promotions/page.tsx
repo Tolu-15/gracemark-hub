@@ -91,12 +91,29 @@ export default function AdminPromotionsPage() {
       if (clErr) throw clErr;
       setClassList(clData || []);
 
-      // Fetch active students
-      const { data: stdData, error: stdErr } = await supabase
+      // Fetch active students (support both canonical full_name/current_class_id and legacy name/class_id)
+      let stdData: any = null;
+      const resCanonical = await supabase
         .from("students")
-        .select("id, name, admission_no, class_id, classes(name)")
+        .select("id, full_name, admission_no, current_class_id, classes:current_class_id(name)")
         .eq("is_alumni", false);
-      if (stdErr) throw stdErr;
+
+      if (!resCanonical.error && resCanonical.data) {
+        stdData = resCanonical.data.map((s: any) => ({
+          id: s.id,
+          name: s.full_name,
+          admission_no: s.admission_no,
+          class_id: s.current_class_id,
+          classes: s.classes,
+        }));
+      } else {
+        const resLegacy = await supabase
+          .from("students")
+          .select("id, name, admission_no, class_id, classes(name)")
+          .eq("is_alumni", false);
+        if (resLegacy.error) throw resCanonical.error || resLegacy.error;
+        stdData = resLegacy.data;
+      }
       setStudents((stdData as any) || []);
 
       // Fetch promotions history

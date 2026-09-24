@@ -214,18 +214,35 @@ export default function AdminStudentsPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: classesData }, { data: studentsData, error: sErr }] = await Promise.all([
-        supabase.from("classes").select("id, name").order("name", { ascending: true }),
-        supabase
+      const { data: classesData } = await supabase
+        .from("classes")
+        .select("id, name")
+        .order("name", { ascending: true });
+
+      let finalStudentsData: any[] = [];
+      const resCanonical = await supabase
+        .from("students")
+        .select("id, full_name, admission_no, current_class_id, portal_access_status, portal_lock_reason, classes:current_class_id(id, name), users(email)")
+        .order("full_name", { ascending: true });
+
+      if (!resCanonical.error && resCanonical.data) {
+        finalStudentsData = resCanonical.data.map((s: any) => ({
+          ...s,
+          name: s.full_name,
+          class_id: s.current_class_id,
+          classes: s.classes,
+        }));
+      } else {
+        const resLegacy = await supabase
           .from("students")
           .select("id, name, admission_no, class_id, portal_access_status, portal_lock_reason, classes(id, name), users(email)")
-          .order("name", { ascending: true }),
-      ]);
-
-      if (sErr) throw sErr;
+          .order("name", { ascending: true });
+        if (resLegacy.error) throw resCanonical.error || resLegacy.error;
+        finalStudentsData = resLegacy.data || [];
+      }
 
       setClasses(classesData || []);
-      setStudents(studentsData || []);
+      setStudents(finalStudentsData);
     } catch (err) {
       console.error("Failed to load students:", err);
     } finally {
@@ -277,16 +294,26 @@ export default function AdminStudentsPage() {
     try {
       if (editingStudent) {
         // Update existing student
-        const { error } = await supabase
+        const { error: updErr } = await supabase
           .from("students")
           .update({
-            name: name.trim(),
+            full_name: name.trim(),
+            current_class_id: class_id,
             admission_no: admission_no.trim(),
-            class_id,
           })
           .eq("id", editingStudent.id);
 
-        if (error) throw error;
+        if (updErr) {
+          const { error: legErr } = await supabase
+            .from("students")
+            .update({
+              name: name.trim(),
+              class_id,
+              admission_no: admission_no.trim(),
+            })
+            .eq("id", editingStudent.id);
+          if (legErr) throw updErr || legErr;
+        }
 
         // If a new password was provided during edit, update their auth password
         if (password.trim()) {
@@ -363,17 +390,29 @@ export default function AdminStudentsPage() {
                     (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)
                   ));
 
-        const { error } = await supabase.from("students").insert([
+        const { error: insErr } = await supabase.from("students").insert([
           {
-            name: name.trim(),
+            full_name: name.trim(),
             admission_no: admission_no.trim(),
-            class_id,
+            current_class_id: class_id,
             user_id: authUserId || fallbackUserId,
-            portal_access_status: "ACTIVE",
+            portal_access_status: "active",
+            gender: "male",
           },
         ]);
 
-        if (error) throw error;
+        if (insErr) {
+          const { error: legInsErr } = await supabase.from("students").insert([
+            {
+              name: name.trim(),
+              admission_no: admission_no.trim(),
+              class_id,
+              user_id: authUserId || fallbackUserId,
+              portal_access_status: "active",
+            },
+          ]);
+          if (legInsErr) throw insErr || legInsErr;
+        }
       }
 
       setIsModalOpen(false);

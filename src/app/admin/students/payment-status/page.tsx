@@ -27,17 +27,25 @@ export default function AdminPaymentStatusPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: classesData }, { data: studentsData }, { data: invoicesData }] =
-        await Promise.all([
-          supabase.from("classes").select("id, name").order("name"),
-          supabase.from("students").select("id, name, admission_no, class_id, classes(name)").order("name"),
-          supabase.from("payment_invoices").select("student_id, total_amount, amount_paid, status"),
-        ]);
+      const [classesRes, studentsResCanonical, invoicesRes] = await Promise.all([
+        supabase.from("classes").select("id, name").order("name"),
+        supabase.from("students").select("id, full_name, admission_no, current_class_id, classes:current_class_id(name)").order("full_name"),
+        supabase.from("payment_invoices").select("student_id, total_amount, amount_paid, status"),
+      ]);
 
-      setClasses(classesData || []);
+      let rawStudents: any[] = (studentsResCanonical.data as any[]) || [];
+      if (studentsResCanonical.error) {
+        const { data: legacyStds } = await supabase
+          .from("students")
+          .select("id, name, admission_no, class_id, classes(name)")
+          .order("name");
+        rawStudents = (legacyStds as any[]) || [];
+      }
+
+      setClasses(classesRes.data || []);
 
       const invMap = new Map<string, { total_amount: number; amount_paid: number; status: string }>();
-      (invoicesData || []).forEach((inv) => {
+      (invoicesRes.data || []).forEach((inv) => {
         if (inv.student_id) {
           invMap.set(inv.student_id, {
             total_amount: Number(inv.total_amount || 0),
@@ -47,7 +55,7 @@ export default function AdminPaymentStatusPage() {
         }
       });
 
-      const list: StudentPaymentItem[] = (studentsData || []).map((s: any) => {
+      const list: StudentPaymentItem[] = (rawStudents || []).map((s: any) => {
         const inv = invMap.get(s.id);
         const total = inv?.total_amount || 0;
         const paid = inv?.amount_paid || 0;
@@ -58,9 +66,9 @@ export default function AdminPaymentStatusPage() {
 
         return {
           id: s.id,
-          name: s.name,
-          admission_no: s.admission_no,
-          class_id: s.class_id,
+          name: s.full_name || s.name || "Student",
+          admission_no: s.admission_no || "",
+          class_id: s.current_class_id || s.class_id || "",
           className: s.classes?.name || "Unassigned",
           total_amount: total,
           amount_paid: paid,

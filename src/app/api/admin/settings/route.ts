@@ -18,9 +18,31 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     }
 
+    let sessionName = data?.current_session || "";
+    if (!sessionName && data?.current_session_id) {
+      const { data: sess } = await service
+        .from("academic_sessions")
+        .select("name")
+        .eq("id", data.current_session_id)
+        .maybeSingle();
+      if (sess?.name) sessionName = sess.name;
+    }
+
+    if (!sessionName) {
+      const { data: activeSess } = await service
+        .from("academic_sessions")
+        .select("name")
+        .eq("status", "active")
+        .maybeSingle();
+      if (activeSess?.name) sessionName = activeSess.name;
+    }
+
     return NextResponse.json({
       ok: true,
-      settings: data || { id: 1, current_term: "term1", current_session: "" },
+      settings: {
+        ...(data || { id: 1, current_term: "term1" }),
+        current_session: sessionName,
+      },
     });
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
@@ -47,14 +69,32 @@ export async function POST(req: NextRequest) {
 
     const id = existing?.id || 1;
 
+    // Resolve academic_session_id
+    let current_session_id: string | null = null;
+    if (current_session) {
+      const { data: sessRow } = await service
+        .from("academic_sessions")
+        .select("id")
+        .eq("name", current_session)
+        .maybeSingle();
+      if (sessRow?.id) {
+        current_session_id = sessRow.id;
+        await service.from("academic_sessions").update({ status: "active", is_current: true }).eq("id", current_session_id);
+      }
+    }
+
+    const payload: any = {
+      id,
+      current_term,
+      updated_at: new Date().toISOString(),
+    };
+    if (current_session_id) {
+      payload.current_session_id = current_session_id;
+    }
+
     const { data: updatedSettings, error: updateError } = await service
       .from("app_settings")
-      .upsert({
-        id,
-        current_term,
-        current_session,
-        updated_at: new Date().toISOString(),
-      })
+      .upsert(payload)
       .select("*")
       .single();
 
@@ -77,7 +117,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      settings: updatedSettings,
+      settings: {
+        ...updatedSettings,
+        current_session,
+      },
     });
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });

@@ -141,8 +141,11 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        // 3. Update students.class_id cache
-        await service.from("students").update({ class_id: toClassId }).eq("id", studentId);
+        // 3. Update students.current_class_id cache (with fallback to class_id)
+        const { error: cErr } = await service.from("students").update({ current_class_id: toClassId }).eq("id", studentId);
+        if (cErr) {
+          await service.from("students").update({ class_id: toClassId }).eq("id", studentId);
+        }
 
         // 4. Auto-enroll into target curriculum subjects
         if (toClass && effectiveNextSessionId) {
