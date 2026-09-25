@@ -341,6 +341,7 @@ export default function AdminStudentsPage() {
         const studentPassword = password.trim() || "gracemark";
         const cleanAdm = admission_no.trim().replace(/[^A-Z0-9]/gi, "").toLowerCase();
         const authEmail = email.trim() || `${cleanAdm}@student.gracemark.edu.ng`;
+        let targetDbUserId: string | null = null;
         let authUserId: string | null = null;
 
         const { data: sessionData } = await supabase.auth.getSession();
@@ -364,54 +365,60 @@ export default function AdminStudentsPage() {
           if (res.ok) {
             const resJson = await res.json();
             authUserId = resJson.user?.id || null;
-
-            if (authUserId) {
-              await supabase.from("users").upsert({
-                auth_id: authUserId,
-                email: authEmail,
-                display_name: name.trim(),
-                role: "student",
-                status: "active",
-                must_change_password: false,
-              });
-            }
+            targetDbUserId = resJson.user?.dbUserId || null;
           } else {
             const errJson = await res.json();
             console.warn("Could not create auth user via API:", errJson);
           }
         }
 
-        const fallbackUserId =
-          typeof crypto !== "undefined" && crypto.randomUUID
-            ? crypto.randomUUID()
-            : (typeof window !== "undefined" && window.crypto && window.crypto.randomUUID
-                ? window.crypto.randomUUID()
-                : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c: any) =>
-                    (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)
-                  ));
+        if (!targetDbUserId && authUserId) {
+          const { data: uRow } = await supabase
+            .from("users")
+            .upsert(
+              {
+                auth_id: authUserId,
+                email: authEmail,
+                display_name: name.trim(),
+                role: "student",
+                status: "active",
+                must_change_password: false,
+              },
+              { onConflict: "auth_id" }
+            )
+            .select("id")
+            .single();
+          targetDbUserId = uRow?.id || null;
+        }
+
+        if (!targetDbUserId) {
+          const { data: existingUser } = await supabase
+            .from("users")
+            .select("id")
+            .eq("email", authEmail)
+            .maybeSingle();
+          targetDbUserId = existingUser?.id || null;
+        }
+
+        if (!targetDbUserId) {
+          throw new Error("Could not provision or link student user account in users table. Please ensure admin session is active.");
+        }
 
         const { error: insErr } = await supabase.from("students").insert([
           {
             full_name: name.trim(),
+            name: name.trim(),
             admission_no: admission_no.trim(),
             current_class_id: class_id,
-            user_id: authUserId || fallbackUserId,
+            class_id: class_id,
+            user_id: targetDbUserId,
             portal_access_status: "active",
             gender: "male",
           },
         ]);
 
         if (insErr) {
-          const { error: legInsErr } = await supabase.from("students").insert([
-            {
-              name: name.trim(),
-              admission_no: admission_no.trim(),
-              class_id,
-              user_id: authUserId || fallbackUserId,
-              portal_access_status: "active",
-            },
-          ]);
-          if (legInsErr) throw insErr || legInsErr;
+          throw insErr;
         }
       }
 

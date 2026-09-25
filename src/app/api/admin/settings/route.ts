@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
       if (sessRow?.id) {
         current_session_id = sessRow.id;
+        await service.from("academic_sessions").update({ status: "inactive", is_current: false }).neq("id", current_session_id);
         await service.from("academic_sessions").update({ status: "active", is_current: true }).eq("id", current_session_id);
       }
     }
@@ -86,6 +87,7 @@ export async function POST(req: NextRequest) {
     const payload: any = {
       id,
       current_term,
+      current_session,
       updated_at: new Date().toISOString(),
     };
     if (current_session_id) {

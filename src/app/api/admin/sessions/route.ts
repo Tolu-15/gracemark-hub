@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     if (setAsCurrent) {
       const { data: existing } = await service.from("app_settings").select("id").limit(1).maybeSingle();
       const id = existing?.id || 1;
-      await service.from("app_settings").upsert({ id, current_session: name });
+      await service.from("app_settings").upsert({ id, current_session: name, current_session_id: session.id });
     }
 
     return NextResponse.json({ ok: true, session });

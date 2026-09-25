@@ -486,12 +486,12 @@ export async function fetchStudentReport({
   try {
     let sseQuery = supabase
       .from("student_subject_enrollments")
-      .select("subject_id, subjects(name)")
-      .eq("student_id", student.id)
+      .select("subject_id, subjects(name), student_enrollments!inner(student_id, academic_sessions(name))")
+      .eq("student_enrollments.student_id", student.id)
       .eq("status", "enrolled");
 
     if (session) {
-      sseQuery = sseQuery.eq("session", session);
+      sseQuery = sseQuery.eq("student_enrollments.academic_sessions.name", session);
     }
 
     const { data: enrolledData } = await sseQuery;
@@ -499,7 +499,7 @@ export async function fetchStudentReport({
       const existingSubIds = new Set(rows.map((r: any) => r.subjectId));
       enrolledData.forEach((ed: any) => {
         if (!existingSubIds.has(ed.subject_id)) {
-          const subName = ed.subjects?.name || "Subject";
+          const subName = (ed.subjects as any)?.name || "Subject";
           rows.push({
             subject: subName,
             subjectId: ed.subject_id,

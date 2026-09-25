@@ -70,14 +70,29 @@ export async function GET(req: NextRequest) {
         .order("session", { ascending: true });
 
       // 4. Fetch all student subject enrollments across sessions
-      const { data: subEnrollments } = await service
+      const { data: rawSubEnrollments } = await service
         .from("student_subject_enrollments")
         .select(`
-          id, subject_id, session, academic_session_id, class_id, status, is_active,
+          id, subject_id, status,
           subjects(id, name),
-          classes(id, name)
+          student_enrollments!inner (
+            id, student_id, class_id, academic_session_id,
+            classes(id, name),
+            academic_sessions(id, name)
+          )
         `)
-        .eq("student_id", studentId);
+        .eq("student_enrollments.student_id", studentId);
+
+      const subEnrollments = (rawSubEnrollments || []).map((se: any) => ({
+        id: se.id,
+        subject_id: se.subject_id,
+        session: se.student_enrollments?.academic_sessions?.name || "",
+        academic_session_id: se.student_enrollments?.academic_session_id,
+        class_id: se.student_enrollments?.class_id,
+        status: se.status,
+        subjects: se.subjects,
+        classes: se.student_enrollments?.classes,
+      }));
 
       // 5. Fetch all promotion events that mention this student
       const { data: promotions } = await service

@@ -119,14 +119,22 @@ export async function GET(req: NextRequest) {
     if (studentIds.length > 0) {
       let sseQuery = service
         .from("student_subject_enrollments")
-        .select("student_id, subject_id, subjects(id, name)")
-        .in("student_id", studentIds)
+        .select(`
+          subject_id,
+          subjects(id, name),
+          student_enrollments!inner(student_id, academic_sessions(name))
+        `)
+        .in("student_enrollments.student_id", studentIds)
         .eq("status", "enrolled");
-      if (session) sseQuery = sseQuery.eq("session", session);
+
+      if (session) {
+        sseQuery = sseQuery.eq("student_enrollments.academic_sessions.name", session);
+      }
+
       const { data: sseData } = await sseQuery;
       (sseData || []).forEach((se: any) => {
-        if (se.subject_id && se.subjects?.name) {
-          subjectsMap.set(se.subject_id, se.subjects.name);
+        if (se.subject_id && (se.subjects as any)?.name) {
+          subjectsMap.set(se.subject_id, (se.subjects as any).name);
         }
       });
     }

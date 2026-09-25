@@ -31,14 +31,41 @@ export async function POST(req: NextRequest) {
     // Use provided password or default to standard 'gracemark'
     const tempPassword = String(body.password || body.tempPassword || "gracemark").trim() || "gracemark";
 
-    let authUserId = student.user_id;
+    const cleanAdm = (student.admission_no || "").trim().replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+    const authEmail = `${cleanAdm}@student.gracemark.edu.ng`;
 
-    // If no user_id is linked yet, attempt to find or create one
+    let authUserId: string | null = null;
+    let dbUserId: string | null = student.user_id;
+
+    if (dbUserId) {
+      // 1. Resolve auth_id from public.users
+      const { data: uRow } = await service
+        .from("users")
+        .select("id, auth_id")
+        .eq("id", dbUserId)
+        .maybeSingle();
+
+      if (uRow?.auth_id) {
+        authUserId = uRow.auth_id;
+      }
+    }
+
     if (!authUserId) {
-      const cleanAdm = (student.admission_no || "").trim().replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
-      const authEmail = `${cleanAdm}@student.gracemark.edu.ng`;
+      // 2. Check public.users by student email
+      const { data: uByEmail } = await service
+        .from("users")
+        .select("id, auth_id")
+        .eq("email", authEmail)
+        .maybeSingle();
 
-      // Check if user exists in auth
+      if (uByEmail?.auth_id) {
+        authUserId = uByEmail.auth_id;
+        dbUserId = uByEmail.id;
+      }
+    }
+
+    // 3. If no auth user found, find or create in Supabase Auth
+    if (!authUserId) {
       const { data: userList } = await service.auth.admin.listUsers();
       const existingUser = userList?.users?.find(
         (u) => u.email?.toLowerCase() === authEmail.toLowerCase()
@@ -58,12 +85,30 @@ export async function POST(req: NextRequest) {
         }
         authUserId = newUser.user.id;
       }
-
-      // Link user_id on student record
-      await service.from("students").update({ user_id: authUserId }).eq("id", student.id);
     }
 
-    // Update password in Supabase Auth securely
+    // 4. Ensure public.users row exists and link to students.user_id
+    const { data: dbUserRow } = await service
+      .from("users")
+      .upsert(
+        {
+          auth_id: authUserId,
+          email: authEmail,
+          display_name: student.name,
+          role: "student",
+          status: "active",
+          must_change_password: false,
+        },
+        { onConflict: "auth_id" }
+      )
+      .select("id")
+      .single();
+
+    if (dbUserRow?.id && student.user_id !== dbUserRow.id) {
+      await service.from("students").update({ user_id: dbUserRow.id }).eq("id", student.id);
+    }
+
+    // 5. Update password in Supabase Auth securely
     const { error: authErr } = await service.auth.admin.updateUserById(authUserId, {
       password: tempPassword,
       email_confirm: true,
@@ -76,29 +121,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Set must_change_password = false so student can log in directly
+    // 6. Set must_change_password = false on public.users
     await service
-      .from("students")
+      .from("users")
       .update({ must_change_password: false })
-      .eq("id", student.id);
-
-    try {
-      await service
-        .from("users")
-        .upsert(
-          {
-            auth_id: authUserId,
-            email: `${(student.admission_no || "").trim().replace(/[^a-zA-Z0-9]/g, "").toLowerCase()}@student.gracemark.edu.ng`,
-            display_name: student.name,
-            role: "student",
-            status: "active",
-            must_change_password: false,
-          },
-          { onConflict: "auth_id" }
-        );
-    } catch {
-      // ignore
-    }
+      .eq("auth_id", authUserId);
 
     return NextResponse.json({
       ok: true,

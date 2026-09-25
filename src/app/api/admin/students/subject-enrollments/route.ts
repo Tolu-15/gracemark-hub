@@ -18,23 +18,47 @@ export async function GET(req: NextRequest) {
     let query = service
       .from("student_subject_enrollments")
       .select(`
-        id, student_id, subject_id, academic_session_id, session, class_id, enrollment_id,
-        status, is_active, dropped_at, notes, created_at, updated_at,
-        subjects(id, name),
-        students(id, name, admission_no),
-        classes(id, name)
+        id, subject_id, enrollment_id,
+        status, enrolled_at, dropped_at,
+        subjects (id, name),
+        student_enrollments!inner (
+          id,
+          student_id,
+          class_id,
+          academic_session_id,
+          students (id, name, admission_no),
+          classes (id, name),
+          academic_sessions (id, name)
+        )
       `)
-      .order("created_at", { ascending: true });
+      .order("enrolled_at", { ascending: true });
 
-    if (studentId) query = query.eq("student_id", studentId);
-    if (classId) query = query.eq("class_id", classId);
-    if (sessionId) query = query.eq("academic_session_id", sessionId);
-    if (session) query = query.eq("session", session);
+    if (studentId) query = query.eq("student_enrollments.student_id", studentId);
+    if (classId) query = query.eq("student_enrollments.class_id", classId);
+    if (sessionId) query = query.eq("student_enrollments.academic_session_id", sessionId);
+    if (session) query = query.eq("student_enrollments.academic_sessions.name", session);
 
     const { data, error } = await query;
     if (error) throw error;
 
-    return NextResponse.json({ ok: true, enrollments: data || [] });
+    const enrollments = (data || []).map((d: any) => ({
+      id: d.id,
+      student_id: d.student_enrollments?.student_id || d.student_id,
+      subject_id: d.subject_id,
+      academic_session_id: d.student_enrollments?.academic_session_id || d.academic_session_id,
+      session: d.student_enrollments?.academic_sessions?.name || d.session || "",
+      class_id: d.student_enrollments?.class_id || d.class_id,
+      enrollment_id: d.enrollment_id,
+      status: d.status,
+      is_active: d.status === "enrolled",
+      dropped_at: d.dropped_at,
+      created_at: d.enrolled_at,
+      subjects: d.subjects,
+      students: d.student_enrollments?.students || d.students,
+      classes: d.student_enrollments?.classes || d.classes,
+    }));
+
+    return NextResponse.json({ ok: true, enrollments });
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }

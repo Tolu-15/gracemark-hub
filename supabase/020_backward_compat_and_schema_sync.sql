@@ -115,4 +115,52 @@
   FROM public.academic_sessions s
   WHERE sta.academic_session_id = s.id AND sta.session IS NULL;
 
+  -- 5. Add compatibility columns & foreign keys to student_subject_enrollments
+  ALTER TABLE public.student_subject_enrollments 
+  ADD COLUMN IF NOT EXISTS student_id uuid REFERENCES public.students(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS class_id uuid REFERENCES public.classes(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS academic_session_id uuid REFERENCES public.academic_sessions(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS session text;
+
+  -- Backfill from student_enrollments
+  UPDATE public.student_subject_enrollments sse
+  SET 
+    student_id = se.student_id,
+    class_id = se.class_id,
+    academic_session_id = se.academic_session_id,
+    session = s.name
+  FROM public.student_enrollments se
+  LEFT JOIN public.academic_sessions s ON s.id = se.academic_session_id
+  WHERE sse.enrollment_id = se.id
+    AND sse.student_id IS NULL;
+
+  -- Trigger to keep student_id, class_id, and academic_session_id in sync
+  CREATE OR REPLACE FUNCTION public.sync_sse_from_enrollment()
+  RETURNS trigger AS $$
+  BEGIN
+    IF NEW.enrollment_id IS NOT NULL AND (NEW.student_id IS NULL OR NEW.class_id IS NULL) THEN
+      SELECT 
+        se.student_id, 
+        se.class_id, 
+        se.academic_session_id, 
+        s.name
+      INTO 
+        NEW.student_id, 
+        NEW.class_id, 
+        NEW.academic_session_id, 
+        NEW.session
+      FROM public.student_enrollments se
+      LEFT JOIN public.academic_sessions s ON s.id = se.academic_session_id
+      WHERE se.id = NEW.enrollment_id;
+    END IF;
+    RETURN NEW;
+  END;
+  $$ LANGUAGE plpgsql;
+
+  DROP TRIGGER IF EXISTS trg_sync_sse_from_enrollment ON public.student_subject_enrollments;
+  CREATE TRIGGER trg_sync_sse_from_enrollment
+  BEFORE INSERT OR UPDATE ON public.student_subject_enrollments
+  FOR EACH ROW EXECUTE FUNCTION public.sync_sse_from_enrollment();
+
+
 

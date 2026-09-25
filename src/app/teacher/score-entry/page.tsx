@@ -180,18 +180,27 @@ export default function TeacherScoreEntryPage() {
     setStatusMsg("");
 
     try {
-      // 1. Fetch students: Query student_subject_enrollments directly as the single source of truth
+      // 1. Fetch students: Query student_subject_enrollments with student_enrollments join
       let subQuery = supabase
         .from("student_subject_enrollments")
-        .select("student_id, students(id, name, admission_no)")
-        .eq("class_id", selectedClass)
+        .select(`
+          id,
+          status,
+          enrollment_id,
+          student_enrollments!inner (
+            id,
+            student_id,
+            class_id,
+            academic_session_id,
+            students (id, name, admission_no)
+          )
+        `)
         .eq("subject_id", selectedSubject)
-        .eq("status", "enrolled");
+        .eq("status", "enrolled")
+        .eq("student_enrollments.class_id", selectedClass);
 
       if (currentSessionId) {
-        subQuery = subQuery.eq("academic_session_id", currentSessionId);
-      } else if (currentSession) {
-        subQuery = subQuery.eq("session", currentSession);
+        subQuery = subQuery.eq("student_enrollments.academic_session_id", currentSessionId);
       }
 
       const { data: subEnrolled, error: subErr } = await subQuery;
@@ -200,7 +209,7 @@ export default function TeacherScoreEntryPage() {
       }
 
       const studentList: { id: string; name: string; admission_no: string }[] = (subEnrolled || [])
-        .map((e: any) => e.students)
+        .map((e: any) => e.student_enrollments?.students || e.students)
         .filter(Boolean)
         .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
 

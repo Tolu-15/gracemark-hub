@@ -93,20 +93,24 @@ export async function POST(req: NextRequest) {
           });
 
           // Ensure public.users row exists
-          await service.from("users").upsert(
-            {
-              auth_id: existing.id,
-              email,
-              display_name: displayName,
-              role,
-              status: "active",
-              must_change_password: false,
-            },
-            { onConflict: "auth_id" }
-          );
+          const { data: existingDbUser } = await service
+            .from("users")
+            .upsert(
+              {
+                auth_id: existing.id,
+                email,
+                display_name: displayName,
+                role,
+                status: "active",
+                must_change_password: false,
+              },
+              { onConflict: "auth_id" }
+            )
+            .select("id")
+            .single();
 
           return NextResponse.json({
-            user: { id: existing.id, email: existing.email ?? email },
+            user: { id: existing.id, dbUserId: existingDbUser?.id, email: existing.email ?? email },
             already_exists: true,
           });
         }
@@ -125,19 +129,23 @@ export async function POST(req: NextRequest) {
   }
 
   // Ensure public.users row is always created
-  await service.from("users").upsert(
-    {
-      auth_id: data.user.id,
-      email,
-      display_name: displayName,
-      role,
-      status: "active",
-      must_change_password: false,
-    },
-    { onConflict: "auth_id" }
-  );
+  const { data: dbUser } = await service
+    .from("users")
+    .upsert(
+      {
+        auth_id: data.user.id,
+        email,
+        display_name: displayName,
+        role,
+        status: "active",
+        must_change_password: false,
+      },
+      { onConflict: "auth_id" }
+    )
+    .select("id")
+    .single();
 
   return NextResponse.json({
-    user: { id: data.user.id, email: data.user.email ?? email },
+    user: { id: data.user.id, dbUserId: dbUser?.id, email: data.user.email ?? email },
   });
 }
