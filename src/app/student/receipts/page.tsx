@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { resolveStudentUserIdCandidates } from "@/lib/auth";
 import { formatCurrency, formatDate } from "@/lib/schoolFinance";
 
 export default function StudentReceiptsPage() {
@@ -34,10 +35,11 @@ export default function StudentReceiptsPage() {
           query = query.eq("id", paymentId);
         } else {
           // If no specific payment ID, load most recent payment for this student
-          let { data: std } = await supabase
+          const candidateIds = await resolveStudentUserIdCandidates(user.id);
+          const { data: std } = await supabase
             .from("students")
             .select("id")
-            .eq("user_id", user.id)
+            .in("user_id", candidateIds)
             .maybeSingle();
 
           if (std) query = query.eq("student_id", std.id);

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { resolveStudentUserIdCandidates } from "@/lib/auth";
 import { formatCurrency, formatDate } from "@/lib/schoolFinance";
 
 export default function StudentPaymentHistoryPage() {
@@ -22,20 +23,12 @@ export default function StudentPaymentHistoryPage() {
           return;
         }
 
-        let { data: std } = await supabase
+        const candidateIds = await resolveStudentUserIdCandidates(user.id);
+        const { data: std } = await supabase
           .from("students")
           .select("id")
-          .eq("user_id", user.id)
+          .in("user_id", candidateIds)
           .maybeSingle();
-
-        if (!std) {
-          const { data: altStd } = await supabase
-            .from("students")
-            .select("id")
-            .eq("id", user.id)
-            .maybeSingle();
-          std = altStd;
-        }
 
         if (std) {
           const { data, error } = await supabase

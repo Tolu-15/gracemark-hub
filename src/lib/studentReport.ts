@@ -1,4 +1,4 @@
-import { getSupabaseBrowserClient } from "./supabase/client";
+import { getSupabaseBrowserClient, getAuthHeaders } from "./supabase/client";
 import {
   normalizeBreakdown,
   calculateStudentResult,
@@ -542,7 +542,7 @@ export async function fetchStudentReport({
   if (classId) {
     try {
       const qUrl = `/api/student/class-benchmarks?class_id=${encodeURIComponent(classId)}&term=${encodeURIComponent(term)}&session=${encodeURIComponent(session || "")}&student_id=${encodeURIComponent(student.id)}`;
-      const resp = await fetch(qUrl);
+      const resp = await fetch(qUrl, { headers: await getAuthHeaders() });
       if (resp.ok) {
         const json = await resp.json();
         if (json.ok) {

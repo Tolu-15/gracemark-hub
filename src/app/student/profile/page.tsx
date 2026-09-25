@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { resolveStudentUserIdCandidates } from "@/lib/auth";
 import { formatDate } from "@/lib/schoolFinance";
 
 export default function StudentProfilePage() {
@@ -24,20 +25,12 @@ export default function StudentProfilePage() {
 
         setUserEmail(user.email || "");
 
-        let { data: std } = await supabase
+        const candidateIds = await resolveStudentUserIdCandidates(user.id);
+        const { data: std } = await supabase
           .from("students")
           .select("*, classes(name)")
-          .eq("user_id", user.id)
+          .in("user_id", candidateIds)
           .maybeSingle();
-
-        if (!std) {
-          const { data: altStd } = await supabase
-            .from("students")
-            .select("*, classes(name)")
-            .eq("id", user.id)
-            .maybeSingle();
-          std = altStd;
-        }
 
         setStudent(std);
       } catch (err) {

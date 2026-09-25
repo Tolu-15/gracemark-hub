@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Script from "next/script";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { resolveStudentUserIdCandidates } from "@/lib/auth";
 import { getStudentCurrentInvoice, formatCurrency, getPaystackPublicKey } from "@/lib/schoolFinance";
 
 export default function StudentSchoolFeesPage() {
@@ -29,20 +30,12 @@ export default function StudentSchoolFeesPage() {
 
         setUserEmail(user.email || "student@gracemarkacademy.com");
 
-        let { data: std } = await supabase
+        const candidateIds = await resolveStudentUserIdCandidates(user.id);
+        const { data: std } = await supabase
           .from("students")
           .select("id, name, admission_no, class_id, classes(name)")
-          .eq("user_id", user.id)
+          .in("user_id", candidateIds)
           .maybeSingle();
-
-        if (!std) {
-          const { data: altStd } = await supabase
-            .from("students")
-            .select("id, name, admission_no, class_id, classes(name)")
-            .eq("id", user.id)
-            .maybeSingle();
-          std = altStd;
-        }
 
         if (!std) throw new Error("Student profile not found.");
 

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { resolveStudentUserIdCandidates } from "@/lib/auth";
 import { formatCurrency, formatDate } from "@/lib/schoolFinance";
 
 export default function StudentFinancialReportPage() {
@@ -23,20 +24,12 @@ export default function StudentFinancialReportPage() {
           return;
         }
 
-        let { data: std } = await supabase
+        const candidateIds = await resolveStudentUserIdCandidates(user.id);
+        const { data: std } = await supabase
           .from("students")
           .select("id, name, admission_no, classes(name)")
-          .eq("user_id", user.id)
+          .in("user_id", candidateIds)
           .maybeSingle();
-
-        if (!std) {
-          const { data: altStd } = await supabase
-            .from("students")
-            .select("id, name, admission_no, classes(name)")
-            .eq("id", user.id)
-            .maybeSingle();
-          std = altStd;
-        }
 
         if (std) {
           setStudent(std);

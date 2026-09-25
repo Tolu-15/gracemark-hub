@@ -57,6 +57,25 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
   return await fetchUserProfileByAuthId(data.user.id);
 }
 
+/**
+ * students.user_id has historically been populated with either the Supabase Auth
+ * user id or the public.users.id row id, depending on which code path created the
+ * account. Returns every id a student's row might be linked under, so lookups can
+ * match regardless of which convention was used.
+ */
+export async function resolveStudentUserIdCandidates(authUserId: string): Promise<string[]> {
+  const candidates = [authUserId];
+  const { data: profile } = await supabase
+    .from("users")
+    .select("id")
+    .eq("auth_id", authUserId)
+    .maybeSingle();
+  if (profile?.id && profile.id !== authUserId) {
+    candidates.push(profile.id);
+  }
+  return candidates;
+}
+
 export function destinationForRole(role?: string | null): string {
   switch (role) {
     case "admin":

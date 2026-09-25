@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { resolveStudentUserIdCandidates } from "@/lib/auth";
 import { getAppSettings } from "@/lib/appSettings";
 import { normalizeBreakdown, calculateStudentResult, isSeniorClass } from "@/lib/gradingEngine";
 import { getAcademicSessions } from "@/lib/academicSessions";
@@ -58,22 +59,13 @@ export default function StudentDashboardPage() {
         return;
       }
 
-      // Fetch or fallback student
+      // Fetch student profile, tolerant of both user_id storage conventions
+      const candidateIds = await resolveStudentUserIdCandidates(user.id);
       let { data: std } = await supabase
         .from("students")
         .select("id, admission_no, name, class_id, classes(id, name)")
-        .eq("user_id", user.id)
+        .in("user_id", candidateIds)
         .maybeSingle();
-
-      if (!std) {
-        // Fallback check by auth_id
-        const { data: stdByAuth } = await supabase
-          .from("students")
-          .select("id, admission_no, name, class_id, classes(id, name)")
-          .eq("id", user.id)
-          .maybeSingle();
-        std = stdByAuth;
-      }
 
       if (std) {
         setStudent(std as any);

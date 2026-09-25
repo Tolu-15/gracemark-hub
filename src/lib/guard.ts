@@ -1,5 +1,5 @@
 import { supabase } from "./supabase/client";
-import { fetchUserProfileByAuthId, destinationForRole } from "./auth";
+import { fetchUserProfileByAuthId, destinationForRole, resolveStudentUserIdCandidates } from "./auth";
 import { UserProfile, UserRole } from "@/types/database";
 
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -78,10 +78,11 @@ export async function verifyRoleAccess(
     }
 
     if (role === "student") {
+      const candidateIds = await resolveStudentUserIdCandidates(session.user.id);
       const { data: student } = await supabase
         .from("students")
         .select("id, portal_access_status")
-        .eq("user_id", session.user.id)
+        .in("user_id", candidateIds)
         .maybeSingle();
 
       let isLocked = student?.portal_access_status === "LOCKED";

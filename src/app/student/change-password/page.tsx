@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { resolveStudentUserIdCandidates } from "@/lib/auth";
 import PoweredBy from "@/components/shared/PoweredBy";
 
 export default function StudentChangePasswordPage() {
@@ -46,10 +47,11 @@ export default function StudentChangePasswordPage() {
       if (updateErr) throw new Error(updateErr.message);
 
       // Clear must_change_password flag on students table
+      const candidateIds = await resolveStudentUserIdCandidates(user.id);
       await supabase
         .from("students")
         .update({ must_change_password: false })
-        .eq("user_id", user.id);
+        .in("user_id", candidateIds);
 
       setSuccess(true);
       setCurrentPassword("");
