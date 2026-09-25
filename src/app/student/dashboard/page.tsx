@@ -3,10 +3,9 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getSupabaseBrowserClient, getAuthHeaders } from "@/lib/supabase/client";
 import { resolveStudentUserIdCandidates } from "@/lib/auth";
 import { getAppSettings } from "@/lib/appSettings";
-import { normalizeBreakdown, calculateStudentResult, isSeniorClass } from "@/lib/gradingEngine";
 import { getAcademicSessions } from "@/lib/academicSessions";
 import ResultDashboardApp from "@/components/student/ResultDashboardApp";
 
@@ -34,12 +33,9 @@ export default function StudentDashboardPage() {
     status: "FULLY PAID",
   });
 
-  const [results, setResults] = useState<any[]>([]);
+  // Latest published (frozen) report for the selected term
+  const [latest, setLatest] = useState<{ milestone: string; report: any; count: number } | null>(null);
   const [loadingResults, setLoadingResults] = useState(false);
-  const [activeMilestoneTitle, setActiveMilestoneTitle] = useState("");
-
-  // Breakdown modal state
-  const [activeBreakdown, setActiveBreakdown] = useState<any | null>(null);
 
   // Overlay Report Dashboard
   const [showFullReport, setShowFullReport] = useState(false);
@@ -151,166 +147,37 @@ export default function StudentDashboardPage() {
     init();
   }, [router]);
 
-  // 2. Load Approved Results for Active Term/Session
+  // 2. Latest published report for the selected term/session
   useEffect(() => {
-    if (!student || !student.id) return;
-    const studentId = student.id;
-    const currentClassName = student.classes?.name || "";
-    const isSenior = isSeniorClass(currentClassName);
-
-    async function loadResults() {
+    if (!student?.id || !session) return;
+    let cancelled = false;
+    (async () => {
       setLoadingResults(true);
-      const supabase = getSupabaseBrowserClient();
-
       try {
-        // 1. Check which milestones are published
-        let snapQuery = supabase
-          .from("published_snapshots")
-          .select("report_type")
-          .eq("student_id", studentId)
-          .eq("term", term);
-        if (session) snapQuery = snapQuery.eq("session", session);
-
-        const { data: snaps } = await snapQuery;
-        const publishedMilestones: Record<string, boolean> = { pr1: false, pr2: false, pr3: false, tr: false };
-        (snaps || []).forEach((s: any) => {
-          const type = String(s.report_type || "").toLowerCase();
-          if (publishedMilestones[type] !== undefined) publishedMilestones[type] = true;
-        });
-
-        // 2. Fetch results for this student
-        let rq = supabase
-          .from("results")
-          .select("id, subject_id, cw, hw, test, project, exam, total, grade, status, pr1_status, pr2_status, pr3_status, tr_status, score_breakdown, subjects(name)")
-          .eq("student_id", studentId)
-          .eq("term", term);
-
-        if (session) rq = rq.eq("session", session);
-
-        let { data, error } = await rq;
-
-        if (error && /score_breakdown|pr1_status|pr2_status|pr3_status|tr_status/i.test(error.message || "")) {
-          let fbQuery = supabase
-            .from("results")
-            .select("id, subject_id, cw, hw, test, project, exam, total, grade, status, subjects(name)")
-            .eq("student_id", studentId)
-            .eq("term", term);
-          if (session) fbQuery = fbQuery.eq("session", session);
-          const fbRes = await fbQuery;
-          data = fbRes.data as any;
-          error = fbRes.error;
-        }
-
-        if (error) throw error;
-
-        // Check if any results rows have explicit published statuses
-        (data || []).forEach((r: any) => {
-          if (r.pr1_status === "published") publishedMilestones.pr1 = true;
-          if (r.pr2_status === "published") publishedMilestones.pr2 = true;
-          if (r.pr3_status === "published") publishedMilestones.pr3 = true;
-          if (r.tr_status === "published" || r.status === "published") publishedMilestones.tr = true;
-        });
-
-        const hasAnyPublished = publishedMilestones.pr1 || publishedMilestones.pr2 || publishedMilestones.pr3 || publishedMilestones.tr;
-
-        if (!hasAnyPublished) {
-          setResults([]);
-          setActiveMilestoneTitle("Results Awaiting Publication");
+        const res = await fetch(
+          `/api/student/report?session=${encodeURIComponent(session)}&term=${encodeURIComponent(term)}`,
+          { headers: await getAuthHeaders() }
+        );
+        const json = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !json.ok) {
+          setLatest(null);
           return;
         }
-
-        // Determine highest published milestone (TR > PR3 > PR2 > PR1)
-        const activeMilestone = publishedMilestones.tr
-          ? "tr"
-          : publishedMilestones.pr3
-          ? "pr3"
-          : publishedMilestones.pr2
-          ? "pr2"
-          : publishedMilestones.pr1
-          ? "pr1"
-          : "none";
-
-        if (activeMilestone === "none") {
-          setResults([]);
-          setActiveMilestoneTitle("Results Awaiting Publication");
-          return;
-        }
-
-        const title =
-          activeMilestone === "tr"
-            ? "Terminal Report Available"
-            : activeMilestone === "pr3"
-            ? "Progress Report 3 Available"
-            : activeMilestone === "pr2"
-            ? "Progress Report 2 Available"
-            : "Progress Report 1 Available";
-
-        setActiveMilestoneTitle(title);
-
-        const formatted = (data || [])
-          .filter((r: any) => r.status === "published" || r.pr1_status === "published" || r.pr2_status === "published" || r.pr3_status === "published" || r.tr_status === "published")
-          .map((r: any) => {
-            const raw = normalizeBreakdown(r);
-            const computed = calculateStudentResult(raw, undefined, {
-              isSenior,
-              className: currentClassName,
-            });
-
-            if (activeMilestone === "tr") {
-              return {
-                id: r.id,
-                subject: r.subjects?.name || "Subject",
-                milestoneLabel: "Terminal Exam",
-                cw: r.cw ?? computed.scaled.cw,
-                hw: r.hw ?? computed.scaled.hw,
-                test: r.test ?? computed.scaled.tests,
-                project: r.project ?? computed.scaled.project,
-                exam: r.exam ?? computed.scaled.exam,
-                total: r.total ?? computed.totalScore,
-                grade: r.grade ?? computed.grade,
-                remark: computed.remark,
-                breakdown: raw,
-                isPr: false,
-              };
-            }
-
-            // For PR milestones, compute PR score
-            const prIndex = activeMilestone === "pr1" ? 0 : activeMilestone === "pr2" ? 1 : 2;
-            const prCw = Math.min(10, Math.max(0, Number(r.cw ?? computed.scaled.cw)));
-            const prHw = Math.min(5, Math.max(0, Number(r.hw ?? computed.scaled.hw)));
-            const prTest = Math.min(15, Math.max(0, Number(r.test ?? computed.scaled.tests)));
-            const prTotal = +(prCw + prHw + prTest).toFixed(1);
-            const prPct = Math.min(100, +((prTotal / 30) * 100).toFixed(1));
-
-            return {
-              id: r.id,
-              subject: r.subjects?.name || "Subject",
-              milestoneLabel: activeMilestone.toUpperCase(),
-              cw: prCw,
-              hw: prHw,
-              test: prTest,
-              project: 0,
-              exam: 0,
-              total: prTotal,
-              maxScore: 30,
-              percentage: prPct,
-              grade: computed.grade,
-              remark: computed.remark,
-              breakdown: raw,
-              isPr: true,
-            };
-          });
-
-        formatted.sort((a: any, b: any) => a.subject.localeCompare(b.subject));
-        setResults(formatted);
-      } catch (err: any) {
+        const order = ["PR1", "PR2", "PR3", "TR"];
+        const published = order.filter((k) => json.reports[k]);
+        const key = published[published.length - 1];
+        setLatest(key ? { milestone: key, report: json.reports[key], count: published.length } : null);
+      } catch (err) {
         console.error("Results load error:", err);
+        if (!cancelled) setLatest(null);
       } finally {
-        setLoadingResults(false);
+        if (!cancelled) setLoadingResults(false);
       }
-    }
-
-    loadResults();
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [student, term, session]);
 
   const formatCurrency = (amt: number) => {
@@ -318,9 +185,9 @@ export default function StudentDashboardPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
+    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto print:overflow-visible">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-20 shrink-0">
+      <header className={`bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-20 shrink-0 ${showFullReport ? "print:hidden" : ""}`}>
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
             Welcome, {student?.name || "Student"}
@@ -332,7 +199,7 @@ export default function StudentDashboardPage() {
       </header>
 
       {/* Main Content */}
-      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full flex-1">
+      <div className={`p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full flex-1 ${showFullReport ? "print:hidden" : ""}`}>
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-start gap-4">
@@ -390,158 +257,71 @@ export default function StudentDashboardPage() {
           </div>
         </div>
 
-        {/* Results Viewer Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${results.length > 0 ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-slate-100 text-slate-500"}`}>
-              {results.length > 0 ? "Reports available" : "No reports yet"}
-            </div>
+        {/* Results */}
+        <section className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 mb-8">
+          <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-slate-900 tracking-tight">
-                  {results.length > 0 ? activeMilestoneTitle : "Academic Reports"}
-                </h3>
-                {results.length > 0 && (
-                  <span className="text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-extrabold uppercase">
-                    Published
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-500">
-                {results.length > 0
-                  ? `Showing official verified scores for ${term.toUpperCase()} (${session})`
-                  : `Select term or session to check published reports`}
-              </p>
+              <h3 className="text-lg font-bold text-slate-900 tracking-tight">My Results</h3>
+              <p className="text-xs text-slate-500">Only results released by the school appear here.</p>
             </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2 items-center">
-            <label className="text-xs text-slate-500 font-medium">Term</label>
-            <select
-              value={term}
-              onChange={(e) => setTerm(e.target.value)}
-              className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:border-indigo-500"
-            >
-              <option value="term1">1st Term</option>
-              <option value="term2">2nd Term</option>
-              <option value="term3">3rd Term</option>
-            </select>
-
-            <label className="text-xs text-slate-500 font-medium">Session</label>
-            <select
-              value={session}
-              onChange={(e) => setSession(e.target.value)}
-              className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:border-indigo-500"
-            >
-              {sessionsList.length === 0 ? (
-                <option value="">No sessions</option>
-              ) : (
-                sessionsList.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))
-              )}
-            </select>
-
-            <button
-              onClick={() => setShowFullReport(true)}
-              className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-indigo-700 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              View Full Report Sheet
-            </button>
-          </div>
-        </div>
-
-        {/* Results Cards Grid */}
-        {loadingResults ? (
-          <div className="p-8 text-center text-slate-500 bg-white border border-slate-200 rounded-xl shadow-sm">
-            Checking published academic reports…
-          </div>
-        ) : results.length === 0 ? (
-          <div className="p-10 text-center bg-white border border-slate-200/80 rounded-2xl shadow-xs">
-            <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-3 text-xl">
-              Locked
-            </div>
-            <h4 className="font-bold text-slate-900 text-base">Results Awaiting Publication</h4>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              Terminal and checkpoint progress reports for this period have not been published by administration yet. Check back soon.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {results.map((r) => (
-              <div
-                key={r.id}
-                className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex flex-col justify-between hover:shadow-md transition-shadow"
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={term}
+                onChange={(e) => setTerm(e.target.value)}
+                className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white"
+                aria-label="Term"
               >
-                <div>
-                  <div className="flex justify-between items-start gap-2 mb-3">
-                    <h4 className="font-bold text-slate-900 text-base">{r.subject}</h4>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                      {r.grade}
-                    </span>
-                  </div>
-
-                  <div className="flex items-baseline gap-2 mb-4">
-                    <span className="text-3xl font-black text-slate-900">{r.total}</span>
-                    <span className="text-xs text-slate-400 font-semibold">/ {r.isPr ? "30" : "100"}</span>
-                    {r.isPr && (
-                      <span className="text-xs font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
-                        {r.percentage}%
-                      </span>
-                    )}
-                    <span className="text-xs font-bold text-slate-500 ml-auto uppercase tracking-wide">
-                      {r.remark}
-                    </span>
-                  </div>
-
-                  {r.isPr ? (
-                    <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg text-center text-xs border border-slate-100 font-mono">
-                      <div>
-                        <div className="text-[10px] uppercase font-bold text-slate-400">CW (10)</div>
-                        <div className="font-bold text-slate-800">{r.cw}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] uppercase font-bold text-slate-400">HW (5)</div>
-                        <div className="font-bold text-slate-800">{r.hw}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] uppercase font-bold text-slate-400">Test (15)</div>
-                        <div className="font-bold text-slate-800">{r.test}</div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg text-center text-xs border border-slate-100">
-                      <div>
-                        <div className="text-[10px] uppercase font-bold text-slate-400">CA</div>
-                        <div className="font-bold text-slate-800">{Math.round(r.cw + r.hw + r.test + r.project)}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] uppercase font-bold text-slate-400">Exam</div>
-                        <div className="font-bold text-slate-800">{r.exam}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] uppercase font-bold text-slate-400">Total</div>
-                        <div className="font-bold text-indigo-600">{r.total}</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  onClick={() => setActiveBreakdown(r)}
-                  className="mt-4 w-full py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors text-center"
-                >
-                  View Score Breakdown
-                </button>
-              </div>
-            ))}
+                <option value="term1">1st Term</option>
+                <option value="term2">2nd Term</option>
+                <option value="term3">3rd Term</option>
+              </select>
+              <select
+                value={session}
+                onChange={(e) => setSession(e.target.value)}
+                className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white"
+                aria-label="Session"
+              >
+                {sessionsList.length === 0 ? (
+                  <option value="">No sessions</option>
+                ) : (
+                  sessionsList.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
           </div>
-        )}
+
+          {loadingResults ? (
+            <p className="py-8 text-center text-sm text-slate-500">Checking published results…</p>
+          ) : !latest ? (
+            <div className="py-8 text-center">
+              <p className="font-bold text-slate-900">No results released yet</p>
+              <p className="text-xs text-slate-500 mt-1">Progress reports and the terminal result appear here once the school publishes them.</p>
+            </div>
+          ) : (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl bg-slate-50 border border-slate-200 p-4">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Latest release</div>
+                <div className="text-base font-bold text-slate-900">
+                  {latest.milestone === "TR" ? "Terminal Result" : latest.report.milestoneLabel}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {latest.report.subjects?.length || 0} subjects · Overall {latest.report.summary?.percentage}% ({latest.report.summary?.remark})
+                  {latest.milestone === "TR" && latest.report.summary?.gpa !== null ? ` · GPA ${latest.report.summary.gpa}` : ""}
+                </div>
+              </div>
+              <button
+                onClick={() => setShowFullReport(true)}
+                className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg hover:bg-slate-800 cursor-pointer"
+              >
+                View report sheet
+              </button>
+            </div>
+          )}
+        </section>
 
         {/* CBT Assessments Summary */}
         <section className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -615,81 +395,10 @@ export default function StudentDashboardPage() {
         </section>
       </div>
 
-      {/* Breakdown Modal */}
-      {activeBreakdown && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col">
-            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="text-base font-bold text-slate-900">
-                Score Breakdown — {activeBreakdown.subject}
-              </h3>
-              <button
-                onClick={() => setActiveBreakdown(null)}
-                className="text-slate-400 hover:text-slate-600 text-lg leading-none"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-6 space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                <div>
-                  <span className="text-slate-500 block">Class Work (Scaled /10):</span>
-                  <span className="font-bold text-slate-900 text-sm">{activeBreakdown.cw}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Home Work (Scaled /5):</span>
-                  <span className="font-bold text-slate-900 text-sm">{activeBreakdown.hw}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Periodic Tests (Scaled /15):</span>
-                  <span className="font-bold text-slate-900 text-sm">{activeBreakdown.test}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Project Work (/5):</span>
-                  <span className="font-bold text-slate-900 text-sm">{activeBreakdown.project}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Terminal Exam (/70):</span>
-                  <span className="font-bold text-slate-900 text-sm">{activeBreakdown.exam}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Grand Total (/100):</span>
-                  <span className="font-bold text-indigo-600 text-base">{activeBreakdown.total}</span>
-                </div>
-              </div>
-
-              {activeBreakdown.breakdown?.cw?.length > 0 && (
-                <div>
-                  <h5 className="font-bold text-slate-700 uppercase tracking-wider text-[10px] mb-1">
-                    Continuous Assessment Items:
-                  </h5>
-                  <div className="grid grid-cols-5 gap-1.5 text-[11px] font-mono">
-                    {activeBreakdown.breakdown.cw.map((v: any, i: number) => (
-                      <div key={i} className="bg-slate-100 p-1 rounded text-center">
-                        CW{i + 1}: {v !== "" ? v : "—"}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50 text-right">
-              <button
-                onClick={() => setActiveBreakdown(null)}
-                className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Full Report Dashboard Overlay Modal */}
       {showFullReport && student && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-white">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-white print:static print:overflow-visible">
           <ResultDashboardApp
-            student={student}
             initialTerm={term}
             initialSession={session}
             onClose={() => setShowFullReport(false)}

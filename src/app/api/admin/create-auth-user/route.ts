@@ -66,6 +66,8 @@ export async function POST(req: NextRequest) {
 
   const displayName = String(body.displayName || body.name || "").trim() || email.split("@")[0];
   const role = String(body.role || "student").trim().toLowerCase();
+  // Students (new logins or admin-set passwords) must choose their own password
+  const mustChange = body.mustChangePassword !== undefined ? Boolean(body.mustChangePassword) : role === "student";
 
   const { data, error } = await service.auth.admin.createUser({
     email,
@@ -102,7 +104,7 @@ export async function POST(req: NextRequest) {
                 display_name: displayName,
                 role,
                 status: "active",
-                must_change_password: false,
+                must_change_password: mustChange,
               },
               { onConflict: "auth_id" }
             )
@@ -138,7 +140,7 @@ export async function POST(req: NextRequest) {
         display_name: displayName,
         role,
         status: "active",
-        must_change_password: false,
+        must_change_password: mustChange,
       },
       { onConflict: "auth_id" }
     )

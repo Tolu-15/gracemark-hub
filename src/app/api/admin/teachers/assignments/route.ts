@@ -339,3 +339,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
+
+/**
+ * DELETE { type: "class" | "subject", ids: string[], mode: "unassign" | "delete" }
+ * - unassign: ends the active assignment (kept in history, teacher loses access now)
+ * - delete:   removes the assignment record completely (for test/mistaken entries)
+ */
+export async function DELETE(req: NextRequest) {
+  const authorization = await requireApiActor(req, ["admin"]);
+  if ("response" in authorization) return authorization.response;
+  const { service } = authorization.actor;
+
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
+  }
+  const { type, mode } = body || {};
+  const ids: string[] = Array.isArray(body?.ids) ? body.ids.filter(Boolean) : [];
+  const table = type === "class" ? "class_teacher_assignments" : type === "subject" ? "subject_teacher_assignments" : null;
+  if (!table || !ids.length || !["unassign", "delete"].includes(mode)) {
+    return NextResponse.json({ ok: false, error: "type, ids and mode are required." }, { status: 400 });
+  }
+
+  const { error } =
+    mode === "unassign"
+      ? await service.from(table).update({ status: "ended", ended_at: new Date().toISOString() }).in("id", ids).eq("status", "active")
+      : await service.from(table).delete().in("id", ids);
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true });
+}

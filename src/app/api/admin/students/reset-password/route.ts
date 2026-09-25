@@ -65,10 +65,13 @@ export async function POST(req: NextRequest) {
 
     // 3. If no auth user found, find or create in Supabase Auth
     if (!authUserId) {
-      const { data: userList } = await service.auth.admin.listUsers();
-      const existingUser = userList?.users?.find(
-        (u) => u.email?.toLowerCase() === authEmail.toLowerCase()
-      );
+      let existingUser: { id: string } | undefined;
+      for (let page = 1; page <= 20 && !existingUser; page++) {
+        const { data: userList } = await service.auth.admin.listUsers({ page, perPage: 1000 });
+        if (!userList?.users?.length) break;
+        existingUser = userList.users.find((u) => u.email?.toLowerCase() === authEmail.toLowerCase());
+        if (userList.users.length < 1000) break;
+      }
 
       if (existingUser) {
         authUserId = existingUser.id;
@@ -96,7 +99,7 @@ export async function POST(req: NextRequest) {
           display_name: student.name,
           role: "student",
           status: "active",
-          must_change_password: false,
+          must_change_password: true,
         },
         { onConflict: "auth_id" }
       )
@@ -120,10 +123,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 6. Set must_change_password = false on public.users
+    // 6. The student must choose a new password at next login
     await service
       .from("users")
-      .update({ must_change_password: false })
+      .update({ must_change_password: true })
       .eq("auth_id", authUserId);
 
     return NextResponse.json({

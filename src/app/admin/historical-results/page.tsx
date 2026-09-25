@@ -1,704 +1,615 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import ResultDashboardApp from "@/components/student/ResultDashboardApp";
-import { fetchStudentReport } from "@/lib/studentReport";
 import { getAcademicSessions } from "@/lib/academicSessions";
 import { getAppSettings } from "@/lib/appSettings";
 
-type ActiveTab = "student-results" | "class-broadsheet";
-type BroadsheetViewMode = "score-grade" | "score-only" | "breakdown";
+type Tab = "student-results" | "class-broadsheet";
+type Period = "term1" | "term2" | "term3" | "annual";
+type Milestone = "PR1" | "PR2" | "PR3" | "TR";
+
+const TERM_LABEL: Record<string, string> = { term1: "1st Term", term2: "2nd Term", term3: "3rd Term", annual: "Annual" };
+const MILESTONE_LABEL: Record<Milestone, string> = { PR1: "Progress Report 1", PR2: "Progress Report 2", PR3: "Progress Report 3", TR: "Terminal Result" };
+const GRADES = ["A", "B", "C", "D", "F"];
+
+const fmt = (n: any, dp = 1) =>
+  n === null || n === undefined || !Number.isFinite(Number(n)) ? "—" : Number(n).toFixed(dp).replace(/\.0+$/, "");
+
+function ordinal(n: number | null | undefined) {
+  if (!n) return "—";
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+}
+
+function gradeTone(g?: string) {
+  return g === "A" ? "text-emerald-700" : g === "B" ? "text-sky-700" : g === "D" ? "text-amber-700" : g === "F" ? "text-rose-700" : "text-slate-800";
+}
 
 export default function AdminHistoricalResultsPage() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>("student-results");
-
-  // Catalog state
+  const [tab, setTab] = useState<Tab>("student-results");
   const [sessions, setSessions] = useState<string[]>([]);
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
-  const [currentSession, setCurrentSession] = useState("2025/2026");
 
-  // Tab 1: Student Results Lookup State
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-  const [studentCareer, setStudentCareer] = useState<any | null>(null);
+  // Student lookup
+  const [query, setQuery] = useState("");
+  const [matches, setMatches] = useState<any[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [career, setCareer] = useState<any | null>(null);
   const [loadingCareer, setLoadingCareer] = useState(false);
+  const [reportView, setReportView] = useState<{ session: string; term: string } | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Individual Report Card Print Modal
-  const [printModalOpen, setPrintModalOpen] = useState(false);
-  const [printReportData, setPrintReportData] = useState<any | null>(null);
-  const [loadingReportData, setLoadingReportData] = useState(false);
+  // Broadsheet
+  const [bsSession, setBsSession] = useState("");
+  const [bsClass, setBsClass] = useState("");
+  const [bsPeriod, setBsPeriod] = useState<Period>("term1");
+  const [bsMilestone, setBsMilestone] = useState<Milestone>("TR");
+  const [bsDetail, setBsDetail] = useState<"summary" | "full">("summary");
+  const [sheet, setSheet] = useState<any | null>(null);
+  const [loadingSheet, setLoadingSheet] = useState(false);
+  const [sheetError, setSheetError] = useState("");
 
-  // Tab 2: Class Master Broadsheet State
-  const [selectedBroadsheetSession, setSelectedBroadsheetSession] = useState("");
-  const [selectedBroadsheetClass, setSelectedBroadsheetClass] = useState("");
-  const [selectedBroadsheetTerm, setSelectedBroadsheetTerm] = useState("term1");
-  const [viewMode, setViewMode] = useState<BroadsheetViewMode>("score-grade");
-  const [broadsheetData, setBroadsheetData] = useState<any | null>(null);
-  const [loadingBroadsheet, setLoadingBroadsheet] = useState(false);
-  const [broadsheetError, setBroadsheetError] = useState("");
-
-  // Load Base Catalogs
   useEffect(() => {
-    async function init() {
-      try {
-        const [sessList, settings, classesRes] = await Promise.all([
-          getAcademicSessions(),
-          getAppSettings(),
-          supabase.from("classes").select("id, name").order("name", { ascending: true }),
-        ]);
-
-        const sNames = (sessList || []).map((s: { name: string }) => s.name);
-        setSessions(sNames);
-
-        const activeSess = settings?.current_session || sNames[0] || "2025/2026";
-        setCurrentSession(activeSess);
-        setSelectedBroadsheetSession(activeSess);
-
-        if (classesRes.data && classesRes.data.length > 0) {
-          setClasses(classesRes.data);
-          setSelectedBroadsheetClass(classesRes.data[0].id);
-        }
-      } catch (err) {
-        console.error("Failed to load initial metadata:", err);
-      }
-    }
-    init();
+    (async () => {
+      const [sessList, settings, cls] = await Promise.all([
+        getAcademicSessions(),
+        getAppSettings(),
+        supabase.from("classes").select("id, name").order("display_order"),
+      ]);
+      const names = (sessList || []).map((s: { name: string }) => s.name);
+      setSessions(names);
+      setBsSession(settings?.current_session || names[0] || "");
+      if (settings?.current_term) setBsPeriod(settings.current_term as Period);
+      setClasses(cls.data || []);
+      if (cls.data?.length) setBsClass(cls.data[0].id);
+    })();
   }, []);
 
-  // Search students for Student Results lookup
-  const handleSearchStudents = useCallback(async (q: string) => {
-    setSearchQuery(q);
-    if (!q.trim() || q.trim().length < 2) {
-      setSearchResults([]);
+  // ---------------- Student lookup ----------------
+  const runSearch = useCallback(async (q: string) => {
+    if (q.trim().length < 2) {
+      setMatches([]);
+      setSearchError("");
       return;
     }
-
-    setIsSearching(true);
+    setSearching(true);
+    setSearchError("");
     try {
-      const res = await fetch(`/api/admin/historical-lookup?q=${encodeURIComponent(q.trim())}`, {
-        headers: await getAuthHeaders(),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.ok) {
-          setSearchResults(json.matches || []);
-        }
-      }
-    } catch (err) {
-      console.error("Search error:", err);
+      const res = await fetch(`/api/admin/historical-lookup?q=${encodeURIComponent(q.trim())}`, { headers: await getAuthHeaders() });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || "Search failed.");
+      setMatches(json.matches || []);
+      if (!json.matches?.length) setSearchError(`No student found for "${q.trim()}".`);
+    } catch (e: any) {
+      setSearchError(e.message);
+      setMatches([]);
     } finally {
-      setIsSearching(false);
+      setSearching(false);
     }
   }, []);
 
-  // Select student & load career results
-  const handleSelectStudent = useCallback(async (sId: string) => {
-    setSelectedStudentId(sId);
-    setSearchResults([]);
+  function onQueryChange(value: string) {
+    setQuery(value);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => runSearch(value), 300);
+  }
+
+  async function selectStudent(id: string) {
+    setMatches([]);
     setLoadingCareer(true);
+    setCareer(null);
     try {
-      const res = await fetch(`/api/admin/historical-lookup?studentId=${encodeURIComponent(sId)}`, {
-        headers: await getAuthHeaders(),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.ok) {
-          setStudentCareer(json);
-        }
-      }
-    } catch (err) {
-      console.error("Career load error:", err);
+      const res = await fetch(`/api/admin/historical-lookup?studentId=${encodeURIComponent(id)}`, { headers: await getAuthHeaders() });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || "Could not load student.");
+      setCareer(json);
+    } catch (e: any) {
+      setSearchError(e.message);
     } finally {
       setLoadingCareer(false);
     }
-  }, []);
-
-  // Open & Print Individual Historical Report Card
-  async function handleOpenIndividualReport(sessionName: string, termName: string, historicalClass: { id?: string; name: string }) {
-    if (!studentCareer?.student) return;
-    setLoadingReportData(true);
-    setPrintModalOpen(true);
-    try {
-      const rep = await fetchStudentReport({
-        student: studentCareer.student,
-        term: termName,
-        session: sessionName,
-        historicalClassId: historicalClass.id,
-        historicalClassName: historicalClass.name,
-      });
-      setPrintReportData(rep);
-    } catch (err: any) {
-      alert(`Error loading report card: ${err.message}`);
-      setPrintModalOpen(false);
-    } finally {
-      setLoadingReportData(false);
-    }
   }
 
-  // Load Class Broadsheet
-  async function handleLoadBroadsheet() {
-    if (!selectedBroadsheetClass || !selectedBroadsheetSession) {
-      alert("Please select both a Session and a Class.");
-      return;
-    }
-    setLoadingBroadsheet(true);
-    setBroadsheetError("");
-    setBroadsheetData(null);
-
+  // ---------------- Broadsheet ----------------
+  async function generate() {
+    if (!bsClass || !bsSession) return;
+    setLoadingSheet(true);
+    setSheetError("");
+    setSheet(null);
     try {
-      const res = await fetch(
-        `/api/admin/class-broadsheet?classId=${encodeURIComponent(selectedBroadsheetClass)}&session=${encodeURIComponent(selectedBroadsheetSession)}&term=${encodeURIComponent(selectedBroadsheetTerm)}`,
-        { headers: await getAuthHeaders() }
-      );
+      const params = new URLSearchParams({ classId: bsClass, session: bsSession, term: bsPeriod, milestone: bsMilestone });
+      const res = await fetch(`/api/admin/class-broadsheet?${params}`, { headers: await getAuthHeaders() });
       const json = await res.json();
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to load broadsheet");
-      }
-      setBroadsheetData(json);
-    } catch (err: any) {
-      setBroadsheetError(err.message);
+      if (!res.ok || !json.ok) throw new Error(json.error || "Could not generate the broadsheet.");
+      setSheet(json);
+    } catch (e: any) {
+      setSheetError(e.message);
     } finally {
-      setLoadingBroadsheet(false);
+      setLoadingSheet(false);
     }
   }
+
+  const isAnnual = sheet?.mode === "annual";
+  const isTR = sheet?.milestone === "TR";
+  const isPR3 = sheet?.milestone === "PR3";
+  const full = bsDetail === "full";
+
+  // Sub-columns per subject
+  const subCols: { key: string; label: string }[] = !sheet
+    ? []
+    : isAnnual
+    ? full
+      ? [
+          { key: "term1", label: "1st" },
+          { key: "term2", label: "2nd" },
+          { key: "term3", label: "3rd" },
+          { key: "annual", label: "Avg" },
+          { key: "grade", label: "Gr" },
+        ]
+      : [
+          { key: "annual", label: "Avg" },
+          { key: "grade", label: "Gr" },
+        ]
+    : full
+    ? [
+        { key: "cw", label: "CW" },
+        { key: "hw", label: "HW" },
+        { key: "test", label: "Test" },
+        ...(isTR || isPR3 ? [{ key: "project", label: "Proj" }] : []),
+        ...(isTR ? [{ key: "exam", label: "Exam" }] : []),
+        { key: isTR ? "total" : "percentage", label: isTR ? "Total" : "%" },
+        { key: "grade", label: "Gr" },
+      ]
+    : [
+        { key: isTR ? "total" : "percentage", label: isTR ? "Total" : "%" },
+        { key: "grade", label: "Gr" },
+      ];
+
+  const cellValue = (row: any, subjectId: string, key: string) => {
+    const src = isAnnual ? row.perSubject[subjectId] : row.lines[subjectId];
+    if (!src) return null;
+    return src[key];
+  };
+
+  const title = sheet
+    ? isAnnual
+      ? `Annual Broadsheet · ${sheet.session}`
+      : `${TERM_LABEL[sheet.term]} ${MILESTONE_LABEL[sheet.milestone as Milestone]} Broadsheet · ${sheet.session}`
+    : "";
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      {/* Top Banner */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
+    <div className="space-y-5 max-w-[1400px] mx-auto pb-12">
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
-              Official Academic Records
-            </span>
-            <span className="text-xs text-slate-400 font-medium">Single Source of Truth</span>
-          </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-1">
-            Student Results &amp; Master Broadsheets
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Lookup any student&apos;s academic results across past sessions, print terminal reports with historical class binding, or generate official class broadsheets.
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">Student Results &amp; Broadsheets</h2>
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+            Look up a student&rsquo;s published results across sessions, or generate a class broadsheet from the scores entered.
           </p>
         </div>
-
-        {/* Tab Switcher */}
-        <div className="flex items-center p-1 bg-slate-100 rounded-xl shrink-0">
-          <button
-            type="button"
-            onClick={() => setActiveTab("student-results")}
-            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              activeTab === "student-results"
-                ? "bg-white text-slate-900 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Student Results
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("class-broadsheet")}
-            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              activeTab === "class-broadsheet"
-                ? "bg-white text-slate-900 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Class Master Broadsheet
-          </button>
+        <div role="tablist" className="inline-flex rounded-xl bg-slate-100 p-1 shrink-0">
+          {(
+            [
+              ["student-results", "Student Results"],
+              ["class-broadsheet", "Class Broadsheet"],
+            ] as [Tab, string][]
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={tab === key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={`px-4 py-2 rounded-lg text-xs font-bold cursor-pointer ${tab === key ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* TAB 1: Student Results Lookup */}
-      {activeTab === "student-results" && (
-        <div className="space-y-6">
-          {/* Search Box */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs relative print:hidden">
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-              Student Admission No or Name Lookup
+      {/* ================= STUDENT RESULTS ================= */}
+      {tab === "student-results" && (
+        <div className="space-y-5">
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs relative print:hidden">
+            <label htmlFor="student-search" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+              Find a student
             </label>
-            <div className="relative">
-              <svg
-                className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => handleSearchStudents(e.target.value)}
-                placeholder="Type student name or admission number (e.g. GMA1701)…"
-                className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white transition-all"
-              />
-              {isSearching && (
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-semibold animate-pulse">
-                  Searching…
-                </div>
-              )}
-            </div>
-
-            {/* Live Matches Dropdown */}
-            {searchResults.length > 0 && (
-              <div className="absolute left-6 right-6 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-20 max-h-60 overflow-y-auto divide-y divide-slate-100">
-                {searchResults.map((st) => (
-                  <button
-                    key={st.id}
-                    type="button"
-                    onClick={() => handleSelectStudent(st.id)}
-                    className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer"
-                  >
-                    <div>
-                      <div className="font-bold text-sm text-slate-900">{st.name}</div>
-                      <div className="text-xs text-slate-500 font-mono mt-0.5">
-                        Adm No: {st.admission_no} &bull; Current Class: {st.classes?.name || "Unassigned"}
+            <input
+              id="student-search"
+              type="search"
+              value={query}
+              onChange={(e) => onQueryChange(e.target.value)}
+              placeholder="Type a name or admission number (at least 2 letters)"
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white"
+            />
+            {searching && <p className="text-xs text-slate-400 mt-2">Searching…</p>}
+            {searchError && !searching && <p className="text-xs text-rose-600 mt-2">{searchError}</p>}
+            {matches.length > 0 && (
+              <ul className="absolute left-5 right-5 top-full -mt-2 bg-white border border-slate-200 rounded-xl shadow-xl z-20 max-h-72 overflow-y-auto divide-y divide-slate-100">
+                {matches.map((m) => (
+                  <li key={m.id}>
+                    <button type="button" onClick={() => selectStudent(m.id)} className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center justify-between gap-3 cursor-pointer">
+                      <div>
+                        <div className="font-bold text-sm text-slate-900">{m.name}</div>
+                        <div className="text-xs text-slate-500">
+                          {m.admission_no} · {m.classes?.name || "No class"}
+                        </div>
                       </div>
-                    </div>
-                    <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg">
-                      View Results &rarr;
-                    </span>
-                  </button>
+                      <span className="text-xs font-bold text-indigo-700">View →</span>
+                    </button>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </div>
 
-          {/* Student Results Profile View */}
           {loadingCareer ? (
-            <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400">
-              Loading student results timeline…
-            </div>
-          ) : studentCareer ? (
-            <div className="space-y-6">
-              {/* Comprehensive Identity Card */}
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-16 h-16 rounded-2xl bg-indigo-600 text-white font-black text-2xl flex items-center justify-center shrink-0 shadow-md">
-                    {studentCareer.student.name.charAt(0)}
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-black text-slate-900 tracking-tight">
-                      {studentCareer.student.name}
-                    </h3>
-                    <div className="flex flex-wrap items-center gap-2 mt-1 text-xs">
-                      <span className="font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
-                        {studentCareer.student.admission_no}
-                      </span>
-                      <span className="text-slate-400">&bull;</span>
-                      <span className="font-semibold text-slate-600">
-                        Current Placement: <strong className="text-slate-900">{studentCareer.currentClass}</strong>
-                      </span>
-                      {studentCareer.student.gender && (
-                        <>
-                          <span className="text-slate-400">&bull;</span>
-                          <span className="text-slate-600">Gender: {studentCareer.student.gender === "M" ? "Male" : "Female"}</span>
-                        </>
+            <div className="p-12 text-center text-sm text-slate-500 bg-white rounded-2xl border border-slate-200">Loading…</div>
+          ) : !career ? (
+            <div className="p-12 text-center text-sm text-slate-400 bg-white rounded-2xl border border-slate-200">Search for a student to see their results.</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">{career.student.name}</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {career.student.admission_no} · Current class: <strong className="text-slate-800">{career.currentClass}</strong>
+                    {career.student.gender ? ` · ${career.student.gender === "male" ? "Male" : career.student.gender === "female" ? "Female" : career.student.gender}` : ""}
+                    {career.student.is_alumni ? " · Alumni" : ""}
+                  </p>
+                  {career.student.guardian_name && (
+                    <p className="text-xs text-slate-500">
+                      Guardian: {career.student.guardian_name}
+                      {career.student.guardian_phone ? ` (${career.student.guardian_phone})` : ""}
+                    </p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sessions</div>
+                  <div className="text-2xl font-black text-slate-900">{career.history.length}</div>
+                </div>
+              </div>
+
+              {career.history.length === 0 ? (
+                <div className="p-8 text-center text-sm text-slate-500 bg-white rounded-2xl border border-slate-200">
+                  No session records yet. A student gets one the first time a result or remark is saved for them.
+                </div>
+              ) : (
+                career.history.map((h: any) => (
+                  <div key={h.session} className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-base font-extrabold text-slate-900">{h.session}</span>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">{h.historicalClass.name}</span>
+                      {h.annualAverage !== null && (
+                        <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          Annual average {h.annualAverage}%
+                        </span>
+                      )}
+                      {h.promotionDetails && (
+                        <span className="text-xs font-semibold text-emerald-700">
+                          {h.promotionDetails.action === "repeat"
+                            ? `Repeated ${h.promotionDetails.from_class}`
+                            : `Promoted ${h.promotionDetails.from_class} → ${h.promotionDetails.to_class}`}
+                        </span>
                       )}
                     </div>
-                    {studentCareer.student.guardian_name && (
-                      <p className="text-xs text-slate-500 mt-1">
-                        Parent/Guardian: <strong className="text-slate-700">{studentCareer.student.guardian_name}</strong>
-                        {studentCareer.student.guardian_phone ? ` (${studentCareer.student.guardian_phone})` : ""}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 shrink-0">
-                  <div className="text-right">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Enrolled Sessions
-                    </span>
-                    <span className="text-2xl font-black text-slate-900">
-                      {studentCareer.history.length}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Career Sessions Timeline */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                    Academic Trajectory &amp; Session Records
-                  </h4>
-                  <span className="text-xs text-slate-500 font-medium">
-                    Strictly bound to historical class &amp; subjects
-                  </span>
-                </div>
-
-                {studentCareer.history.length === 0 ? (
-                  <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 text-slate-500 text-xs">
-                    No session records found for this student.
-                  </div>
-                ) : (
-                  studentCareer.history.map((sess: any) => (
-                    <div
-                      key={sess.session}
-                      className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-4 hover:border-slate-300 transition-colors"
-                    >
-                      {/* Session Header */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                        <div>
-                          <div className="flex items-center gap-2.5">
-                            <span className="text-base font-extrabold text-slate-900 font-mono">
-                              {sess.session}
-                            </span>
-                            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                              Historical Class: {sess.historicalClass.name}
-                            </span>
-                            {sess.annualAverage !== null && (
-                              <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                Annual Avg: {sess.annualAverage}%
+                    <div className="grid md:grid-cols-3 gap-3">
+                      {(["term1", "term2", "term3"] as const).map((t) => {
+                        const d = h.terms[t];
+                        return (
+                          <div key={t} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-800">{TERM_LABEL[t]}</span>
+                              <span className="text-[10px] text-slate-500">
+                                {d.published.length ? `Published: ${d.published.map((p: string) => (p === "TR" ? "Terminal" : p)).join(", ")}` : "Nothing published"}
                               </span>
-                            )}
-                          </div>
-                          {sess.promotionDetails && (
-                            <p className="text-xs text-emerald-700 font-semibold mt-1">
-                              &bull; Promotion: Promoted from {sess.promotionDetails.from_class} to {sess.promotionDetails.to_class}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Quick Term Print Actions */}
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenIndividualReport(sess.session, "term1", sess.historicalClass)}
-                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs rounded-lg transition-colors cursor-pointer"
-                          >
-                            1st Term Report
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenIndividualReport(sess.session, "term2", sess.historicalClass)}
-                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs rounded-lg transition-colors cursor-pointer"
-                          >
-                            2nd Term Report
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenIndividualReport(sess.session, "term3", sess.historicalClass)}
-                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-lg transition-colors cursor-pointer shadow-xs"
-                          >
-                            3rd Term &amp; Annual Report
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Term Summaries Grid */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {(["term1", "term2", "term3"] as const).map((t, idx) => {
-                          const tData = sess.terms[t];
-                          const label = idx === 0 ? "1st Term" : idx === 1 ? "2nd Term" : "3rd Term";
-                          return (
-                            <div
-                              key={t}
-                              className="bg-slate-50/70 border border-slate-200/60 rounded-xl p-3.5 space-y-1.5"
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="font-bold text-xs text-slate-800">{label}</span>
-                                <span className="text-[11px] font-semibold text-slate-500">
-                                  {tData.evaluatedCount} Evaluated
-                                </span>
-                              </div>
-                              <div className="text-xl font-black text-slate-900">
-                                {tData.evaluatedCount > 0 ? `${tData.average}%` : "—"}
-                              </div>
-                              <div className="text-[11px] text-slate-500 font-medium">
-                                Total Score: {tData.evaluatedCount > 0 ? tData.totalSum.toFixed(1) : "—"}
-                              </div>
                             </div>
-                          );
-                        })}
-                      </div>
+                            {d.tr ? (
+                              <div className="grid grid-cols-3 gap-1 text-center">
+                                <div>
+                                  <div className="text-[9px] font-bold uppercase text-slate-400">Average</div>
+                                  <div className="text-sm font-black text-slate-900">{fmt(d.tr.percentage)}%</div>
+                                </div>
+                                <div>
+                                  <div className="text-[9px] font-bold uppercase text-slate-400">Grade</div>
+                                  <div className={`text-sm font-black ${gradeTone(d.tr.grade)}`}>{d.tr.grade}</div>
+                                </div>
+                                <div>
+                                  <div className="text-[9px] font-bold uppercase text-slate-400">Position</div>
+                                  <div className="text-sm font-black text-slate-900">
+                                    {ordinal(d.tr.position)}
+                                    {d.tr.rankedCount ? <span className="text-[10px] font-semibold text-slate-400">/{d.tr.rankedCount}</span> : null}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-slate-500">
+                                {d.scoresEntered ? `${d.scoresEntered} subject score(s) entered; terminal result not published.` : "No scores entered."}
+                              </p>
+                            )}
+                            <button
+                              type="button"
+                              disabled={!d.published.length}
+                              onClick={() => setReportView({ session: h.session, term: t })}
+                              className="w-full py-1.5 text-xs font-bold rounded-lg bg-white border border-slate-300 hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
+                            >
+                              View report card
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center text-slate-400">
-              Search for any student above to view their academic results and history.
+                  </div>
+                ))
+              )}
             </div>
           )}
         </div>
       )}
 
-      {/* TAB 2: Class Master Broadsheet */}
-      {activeTab === "class-broadsheet" && (
-        <div className="space-y-6">
-          {/* Controls Bar */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-wrap items-end gap-4 print:hidden">
-            <div className="w-full sm:w-48">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Academic Session
-              </label>
-              <select
-                value={selectedBroadsheetSession}
-                onChange={(e) => setSelectedBroadsheetSession(e.target.value)}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
-              >
+      {/* ================= BROADSHEET ================= */}
+      {tab === "class-broadsheet" && (
+        <div className="space-y-4">
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs flex flex-wrap items-end gap-3 print:hidden">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Session
+              <select value={bsSession} onChange={(e) => setBsSession(e.target.value)} className="mt-1 block w-36 px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold normal-case tracking-normal bg-white">
                 {sessions.map((s) => (
-                  <option key={s} value={s}>{s}</option>
+                  <option key={s}>{s}</option>
                 ))}
               </select>
-            </div>
-
-            <div className="w-full sm:w-56">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Class Roster
-              </label>
-              <select
-                value={selectedBroadsheetClass}
-                onChange={(e) => setSelectedBroadsheetClass(e.target.value)}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
-              >
+            </label>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Class
+              <select value={bsClass} onChange={(e) => setBsClass(e.target.value)} className="mt-1 block w-44 px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold normal-case tracking-normal bg-white">
                 {classes.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
                 ))}
               </select>
-            </div>
-
-            <div className="w-full sm:w-48">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Assessment Period
-              </label>
-              <select
-                value={selectedBroadsheetTerm}
-                onChange={(e) => setSelectedBroadsheetTerm(e.target.value)}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
-              >
-                <option value="term1">1st Term Broadsheet</option>
-                <option value="term2">2nd Term Broadsheet</option>
-                <option value="term3">3rd Term Broadsheet</option>
-                <option value="annual">Annual Full-Session Master</option>
+            </label>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Period
+              <select value={bsPeriod} onChange={(e) => setBsPeriod(e.target.value as Period)} className="mt-1 block w-36 px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold normal-case tracking-normal bg-white">
+                <option value="term1">1st Term</option>
+                <option value="term2">2nd Term</option>
+                <option value="term3">3rd Term</option>
+                <option value="annual">Annual (whole session)</option>
               </select>
-            </div>
-
-            <div className="w-full sm:w-44">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Score Display View
+            </label>
+            {bsPeriod !== "annual" && (
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                Report
+                <select value={bsMilestone} onChange={(e) => setBsMilestone(e.target.value as Milestone)} className="mt-1 block w-44 px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold normal-case tracking-normal bg-white">
+                  <option value="TR">Terminal Result</option>
+                  <option value="PR1">Progress Report 1</option>
+                  <option value="PR2">Progress Report 2</option>
+                  <option value="PR3">Progress Report 3</option>
+                </select>
               </label>
-              <select
-                value={viewMode}
-                onChange={(e) => setViewMode(e.target.value as BroadsheetViewMode)}
-                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
-              >
-                <option value="score-grade">Score &amp; Grade (e.g. 78 A)</option>
-                <option value="score-only">Score Only (e.g. 78)</option>
-                <option value="breakdown">Breakdown (CA | Exam)</option>
+            )}
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Detail
+              <select value={bsDetail} onChange={(e) => setBsDetail(e.target.value as any)} className="mt-1 block w-44 px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold normal-case tracking-normal bg-white">
+                <option value="summary">Summary (score &amp; grade)</option>
+                <option value="full">Full breakdown</option>
               </select>
-            </div>
-
-            <button
-              type="button"
-              disabled={loadingBroadsheet}
-              onClick={handleLoadBroadsheet}
-              className="w-full sm:w-auto px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer disabled:opacity-50 transition-colors"
-            >
-              {loadingBroadsheet ? "Generating Broadsheet…" : "Generate Master Broadsheet"}
+            </label>
+            <button type="button" onClick={generate} disabled={loadingSheet} className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold disabled:opacity-50 cursor-pointer">
+              {loadingSheet ? "Generating…" : "Generate broadsheet"}
             </button>
+            {sheet && (
+              <button type="button" onClick={() => window.print()} className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-bold hover:bg-slate-50 cursor-pointer">
+                Print (landscape)
+              </button>
+            )}
           </div>
 
-          {broadsheetError && (
-            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
-              {broadsheetError}
-            </div>
-          )}
+          {sheetError && <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">{sheetError}</div>}
 
-          {/* Broadsheet Output */}
-          {broadsheetData && (
-            <div className="space-y-4">
-              {/* Header & Print Action */}
-              <div className="flex items-center justify-between bg-white border border-slate-200 p-4 rounded-2xl shadow-xs print:hidden">
+          {sheet && (
+            <div className="broadsheet-print bg-white border border-slate-300 rounded-2xl shadow-xs overflow-hidden print:border-0 print:rounded-none">
+              {/* Header */}
+              <div className="p-4 border-b border-slate-300 flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <h3 className="font-extrabold text-base text-slate-900">
-                    {broadsheetData.className} — Master Result Sheet
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Session: <strong className="text-slate-800">{broadsheetData.session}</strong> &bull; Period:{" "}
-                    <strong className="text-slate-800">
-                      {broadsheetData.term === "annual" ? "Annual Cumulative" : broadsheetData.term.toUpperCase()}
-                    </strong>{" "}
-                    &bull; Class Size: <strong>{broadsheetData.studentsCount}</strong> &bull; Subjects:{" "}
-                    <strong>{broadsheetData.subjectsCount}</strong> &bull; Class Average:{" "}
-                    <strong className="text-indigo-600">{broadsheetData.classAverage}%</strong>
+                  <h2 className="text-lg font-black uppercase tracking-tight">Gracemark Academy</h2>
+                  <p className="text-xs font-bold text-slate-700">
+                    {sheet.className} · {title}
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Built from the scores entered (published or not). {sheet.isSenior ? "SSS grading; position by GPA." : "JSS grading; position by average."}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-2 cursor-pointer transition-colors print:hidden"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                  </svg>
-                  <span>Print Official Broadsheet</span>
-                </button>
-              </div>
-
-              {/* Printable Broadsheet Table */}
-              <div className="bg-white border border-slate-300 rounded-2xl overflow-x-auto shadow-sm printable-broadsheet-container">
-                {/* Official School Header block on printed document */}
-                <div className="p-4 bg-slate-50 border-b border-slate-300 flex items-center justify-between">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-x-4 gap-y-1 text-[11px]">
                   <div>
-                    <h2 className="text-lg font-black tracking-tight text-slate-900 uppercase">
-                      Gracemark Academy
-                    </h2>
-                    <p className="text-xs font-bold text-slate-700 tracking-wide mt-0.5">
-                      Official Class Master Broadsheet &bull; {broadsheetData.className} &bull; Session {broadsheetData.session} &bull; {broadsheetData.term === "annual" ? "Annual Master" : broadsheetData.term.toUpperCase()}
-                    </p>
+                    <div className="text-slate-500">Class size</div>
+                    <div className="font-bold">{sheet.classSize}</div>
                   </div>
-                  <div className="text-right text-[11px] text-slate-600 font-medium">
-                    <div>Class Size: <strong className="text-slate-900">{broadsheetData.studentsCount} Students</strong></div>
-                    <div>Total Subjects: <strong className="text-slate-900">{broadsheetData.subjectsCount}</strong> &bull; Class Avg: <strong className="text-indigo-700">{broadsheetData.classAverage}%</strong></div>
+                  <div>
+                    <div className="text-slate-500">With results</div>
+                    <div className="font-bold">{sheet.classSummary.evaluated}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-500">Class average</div>
+                    <div className="font-bold">{fmt(sheet.classSummary.avg)}%</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-500">Highest avg</div>
+                    <div className="font-bold text-emerald-700">{fmt(sheet.classSummary.highest)}%</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-500">Lowest avg</div>
+                    <div className="font-bold text-rose-700">{fmt(sheet.classSummary.lowest)}%</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-500">Overall grades</div>
+                    <div className="font-bold">{GRADES.map((g) => `${g}:${sheet.classSummary.grades[g]}`).join(" ")}</div>
                   </div>
                 </div>
+              </div>
 
-                <table className="w-full text-left border-collapse text-xs border-t border-slate-300">
-                  <thead>
-                    <tr className="bg-slate-100 border-b border-slate-300 text-[10px] font-extrabold uppercase text-slate-700">
-                      <th className="p-2 border-r border-slate-300 text-center w-8">#</th>
-                      <th className="p-2 border-r border-slate-300 w-24">Adm No</th>
-                      <th className="p-2 border-r border-slate-300 min-w-44">Student Name</th>
-                      {broadsheetData.subjects.map((sub: any) => (
-                        <th key={sub.id} className="p-2 border-r border-slate-300 text-center min-w-24">
-                          <div className="font-extrabold text-[11px] leading-tight text-slate-800" title={sub.name}>
-                            {sub.name}
-                          </div>
-                        </th>
-                      ))}
-                      <th className="p-2 border-r border-slate-300 text-center w-16 bg-slate-200">Total</th>
-                      <th className="p-2 border-r border-slate-300 text-center w-16 bg-slate-200">Avg %</th>
-                      <th className="p-2 text-center w-12 bg-indigo-100 text-indigo-900 font-black">Pos</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {broadsheetData.rows.length === 0 ? (
-                      <tr>
-                        <td colSpan={broadsheetData.subjects.length + 6} className="p-8 text-center text-slate-400">
-                          No score records found for this class and period.
-                        </td>
+              {isAnnual && sheet.classSummary.promotion && (
+                <div className="px-4 py-2 border-b border-slate-200 text-xs text-slate-700 bg-slate-50">
+                  Promotion: <strong className="text-emerald-700">{sheet.classSummary.promotion.PROMOTED} promoted</strong> ·{" "}
+                  <strong className="text-amber-700">{sheet.classSummary.promotion.TRIAL} on trial</strong> ·{" "}
+                  <strong className="text-rose-700">{sheet.classSummary.promotion.REPEAT} to repeat</strong>
+                </div>
+              )}
+
+              {!isAnnual && sheet.issues?.some((i: any) => i.code === "not_approved" || i.code === "returned") && (
+                <div className="px-4 py-2 border-b border-amber-200 bg-amber-50 text-xs text-amber-900 print:hidden">
+                  Some scores are not approved yet, so these figures may still change:{" "}
+                  {sheet.issues.filter((i: any) => i.code === "not_approved" || i.code === "returned").map((i: any) => i.message).join(" ")}
+                </div>
+              )}
+
+              {sheet.rows.length === 0 ? (
+                <p className="p-10 text-center text-sm text-slate-400">No scores entered for this class and period.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="broadsheet-table w-full text-[11px] border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100">
+                        <th rowSpan={2} className="border border-slate-300 px-1.5 py-1 sticky left-0 bg-slate-100 z-10">Pos</th>
+                        <th rowSpan={2} className="border border-slate-300 px-1.5 py-1 text-left sticky left-8 bg-slate-100 z-10 min-w-[150px]">Student</th>
+                        {sheet.subjects.map((s: any) => (
+                          <th key={s.id} colSpan={subCols.length} className="border border-slate-300 px-1 py-1 font-bold text-center">
+                            {s.name}
+                            {(isTR || isAnnual) && <span className="block text-[9px] font-normal text-slate-500">unit {s.creditUnit}</span>}
+                          </th>
+                        ))}
+                        <th rowSpan={2} className="border border-slate-300 px-1.5 py-1 bg-slate-200">Subj.</th>
+                        <th rowSpan={2} className="border border-slate-300 px-1.5 py-1 bg-slate-200">{isAnnual ? "Annual total" : isTR ? "Total" : "Total CA"}</th>
+                        <th rowSpan={2} className="border border-slate-300 px-1.5 py-1 bg-slate-200">Avg %</th>
+                        {(isTR || isAnnual) && <th rowSpan={2} className="border border-slate-300 px-1.5 py-1 bg-slate-200">GPA</th>}
+                        <th rowSpan={2} className="border border-slate-300 px-1.5 py-1 bg-slate-200">Grade</th>
+                        <th rowSpan={2} className="border border-slate-300 px-1.5 py-1 bg-slate-200">Remark</th>
+                        {isAnnual && (
+                          <>
+                            <th rowSpan={2} className="border border-slate-300 px-1.5 py-1 bg-slate-200">1st avg</th>
+                            <th rowSpan={2} className="border border-slate-300 px-1.5 py-1 bg-slate-200">2nd avg</th>
+                            <th rowSpan={2} className="border border-slate-300 px-1.5 py-1 bg-slate-200">3rd avg</th>
+                            <th rowSpan={2} className="border border-slate-300 px-1.5 py-1 bg-slate-200">Promotion</th>
+                          </>
+                        )}
+                        {isTR && !isAnnual && (
+                          <>
+                            <th rowSpan={2} className="border border-slate-300 px-1.5 py-1 bg-slate-200">Attendance</th>
+                            <th rowSpan={2} className="border border-slate-300 px-1.5 py-1 bg-slate-200">Skills /60</th>
+                          </>
+                        )}
                       </tr>
-                    ) : (
-                      broadsheetData.rows.map((r: any, idx: number) => (
-                        <tr key={r.studentId} className="hover:bg-slate-50/80">
-                          <td className="p-2 border-r border-slate-300 text-center font-mono text-slate-500">
-                            {idx + 1}
+                      <tr className="bg-slate-50 text-[9px] text-slate-600">
+                        {sheet.subjects.map((s: any) =>
+                          subCols.map((c) => (
+                            <th key={`${s.id}-${c.key}`} className="border border-slate-300 px-1 py-0.5 font-semibold">
+                              {c.label}
+                            </th>
+                          ))
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sheet.rows.map((r: any) => (
+                        <tr key={r.studentId} className="hover:bg-slate-50">
+                          <td className="border border-slate-300 px-1.5 py-1 text-center font-bold sticky left-0 bg-white">{ordinal(r.position)}</td>
+                          <td className="border border-slate-300 px-1.5 py-1 sticky left-8 bg-white">
+                            <div className="font-semibold text-slate-900 whitespace-nowrap">{r.name}</div>
+                            <div className="text-[9px] text-slate-400">{r.admissionNo}</div>
                           </td>
-                          <td className="p-2 border-r border-slate-300 font-mono text-slate-700 font-semibold">
-                            {r.admissionNo}
-                          </td>
-                          <td className="p-2 border-r border-slate-300 font-bold text-slate-900">
-                            {r.name}
-                          </td>
-                          {broadsheetData.subjects.map((sub: any) => {
-                            const sc = r.subjectScores[sub.id];
-                            const hasScore = sc?.total !== null && sc?.total !== undefined;
-                            const isFail = hasScore && sc.total < 40;
-
-                            return (
+                          {sheet.subjects.map((s: any) =>
+                            subCols.map((c) => {
+                              const v = cellValue(r, s.id, c.key);
+                              return (
+                                <td
+                                  key={`${r.studentId}-${s.id}-${c.key}`}
+                                  className={`border border-slate-300 px-1 py-1 text-center tabular-nums ${c.key === "grade" ? `font-bold ${gradeTone(v)}` : ""} ${
+                                    c.key === "total" || c.key === "annual" || c.key === "percentage" ? "font-semibold" : ""
+                                  }`}
+                                >
+                                  {v === null || v === undefined ? <span className="text-slate-300">—</span> : c.key === "grade" ? v : fmt(v)}
+                                </td>
+                              );
+                            })
+                          )}
+                          <td className="border border-slate-300 px-1.5 py-1 text-center">{r.subjectsTaken}</td>
+                          <td className="border border-slate-300 px-1.5 py-1 text-center font-semibold tabular-nums">{fmt(isAnnual ? r.annualTotal : r.total)}</td>
+                          <td className="border border-slate-300 px-1.5 py-1 text-center font-bold tabular-nums">{fmt(r.average, 2)}</td>
+                          {(isTR || isAnnual) && <td className="border border-slate-300 px-1.5 py-1 text-center tabular-nums">{fmt(r.gpa, 2)}</td>}
+                          <td className={`border border-slate-300 px-1.5 py-1 text-center font-black ${gradeTone(r.grade)}`}>{r.grade}</td>
+                          <td className="border border-slate-300 px-1.5 py-1 text-center whitespace-nowrap">{r.remark}</td>
+                          {isAnnual && (
+                            <>
+                              {r.termAverages.map((a: number | null, i: number) => (
+                                <td key={i} className="border border-slate-300 px-1.5 py-1 text-center tabular-nums">
+                                  {fmt(a)}
+                                </td>
+                              ))}
                               <td
-                                key={sub.id}
-                                className={`p-2 border-r border-slate-300 text-center font-mono ${
-                                  isFail ? "text-rose-600 bg-rose-50/40" : "text-slate-800"
+                                className={`border border-slate-300 px-1.5 py-1 text-center font-semibold whitespace-nowrap ${
+                                  r.promotion?.status === "PROMOTED" ? "text-emerald-700" : r.promotion?.status === "TRIAL" ? "text-amber-700" : "text-rose-700"
                                 }`}
                               >
-                                {hasScore ? (
-                                  viewMode === "score-grade" ? (
-                                    <div className="flex items-center justify-center gap-1">
-                                      <span className="font-bold text-xs">{sc.total}</span>
-                                      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1 py-0.5 rounded">
-                                        {sc.grade}
-                                      </span>
-                                    </div>
-                                  ) : viewMode === "breakdown" ? (
-                                    <div>
-                                      <div className="text-[9px] text-slate-400 font-sans">
-                                        CA:{(sc.cw ?? 0) + (sc.test ?? 0)} | Ex:{sc.exam ?? "—"}
-                                      </div>
-                                      <div className="font-bold text-xs text-slate-900">
-                                        {sc.total} <span className="text-[9px] text-indigo-600 font-bold">({sc.grade})</span>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <span className="font-bold text-xs">{sc.total}</span>
-                                  )
-                                ) : (
-                                  <span className="text-slate-300 font-sans">—</span>
-                                )}
+                                {r.promotion?.status === "PROMOTED" ? "Promoted" : r.promotion?.status === "TRIAL" ? "On trial" : "Repeat"}
+                              </td>
+                            </>
+                          )}
+                          {isTR && !isAnnual && (
+                            <>
+                              <td className="border border-slate-300 px-1.5 py-1 text-center tabular-nums whitespace-nowrap">
+                                {r.attendance ? `${r.attendance.present}/${r.attendance.opened}` : "—"}
+                              </td>
+                              <td className="border border-slate-300 px-1.5 py-1 text-center tabular-nums">{r.skillsTotal ?? "—"}</td>
+                            </>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-slate-50 text-[10px]">
+                      {(
+                        [
+                          ["avg", "Class average"],
+                          ["highest", "Highest"],
+                          ["lowest", "Lowest"],
+                          ["count", "No. offering"],
+                          ["passes", "Passed (not F)"],
+                          ...GRADES.map((g) => [`g:${g}`, `No. of ${g}`]),
+                        ] as [string, string][]
+                      ).map(([key, label]) => (
+                        <tr key={key}>
+                          <td colSpan={2} className="border border-slate-300 px-1.5 py-1 text-right font-bold sticky left-0 bg-slate-50">
+                            {label}
+                          </td>
+                          {sheet.subjects.map((s: any) => {
+                            const st = sheet.subjectStats[s.id] || {};
+                            const v = key.startsWith("g:") ? st.grades?.[key.slice(2)] : st[key];
+                            return (
+                              <td key={`${key}-${s.id}`} colSpan={subCols.length} className="border border-slate-300 px-1 py-1 text-center tabular-nums font-semibold">
+                                {v === null || v === undefined ? "—" : key === "count" || key === "passes" || key.startsWith("g:") ? v : fmt(v)}
                               </td>
                             );
                           })}
-                          <td className="p-2 border-r border-slate-300 text-center font-mono font-bold bg-slate-50">
-                            {r.totalScore}
-                          </td>
-                          <td className="p-2 border-r border-slate-300 text-center font-mono font-bold bg-slate-50 text-indigo-700">
-                            {r.average}%
-                          </td>
-                          <td className="p-2 text-center font-mono font-black text-indigo-900 bg-indigo-50/50">
-                            {r.position}
-                          </td>
+                          <td colSpan={isAnnual ? 10 : isTR ? 8 : 5} className="border border-slate-300" />
                         </tr>
-                      ))
-                    )}
+                      ))}
+                    </tfoot>
+                  </table>
+                </div>
+              )}
 
-                    {/* Benchmark Summary Rows */}
-                    {broadsheetData.rows.length > 0 && (
-                      <>
-                        <tr className="bg-slate-100 font-bold text-[10px] text-slate-700 border-t-2 border-slate-300">
-                          <td colSpan={3} className="p-2 border-r border-slate-300 uppercase text-right">
-                            Subject Average
-                          </td>
-                          {broadsheetData.subjects.map((sub: any) => (
-                            <td key={sub.id} className="p-2 border-r border-slate-300 text-center font-mono font-bold text-indigo-900">
-                              {broadsheetData.subjectStats[sub.id]?.avg ?? "—"}
-                            </td>
-                          ))}
-                          <td colSpan={3} className="p-2 bg-slate-200"></td>
-                        </tr>
-                        <tr className="bg-slate-50 font-semibold text-[10px] text-emerald-700">
-                          <td colSpan={3} className="p-2 border-r border-slate-300 uppercase text-right">
-                            Highest Score
-                          </td>
-                          {broadsheetData.subjects.map((sub: any) => (
-                            <td key={sub.id} className="p-2 border-r border-slate-300 text-center font-mono">
-                              {broadsheetData.subjectStats[sub.id]?.highest ?? "—"}
-                            </td>
-                          ))}
-                          <td colSpan={3} className="p-2"></td>
-                        </tr>
-                        <tr className="bg-slate-50 font-semibold text-[10px] text-rose-700">
-                          <td colSpan={3} className="p-2 border-r border-slate-300 uppercase text-right">
-                            Lowest Score
-                          </td>
-                          {broadsheetData.subjects.map((sub: any) => (
-                            <td key={sub.id} className="p-2 border-r border-slate-300 text-center font-mono">
-                              {broadsheetData.subjectStats[sub.id]?.lowest ?? "—"}
-                            </td>
-                          ))}
-                          <td colSpan={3} className="p-2"></td>
-                        </tr>
-                      </>
-                    )}
-                  </tbody>
-                </table>
-
-                {/* Sign-off Footers */}
-                <div className="p-6 grid grid-cols-2 gap-12 pt-12 border-t border-slate-200 text-xs">
-                  <div>
-                    <div className="border-b border-slate-400 pb-1 w-64 mb-1"></div>
-                    <span className="font-bold text-slate-800 uppercase tracking-wide">Class Teacher Signature &amp; Date</span>
-                  </div>
-                  <div className="text-right">
-                    <div className="border-b border-slate-400 pb-1 w-64 ml-auto mb-1"></div>
-                    <span className="font-bold text-slate-800 uppercase tracking-wide">Principal Signature &amp; Official Stamp</span>
-                  </div>
+              <div className="p-6 grid grid-cols-2 gap-12 pt-10 text-xs">
+                <div>
+                  <div className="border-b border-slate-400 w-64 mb-1" />
+                  <span className="font-bold uppercase tracking-wide text-slate-700">Class teacher&rsquo;s signature &amp; date</span>
+                </div>
+                <div className="text-right">
+                  <div className="border-b border-slate-400 w-64 ml-auto mb-1" />
+                  <span className="font-bold uppercase tracking-wide text-slate-700">Principal&rsquo;s signature &amp; stamp</span>
                 </div>
               </div>
             </div>
@@ -706,41 +617,15 @@ export default function AdminHistoricalResultsPage() {
         </div>
       )}
 
-      {/* Individual Printable Report Card Modal */}
-      {printModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl p-6 border border-slate-200 my-8">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4 print:hidden">
-              <h3 className="font-bold text-base text-slate-900">
-                Official Report Card — Historical Print
-              </h3>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                  </svg>
-                  <span>Print Document</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPrintModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-
-            {loadingReportData ? (
-              <div className="py-20 text-center text-slate-400">Loading historical report card…</div>
-            ) : printReportData ? (
-              <ResultDashboardApp student={studentCareer.student} initialReport={printReportData} />
-            ) : null}
-          </div>
+      {/* Report card viewer */}
+      {reportView && career && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-white print:static print:overflow-visible">
+          <ResultDashboardApp
+            studentId={career.student.id}
+            initialSession={reportView.session}
+            initialTerm={reportView.term}
+            onClose={() => setReportView(null)}
+          />
         </div>
       )}
     </div>

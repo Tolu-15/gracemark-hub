@@ -83,6 +83,46 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Only score fields are accepted from the client. Approval and publishing
+  // status can only be changed by the admin endpoints.
+  const cleanRecords = records.map((r: any) => ({
+    student_id: r.student_id,
+    subject_id: r.subject_id,
+    class_id: r.class_id,
+    term: r.term,
+    session: r.session,
+    ...(r.academic_session_id ? { academic_session_id: r.academic_session_id } : {}),
+    cw: r.cw,
+    hw: r.hw,
+    test: r.test,
+    project: r.project,
+    exam: r.exam,
+    // total is calculated by the database (cw + hw + test + project + exam)
+    grade: r.grade,
+    score_breakdown: r.score_breakdown,
+    status: r.status === "submitted" ? "submitted" : "draft",
+    ...(r.status === "submitted" ? { return_reason: null } : {}),
+  }));
+
+  // Students marked "Not offering" for a subject cannot receive scores for it.
+  if (cleanRecords.length) {
+    const sessions = Array.from(new Set(cleanRecords.map((r: any) => r.session).filter(Boolean)));
+    const { data: optouts, error: optErr } = await service
+      .from("student_subject_optouts")
+      .select("student_id, subject_id, session")
+      .in("student_id", cleanRecords.map((r: any) => r.student_id))
+      .in("session", sessions.length ? sessions : [""]);
+    if (!optErr && optouts?.length) {
+      const blocked = new Set(optouts.map((o: any) => `${o.student_id}:${o.subject_id}:${o.session}`));
+      if (cleanRecords.some((r: any) => blocked.has(`${r.student_id}:${r.subject_id}:${r.session}`))) {
+        return NextResponse.json(
+          { error: "A student marked 'Not offering' for this subject cannot receive scores. Untick 'Not offering' first." },
+          { status: 400 }
+        );
+      }
+    }
+  }
+
   if (deletedResultIds.length && actor.role !== "admin") {
     const { data: deletable } = await service
       .from("results")
@@ -132,29 +172,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (!records.length) {
+    if (!cleanRecords.length) {
       return NextResponse.json({ ok: true, count: 0, deleted: deletedResultIds.length });
     }
 
-    let { data, error } = await service
+    const { error } = await service
       .from("results")
-      .upsert(records, { onConflict: "student_id,subject_id,term,session" });
-
-    if (error && /submitted_at|return_reason/i.test(error.message || "")) {
-      const cleaned = records.map(({ submitted_at, return_reason, ...rest }: any) => rest);
-      ({ data, error } = await service
-        .from("results")
-        .upsert(cleaned, { onConflict: "student_id,subject_id,term,session" }));
-    }
-
-    if (error && /session|score_breakdown/i.test(error.message || "")) {
-      const fallback = records.map(
-        ({ session, class_id, score_breakdown, submitted_at, return_reason, ...rest }: any) => rest
-      );
-      ({ data, error } = await service
-        .from("results")
-        .upsert(fallback, { onConflict: "student_id,subject_id,term" }));
-    }
+      .upsert(cleanRecords, { onConflict: "student_id,subject_id,term,session" });
 
     if (error) {
       console.error("Save results DB error:", error);

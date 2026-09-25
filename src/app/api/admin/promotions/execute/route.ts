@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
-import { STANDARD_JSS_SUBJECTS, getSSSTrackDefaults, isJuniorClass } from "@/lib/curriculum";
 
 export async function POST(req: NextRequest) {
   const authorization = await requireApiActor(req, ["admin"]);
   if ("response" in authorization) return authorization.response;
-  const { service, authId } = authorization.actor;
+  const { service, dbUserId } = authorization.actor;
 
   try {
     const body = await req.json();
@@ -102,7 +101,6 @@ export async function POST(req: NextRequest) {
               student_id: studentId,
               class_id: fromClassId,
               academic_session_id: effectiveNextSessionId,
-              session: effectiveNextSession,
               status: "active",
             },
             { onConflict: "student_id,academic_session_id" }
@@ -134,7 +132,6 @@ export async function POST(req: NextRequest) {
               student_id: studentId,
               class_id: toClassId,
               academic_session_id: effectiveNextSessionId,
-              session: effectiveNextSession,
               status: "active",
             },
             { onConflict: "student_id,academic_session_id" }
@@ -147,37 +144,26 @@ export async function POST(req: NextRequest) {
           await service.from("students").update({ class_id: toClassId }).eq("id", studentId);
         }
 
-        // 4. Auto-enroll into target curriculum subjects
-        if (toClass && effectiveNextSessionId) {
-          const isJss = isJuniorClass(toClass.name);
-          const sssDefaults = getSSSTrackDefaults(toClass.name);
-          const targetSubjects: string[] = isJss
-            ? STANDARD_JSS_SUBJECTS
-            : [...sssDefaults.core, ...sssDefaults.majors];
-
-          const { data: dbSubjects } = await service.from("subjects").select("id, name");
-          const subMap = new Map((dbSubjects || []).map((s: any) => [s.name.trim().toLowerCase(), s.id]));
-
-          const ssePayload: any[] = [];
-          for (const sName of targetSubjects) {
-            const sId = subMap.get(sName.trim().toLowerCase());
-            if (sId) {
-              ssePayload.push({
-                student_id: studentId,
-                subject_id: sId,
-                class_id: toClassId,
-                academic_session_id: effectiveNextSessionId,
-                session: effectiveNextSession,
-                status: "enrolled",
-                is_active: true,
-              });
+        // 4. Subjects follow the new class's subject list automatically. Carry the
+        //    student's "Not offering" marks into the next session for subjects the
+        //    new class also offers, so teachers don't have to tick them again.
+        if (toClass && currentSession && effectiveNextSession && currentSession !== effectiveNextSession) {
+          const [{ data: optouts }, { data: toCls }] = await Promise.all([
+            service.from("student_subject_optouts").select("subject_id").eq("student_id", studentId).eq("session", currentSession),
+            service.from("classes").select("subject_group_code").eq("id", toClassId).maybeSingle(),
+          ]);
+          if (optouts?.length && toCls?.subject_group_code) {
+            const { data: list } = await service
+              .from("subject_group_subjects")
+              .select("subject_id")
+              .eq("group_code", toCls.subject_group_code);
+            const offered = new Set((list || []).map((l: any) => l.subject_id));
+            const carry = optouts
+              .filter((o: any) => offered.has(o.subject_id))
+              .map((o: any) => ({ student_id: studentId, subject_id: o.subject_id, session: effectiveNextSession }));
+            if (carry.length) {
+              await service.from("student_subject_optouts").upsert(carry, { onConflict: "student_id,subject_id,session" });
             }
-          }
-
-          if (ssePayload.length > 0) {
-            await service
-              .from("student_subject_enrollments")
-              .upsert(ssePayload, { onConflict: "student_id,subject_id,session" });
           }
         }
 
@@ -193,11 +179,17 @@ export async function POST(req: NextRequest) {
     }
 
     // 5. Record promotion history event
+    let fromSessionId = currentSessionId;
+    if (!fromSessionId && currentSession) {
+      const { data: fromSess } = await service.from("academic_sessions").select("id").eq("name", currentSession).maybeSingle();
+      fromSessionId = fromSess?.id;
+    }
     const { data: promoRow, error: pErr } = await service
       .from("promotions")
       .insert({
-        session: currentSession || effectiveNextSession,
-        promoted_by: authId,
+        from_session_id: fromSessionId || effectiveNextSessionId,
+        to_session_id: effectiveNextSessionId || fromSessionId,
+        promoted_by: dbUserId,
         summary,
         notes: notes?.trim() || null,
       })

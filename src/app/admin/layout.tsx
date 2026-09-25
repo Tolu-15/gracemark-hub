@@ -31,6 +31,11 @@ const adminNavItems: NavItem[] = [
   },
   {
     category: "Academics & Staff",
+    label: "Class Subject Lists",
+    href: "/admin/subjects/lists",
+  },
+  {
+    category: "Academics & Staff",
     label: "Result Approvals",
     href: "/admin/approvals",
   },

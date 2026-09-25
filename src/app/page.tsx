@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { isDefaultPassword } from "@/lib/defaultPasswords";
 import {
   signInWithEmail,
   fetchUserProfileByAuthId,
@@ -108,33 +109,12 @@ export default function LoginPage() {
         return;
       }
 
-      // Check if user must change password or logged in with a default password
-      const DEFAULT_PASSWORDS = new Set([
-        "gracemark",
-        "gracemark2026!",
-        "student123",
-        "teacher123",
-        "student",
-        "password",
-        "password123",
-        "123456",
-        "12345678",
-      ]);
-
-      // Single Source of Truth for Password Reset: Flag on user record (trigger ONCE per account)
-      let mustChange = Boolean((profile as any)?.must_change_password);
-
-      // If must_change_password is explicitly false, user has already updated password -> do not prompt
-      if ((profile as any)?.must_change_password === false) {
-        mustChange = false;
-      } else if ((profile as any)?.must_change_password === undefined || (profile as any)?.must_change_password === null) {
-        // Flag unset: check if default password was used on initial account setup
-        const cleanPw = password.trim().toLowerCase();
-        if (DEFAULT_PASSWORDS.has(cleanPw) || password.trim().startsWith("Gma@")) {
-          mustChange = true;
-          // Set flag in database so it is recorded
-          await supabase.from("users").update({ must_change_password: true }).eq("auth_id", user.id);
-        }
+      // Must change password when the account is flagged (new account or admin
+      // reset) or when the person signed in with a default password.
+      const usedDefault = isDefaultPassword(password);
+      const mustChange = Boolean((profile as any)?.must_change_password) || usedDefault;
+      if (usedDefault && !(profile as any)?.must_change_password) {
+        await supabase.from("users").update({ must_change_password: true }).eq("auth_id", user.id);
       }
 
       if (mustChange) {

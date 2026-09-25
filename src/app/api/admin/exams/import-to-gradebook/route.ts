@@ -106,7 +106,6 @@ export async function POST(req: NextRequest) {
           test: stored.test,
           project: stored.project,
           exam: stored.exam,
-          total: stored.total,
           grade: stored.grade,
           status: existingResult?.status || "draft",
           updated_at: new Date().toISOString(),

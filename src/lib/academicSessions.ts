@@ -95,13 +95,20 @@ export async function deleteAcademicSession(identifier: string): Promise<boolean
   const settings = await getAppSettings();
   const currentSession = settings?.current_session || "";
 
-  // Delete from academic_sessions
+  // The identifier may be the session id or its name (e.g. "2025/2026")
+  const isId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
   const { error } = await supabase
     .from("academic_sessions")
     .delete()
-    .or(`id.eq.${identifier},name.eq.${identifier}`);
+    .eq(isId ? "id" : "name", identifier);
 
   if (error) {
+    if (error.code === "23503") {
+      throw new Error(
+        `"${identifier}" still has students, teacher assignments or results linked to it, so it cannot be deleted. ` +
+          "Only an empty session (for example one created by mistake) can be deleted."
+      );
+    }
     throw new Error(error.message);
   }
 

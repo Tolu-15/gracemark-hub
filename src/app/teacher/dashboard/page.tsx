@@ -10,6 +10,9 @@ export default function TeacherDashboardPage() {
   const [assignedSubjects, setAssignedSubjects] = useState<{ id: string; name: string }[]>([]);
   const [studentCount, setStudentCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [returned, setReturned] = useState<
+    { classId: string; className: string; subjectId: string; subjectName: string; term: string; reason: string; count: number }[]
+  >([]);
 
   const loadTeacherData = useCallback(async () => {
     setLoading(true);
@@ -76,6 +79,35 @@ export default function TeacherDashboardPage() {
         if (a.subjects?.name) subjectMap.set(a.subjects.id, a.subjects);
       });
 
+      // Scores the admin returned for correction (this session, this teacher's subjects)
+      const pairs = new Set((staRes.data || []).map((a: any) => `${a.class_id}:${a.subject_id}`));
+      if (pairs.size) {
+        const { data: settings } = await supabase.from("app_settings").select("current_session").limit(1).maybeSingle();
+        const { data: ret } = await supabase
+          .from("results")
+          .select("class_id, subject_id, term, return_reason, classes(name), subjects(name)")
+          .eq("status", "returned")
+          .eq("session", (settings as any)?.current_session || "")
+          .in("class_id", Array.from(new Set((staRes.data || []).map((a: any) => a.class_id))));
+        const grouped = new Map<string, any>();
+        (ret || []).forEach((r: any) => {
+          if (!pairs.has(`${r.class_id}:${r.subject_id}`)) return;
+          const key = `${r.class_id}:${r.subject_id}:${r.term}`;
+          const g = grouped.get(key) || {
+            classId: r.class_id,
+            className: r.classes?.name || "",
+            subjectId: r.subject_id,
+            subjectName: r.subjects?.name || "",
+            term: r.term,
+            reason: r.return_reason || "",
+            count: 0,
+          };
+          g.count += 1;
+          grouped.set(key, g);
+        });
+        setReturned(Array.from(grouped.values()));
+      }
+
       const uniqueClasses = Array.from(classMap.values());
       const uniqueSubjects = Array.from(subjectMap.values());
 
@@ -116,6 +148,35 @@ export default function TeacherDashboardPage() {
           Enter weekly scores, track daily AM/PM class attendance, and manage continuous assessment reports.
         </p>
       </div>
+
+      {/* Returned for correction */}
+      {returned.length > 0 && (
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5">
+          <h3 className="text-sm font-bold text-rose-900">Returned for correction ({returned.length})</h3>
+          <p className="text-xs text-rose-800 mt-0.5">The admin sent these scores back. Correct them, then click &ldquo;Submit to Admin&rdquo; again.</p>
+          <ul className="mt-3 space-y-2">
+            {returned.map((r) => (
+              <li key={`${r.classId}:${r.subjectId}:${r.term}`} className="bg-white border border-rose-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-bold text-slate-900">
+                    {r.subjectName} · {r.className}{" "}
+                    <span className="text-xs font-semibold text-slate-500">
+                      ({r.term === "term1" ? "1st" : r.term === "term2" ? "2nd" : "3rd"} Term, {r.count} student{r.count === 1 ? "" : "s"})
+                    </span>
+                  </div>
+                  <div className="text-xs text-rose-800 mt-0.5">Admin&rsquo;s message: &ldquo;{r.reason || "Please review and correct."}&rdquo;</div>
+                </div>
+                <Link
+                  href={`/teacher/score-entry?class=${r.classId}&subject=${r.subjectId}&term=${r.term}`}
+                  className="shrink-0 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold text-center"
+                >
+                  Fix scores
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

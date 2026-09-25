@@ -35,6 +35,13 @@ export default function PortalLayout({
   const pathname = usePathname();
   const router = useRouter();
 
+  // Highlight only the closest nav item (e.g. /admin/subjects/lists highlights
+  // "Class Subject Lists", not also "Manage Subjects").
+  const activeHref =
+    navItems
+      .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
+      .sort((a, b) => b.href.length - a.href.length)[0]?.href || "";
+
   // Close mobile nav on route change
   useEffect(() => {
     setNavOpen(false);
@@ -159,12 +166,7 @@ export default function PortalLayout({
                 </div>
               )}
               {cat.items.map((item) => {
-                const isActive =
-                  pathname === item.href ||
-                  (item.href !== "/admin/dashboard" &&
-                    item.href !== "/teacher/dashboard" &&
-                    item.href !== "/student/dashboard" &&
-                    pathname.startsWith(item.href));
+                const isActive = item.href === activeHref;
 
                 return (
                   <Link

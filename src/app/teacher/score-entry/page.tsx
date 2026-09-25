@@ -1,14 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import {
   GRADING_CONFIG,
+  PR_WINDOWS,
   calculatePR1,
   calculatePR2,
   calculatePR3,
   calculateTR,
-  emptyRawScores,
+  detectAssessmentWeeks,
+  emptyScheduledWeeks,
+  weeksForFrequency,
   normalizeBreakdown,
   toStoredScores,
   validateRawScores,
@@ -41,6 +44,12 @@ export default function TeacherScoreEntryPage() {
     Array<{ class_id: string; class_name: string; subject_id: string; subject_name: string }>
   >([]);
   const [allSubjects, setAllSubjects] = useState<{ id: string; name: string }[]>([]);
+  // Subjects on the selected class's subject list (null = no list configured)
+  // subject id → classwork/homework frequency ("weekly" | "fortnightly")
+  const [classSubjectIds, setClassSubjectIds] = useState<Map<string, string> | null>(null);
+  // Students marked "Not offering" for the selected subject this session
+  const [notOffering, setNotOffering] = useState<Set<string>>(new Set());
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const [termList, setTermList] = useState<any[]>([]);
   const [isEditable, setIsEditable] = useState(true);
@@ -58,31 +67,67 @@ export default function TeacherScoreEntryPage() {
   const selectedClassName = classes.find((c) => c.id === selectedClass)?.name || "";
   const isSenior = isSeniorClass(selectedClassName);
 
-  // Dynamically compute subjects assigned to teacher for the selected class
+  // Subjects the user can enter for the selected class: the teacher's assignments
+  // (admins: every subject), limited to the class's subject list when one exists.
   const subjects = useMemo<{ id: string; name: string }[]>(() => {
     if (!selectedClass) return [];
+    const onClassList = (id: string) => !classSubjectIds || classSubjectIds.has(id);
     const assigned = teacherAssignments.filter((a) => a.class_id === selectedClass);
     if (assigned.length > 0) {
       const map = new Map<string, { id: string; name: string }>();
       assigned.forEach((a) => {
-        if (a.subject_id) {
+        if (a.subject_id && onClassList(a.subject_id)) {
           map.set(a.subject_id, { id: a.subject_id, name: a.subject_name || "Unknown Subject" });
         }
       });
       return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
     }
-    // Teachers should ONLY see subjects assigned to them per class
-    // Only administrators have the privilege to view/enter scores for unassigned subjects
     if (userRole === "admin") {
-      return allSubjects;
+      return allSubjects.filter((s) => onClassList(s.id));
     }
     return [];
-  }, [selectedClass, teacherAssignments, allSubjects, userRole]);
+  }, [selectedClass, teacherAssignments, allSubjects, userRole, classSubjectIds]);
+
+  // Load the selected class's subject list
+  useEffect(() => {
+    if (!selectedClass) return;
+    let cancelled = false;
+    (async () => {
+      const { data: cls } = await supabase.from("classes").select("subject_group_code").eq("id", selectedClass).maybeSingle();
+      const groupCode = (cls as any)?.subject_group_code;
+      if (!groupCode) {
+        if (!cancelled) setClassSubjectIds(null);
+        return;
+      }
+      const { data: list } = await supabase.from("subject_group_subjects").select("subject_id, frequency").eq("group_code", groupCode);
+      if (!cancelled) {
+        setClassSubjectIds(list && list.length ? new Map(list.map((l: any) => [l.subject_id, l.frequency || "fortnightly"])) : null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClass]);
+
+  // Class / subject / term requested by a link, e.g. "Fix scores" on the dashboard
+  const linkTarget = React.useRef<{ class?: string; subject?: string; term?: string } | null>(null);
+  if (linkTarget.current === null && typeof window !== "undefined") {
+    const params = new URLSearchParams(window.location.search);
+    linkTarget.current = {
+      class: params.get("class") || undefined,
+      subject: params.get("subject") || undefined,
+      term: params.get("term") || undefined,
+    };
+  }
 
   // Keep selectedSubject in sync with available subjects
   useEffect(() => {
     if (subjects.length > 0) {
-      if (!selectedSubject || !subjects.some((s: { id: string; name: string }) => s.id === selectedSubject)) {
+      const wanted = linkTarget.current?.subject;
+      if (wanted && subjects.some((s: { id: string }) => s.id === wanted)) {
+        linkTarget.current = { ...linkTarget.current, subject: undefined };
+        setSelectedSubject(wanted);
+      } else if (!selectedSubject || !subjects.some((s: { id: string; name: string }) => s.id === selectedSubject)) {
         setSelectedSubject(subjects[0].id);
       }
     } else {
@@ -99,7 +144,8 @@ export default function TeacherScoreEntryPage() {
         const data = await res.json();
         if (data.ok) {
           setTermList(data.terms || []);
-          if (data.current_term) setSelectedTerm(data.current_term);
+          if (linkTarget.current?.term) setSelectedTerm(linkTarget.current.term);
+          else if (data.current_term) setSelectedTerm(data.current_term);
           if (data.current_session) setCurrentSession(data.current_session);
           if (data.active_session_id) {
             activeSessionId = data.active_session_id;
@@ -187,7 +233,11 @@ export default function TeacherScoreEntryPage() {
       }
 
       setClasses(cList);
-      if (cList.length > 0 && (!selectedClass || !cList.some((c) => c.id === selectedClass))) {
+      const wantedClass = linkTarget.current?.class;
+      if (wantedClass && cList.some((c) => c.id === wantedClass)) {
+        linkTarget.current = { ...linkTarget.current, class: undefined };
+        setSelectedClass(wantedClass);
+      } else if (cList.length > 0 && (!selectedClass || !cList.some((c) => c.id === selectedClass))) {
         setSelectedClass(cList[0].id);
       }
     } catch (err) {
@@ -216,79 +266,18 @@ export default function TeacherScoreEntryPage() {
     setStatusMsg("");
 
     try {
-      // 1. Fetch students for the selected class and subject
-      let studentList: { id: string; name: string; admission_no: string }[] = [];
-
-      // Try fetching via student_subject_enrollments
-      try {
-        let subQuery = supabase
-          .from("student_subject_enrollments")
-          .select(`
-            id,
-            status,
-            enrollment_id,
-            student_enrollments (
-              id,
-              student_id,
-              class_id,
-              academic_session_id,
-              students (id, name, admission_no)
-            )
-          `)
-          .eq("subject_id", selectedSubject)
-          .eq("status", "enrolled")
-          .eq("student_enrollments.class_id", selectedClass);
-
-        if (currentSessionId) {
-          const { data: sessData } = await subQuery.eq("student_enrollments.academic_session_id", currentSessionId);
-          if (sessData && sessData.length > 0) {
-            studentList = sessData
-              .map((e: any) => e.student_enrollments?.students)
-              .filter(Boolean);
-          }
-        }
-
-        // If session-specific query didn't return students, try without session filter
-        if (!studentList.length) {
-          const { data: anyData } = await subQuery;
-          if (anyData && anyData.length > 0) {
-            studentList = anyData
-              .map((e: any) => e.student_enrollments?.students)
-              .filter(Boolean);
-          }
-        }
-      } catch (subErr) {
-        console.warn("student_subject_enrollments query failed:", subErr);
-      }
-
-      // CRITICAL GUARANTEE: If student_subject_enrollments has no students yet for this subject,
-      // load all active students in the selected class from `students` table & enrollments
-      if (!studentList.length && selectedClass) {
-        const [studentRes, enrollRes] = await Promise.all([
-          supabase
-            .from("students")
-            .select("id, name, admission_no")
-            .eq("class_id", selectedClass)
-            .order("name"),
-          supabase
-            .from("student_enrollments")
-            .select("student_id, students(id, name, admission_no)")
-            .eq("class_id", selectedClass)
-            .eq("status", "active"),
-        ]);
-
-        const map = new Map<string, { id: string; name: string; admission_no: string }>();
-        (studentRes.data || []).forEach((s: any) => {
-          if (s.id) map.set(s.id, { id: s.id, name: s.name || "Student", admission_no: s.admission_no || "—" });
-        });
-        (enrollRes.data || []).forEach((e: any) => {
-          if (e.students?.id && !map.has(e.students.id)) {
-            map.set(e.students.id, { id: e.students.id, name: e.students.name || "Student", admission_no: e.students.admission_no || "—" });
-          }
-        });
-
-        studentList = Array.from(map.values());
-      }
+      // 1. Every student in the class takes every subject on the class list
+      const { data: classStudents, error: stErr } = await supabase
+        .from("students")
+        .select("id, name, admission_no")
+        .eq("class_id", selectedClass)
+        .order("name");
+      if (stErr) throw stErr;
+      let studentList: { id: string; name: string; admission_no: string }[] = (classStudents || []).map((st: any) => ({
+        id: st.id,
+        name: st.name || "Student",
+        admission_no: st.admission_no || "—",
+      }));
 
       // Deduplicate student list by id
       const uniqueStudentMap = new Map<string, { id: string; name: string; admission_no: string }>();
@@ -309,13 +298,23 @@ export default function TeacherScoreEntryPage() {
 
       const sIds = studentList.map((s) => s.id);
 
-      // 2. Fetch existing results
-      const { data: results, error: rErr } = await supabase
+      // 2. Students marked "Not offering" this session
+      const optRes = await fetch(
+        `/api/results/optouts?subject_id=${encodeURIComponent(selectedSubject)}&session=${encodeURIComponent(currentSession)}`,
+        { headers: await getAuthHeaders() }
+      );
+      const optJson = await optRes.json().catch(() => ({}));
+      setNotOffering(new Set(optRes.ok && optJson.ok ? optJson.studentIds : []));
+
+      // 3. Fetch existing results
+      let resultsQuery = supabase
         .from("results")
         .select("*")
         .in("student_id", sIds)
         .eq("subject_id", selectedSubject)
         .eq("term", selectedTerm);
+      if (currentSession) resultsQuery = resultsQuery.eq("session", currentSession);
+      const { data: results, error: rErr } = await resultsQuery;
 
       if (rErr) throw rErr;
 
@@ -346,11 +345,107 @@ export default function TeacherScoreEntryPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedClass, selectedSubject, selectedTerm, currentSessionId]);
+  }, [selectedClass, selectedSubject, selectedTerm, currentSession]);
 
   useEffect(() => {
     loadScores();
   }, [loadScores]);
+
+  // Weeks in which the class was given classwork / homework (the Excel "AV RATE")
+  const offeringRows = useMemo(() => rows.filter((r) => !notOffering.has(r.student_id)), [rows, notOffering]);
+  // Scheduled weeks come from the class subject list (weekly or every 2 weeks);
+  // blank scores in those weeks count as 0.
+  const frequency = classSubjectIds?.get(selectedSubject) || null;
+  const weeks = useMemo(
+    () => (frequency ? weeksForFrequency(frequency) : detectAssessmentWeeks(offeringRows.map((r) => r.raw))),
+    [frequency, offeringRows]
+  );
+  const windowEnd = viewMode === "pr1" ? PR_WINDOWS.pr1 : viewMode === "pr2" ? PR_WINDOWS.pr2 : PR_WINDOWS.pr3;
+  const visibleCw = (frequency ? weeks.cw : Array.from({ length: 10 }, (_, i) => i + 1)).filter((w) => w <= windowEnd);
+  const visibleHw = (frequency ? weeks.hw : Array.from({ length: 10 }, (_, i) => i + 1)).filter((w) => w <= windowEnd);
+
+  // Scheduled weeks left empty for the whole class before the latest week with scores
+  const gapNote = useMemo(() => {
+    if (!frequency || !offeringRows.length) return "";
+    const raws = offeringRows.map((r) => r.raw);
+    const filled = detectAssessmentWeeks(raws);
+    const lastFilled = Math.max(0, ...filled.cw, ...filled.hw);
+    if (!lastFilled) return "";
+    const empty = emptyScheduledWeeks(raws, weeks, lastFilled);
+    const parts = [
+      empty.cw.length ? `classwork week ${empty.cw.join(", ")}` : "",
+      empty.hw.length ? `homework week ${empty.hw.join(", ")}` : "",
+    ].filter(Boolean);
+    return parts.length ? `${parts.join(" and ")} ${empty.cw.length + empty.hw.length > 1 ? "are" : "is"} empty for every student and will count as 0. Enter the scores if the work was given.` : "";
+  }, [frequency, offeringRows, weeks]);
+
+  function buildRecords(submit: boolean) {
+    const recordsToSave: any[] = [];
+    const deletedResultIds: string[] = [];
+    offeringRows.forEach((r) => {
+      const tr = calculateTR(r.raw, { isSenior, weeks });
+      if (!tr.hasData) {
+        if (r.resultId) deletedResultIds.push(r.resultId);
+        return;
+      }
+      recordsToSave.push({
+        student_id: r.student_id,
+        subject_id: selectedSubject,
+        class_id: selectedClass,
+        term: selectedTerm,
+        session: currentSession,
+        academic_session_id: currentSessionId || undefined,
+        ...toStoredScores(tr, r.raw),
+        status: submit ? "submitted" : "draft",
+      });
+    });
+    return { recordsToSave, deletedResultIds };
+  }
+
+  async function toggleNotOffering(studentId: string, name: string, value: boolean) {
+    const row = rows.find((r) => r.student_id === studentId);
+    const hasScores = row ? calculateTR(row.raw, { isSenior }).hasData : false;
+    if (
+      value &&
+      !window.confirm(
+        hasScores
+          ? `Mark ${name} as not offering this subject? The scores already entered for ${name} in this subject will be deleted.`
+          : `Mark ${name} as not offering this subject for the whole session?`
+      )
+    ) {
+      return;
+    }
+    setTogglingId(studentId);
+    try {
+      const res = await fetch("/api/results/optouts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+        body: JSON.stringify({
+          student_id: studentId,
+          subject_id: selectedSubject,
+          class_id: selectedClass,
+          session: currentSession,
+          not_offering: value,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || "Could not update.");
+      if (value) {
+        await loadScores();
+      } else {
+        setNotOffering((prev) => {
+          const next = new Set(prev);
+          next.delete(studentId);
+          return next;
+        });
+      }
+    } catch (err: any) {
+      setStatusMsg(`Error: ${err.message}`);
+      setTimeout(() => setStatusMsg(""), 5000);
+    } finally {
+      setTogglingId(null);
+    }
+  }
 
   // Debounced auto-save effect
   useEffect(() => {
@@ -366,11 +461,8 @@ export default function TeacherScoreEntryPage() {
       if (!isDirtyRef.current) return;
       setAutoSaveStatus("saving");
       try {
-        const recordsToSave: any[] = [];
-        const deletedResultIds: string[] = [];
-
         // Guard: check if any student has an invalid score exceeding max before auto-saving
-        for (const r of rows) {
+        for (const r of offeringRows) {
           const { valid } = validateRawScores(r.raw);
           if (!valid) {
             setAutoSaveStatus("unsaved");
@@ -378,27 +470,7 @@ export default function TeacherScoreEntryPage() {
           }
         }
 
-        rows.forEach((r) => {
-          const tr = calculateTR(r.raw, { isSenior, className: selectedClassName });
-          if (!tr.hasData) {
-            if (r.resultId) {
-              deletedResultIds.push(r.resultId);
-            }
-            return;
-          }
-
-          const stored = toStoredScores(tr, r.raw);
-          recordsToSave.push({
-            student_id: r.student_id,
-            subject_id: selectedSubject,
-            class_id: selectedClass,
-            term: selectedTerm,
-            session: currentSession,
-            academic_session_id: currentSessionId || undefined,
-            ...stored,
-            status: "draft",
-          });
-        });
+        const { recordsToSave, deletedResultIds } = buildRecords(false);
 
         if (recordsToSave.length > 0 || deletedResultIds.length > 0) {
           const { data: sessionData } = await supabase.auth.getSession();
@@ -423,7 +495,7 @@ export default function TeacherScoreEntryPage() {
     }, 1800);
 
     return () => clearTimeout(timer);
-  }, [rows, isEditable, selectedSubject, selectedClass, selectedTerm, currentSession, currentSessionId, isSenior, selectedClassName]);
+  }, [rows, notOffering, isEditable, selectedSubject, selectedClass, selectedTerm, currentSession, currentSessionId, isSenior]);
 
   // Maximum allowed score helper per component
   function getMaxScore(field: "cw" | "hw" | "tests" | "project" | "exam", subIndex: number): number {
@@ -511,7 +583,7 @@ export default function TeacherScoreEntryPage() {
 
     try {
       // Validate all scores before submitting or saving
-      for (const r of rows) {
+      for (const r of offeringRows) {
         const { valid, issues } = validateRawScores(r.raw);
         if (!valid && issues.length > 0) {
           const first = issues[0];
@@ -522,32 +594,7 @@ export default function TeacherScoreEntryPage() {
         }
       }
 
-      const recordsToSave: any[] = [];
-      const deletedResultIds: string[] = [];
-
-      rows.forEach((r) => {
-        const tr = calculateTR(r.raw, { isSenior, className: selectedClassName });
-        if (!tr.hasData) {
-          // If student has no scores entered and had a previously saved result row, mark for deletion
-          if (r.resultId) {
-            deletedResultIds.push(r.resultId);
-          }
-          return;
-        }
-
-        const stored = toStoredScores(tr, r.raw);
-        recordsToSave.push({
-          student_id: r.student_id,
-          subject_id: selectedSubject,
-          class_id: selectedClass,
-          term: selectedTerm,
-          session: currentSession,
-          academic_session_id: currentSessionId || undefined,
-          ...stored,
-          status: submit ? "submitted" : "draft",
-          submitted_at: submit ? new Date().toISOString() : undefined,
-        });
-      });
+      const { recordsToSave, deletedResultIds } = buildRecords(submit);
 
       if (!recordsToSave.length && !deletedResultIds.length) {
         setStatusMsg("No scores have been entered for this subject yet. Please enter at least one score before saving.");
@@ -593,7 +640,7 @@ export default function TeacherScoreEntryPage() {
             Master Continuous Assessment Mark Sheet
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            10-week continuous assessment (CW /10, HW /5, Tests /10, Prj /5, Exam /70) with checkpoint progress tracking.
+            Enter each classwork/homework /10 and tests as marked (T1 /15, T2 /15, T3 /30). Weeks with no entries for the whole class are not counted. Tick &ldquo;Not offering&rdquo; for a student who does not take this subject.
           </p>
         </div>
 
@@ -658,6 +705,22 @@ export default function TeacherScoreEntryPage() {
           <span className="px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold text-[10px] uppercase tracking-wide">
             Read-Only
           </span>
+        </div>
+      )}
+
+      {rows.some((r) => r.return_reason) && (
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs">
+          <div className="font-bold text-sm">Returned by the admin for correction</div>
+          <div className="mt-1">
+            Message: &ldquo;{rows.find((r) => r.return_reason)?.return_reason}&rdquo;
+          </div>
+          <div className="mt-1 text-rose-800">Correct the scores below, then click &ldquo;Submit to Admin&rdquo; again.</div>
+        </div>
+      )}
+
+      {gapNote && (
+        <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold">
+          Note: {gapNote}
         </div>
       )}
 
@@ -779,20 +842,20 @@ export default function TeacherScoreEntryPage() {
                 {/* Classwork CW 1-10 */}
                 {(viewMode === "all" || viewMode === "pr1" || viewMode === "pr2" || viewMode === "pr3") && (
                   <th
-                    colSpan={viewMode === "pr1" ? 4 : viewMode === "pr2" ? 7 : 10}
+                    colSpan={visibleCw.length}
                     className="px-2 py-1 bg-blue-50/70 border-r border-slate-200 text-blue-900"
                   >
-                    Classwork (/10 each · Scaled /10)
+                    Classwork (/10 each{frequency ? (frequency === "weekly" ? " · weekly" : " · every 2 weeks") : ""})
                   </th>
                 )}
 
                 {/* Homework HW 1-10 */}
                 {(viewMode === "all" || viewMode === "pr1" || viewMode === "pr2" || viewMode === "pr3") && (
                   <th
-                    colSpan={viewMode === "pr1" ? 4 : viewMode === "pr2" ? 7 : 10}
+                    colSpan={visibleHw.length}
                     className="px-2 py-1 bg-indigo-50/70 border-r border-slate-200 text-indigo-900"
                   >
-                    Homework (/10 each · Scaled /5)
+                    Homework (/10 each{frequency ? (frequency === "weekly" ? " · weekly" : " · every 2 weeks") : ""})
                   </th>
                 )}
 
@@ -840,7 +903,7 @@ export default function TeacherScoreEntryPage() {
 
                 {/* CW Subheaders */}
                 {(viewMode === "all" || viewMode === "pr1" || viewMode === "pr2" || viewMode === "pr3") &&
-                  Array.from({ length: viewMode === "pr1" ? 4 : viewMode === "pr2" ? 7 : 10 }).map((_, i) => (
+                  visibleCw.map((w) => w - 1).map((i) => (
                     <th key={`cw-h-${i}`} className="px-1 py-1 border-r border-slate-100 min-w-[34px]">
                       W{i + 1}
                     </th>
@@ -848,7 +911,7 @@ export default function TeacherScoreEntryPage() {
 
                 {/* HW Subheaders */}
                 {(viewMode === "all" || viewMode === "pr1" || viewMode === "pr2" || viewMode === "pr3") &&
-                  Array.from({ length: viewMode === "pr1" ? 4 : viewMode === "pr2" ? 7 : 10 }).map((_, i) => (
+                  visibleHw.map((w) => w - 1).map((i) => (
                     <th key={`hw-h-${i}`} className="px-1 py-1 border-r border-slate-100 min-w-[34px]">
                       W{i + 1}
                     </th>
@@ -898,10 +961,11 @@ export default function TeacherScoreEntryPage() {
                 </tr>
               ) : (
                 rows.map((row, rIdx) => {
-                  const tr = calculateTR(row.raw, { isSenior, className: selectedClassName });
-                  const pr1 = calculatePR1(row.raw, isSenior);
-                  const pr2 = calculatePR2(row.raw, isSenior);
-                  const pr3 = calculatePR3(row.raw, isSenior);
+                  const off = notOffering.has(row.student_id);
+                  const tr = calculateTR(row.raw, { isSenior, weeks });
+                  const pr1 = calculatePR1(row.raw, isSenior, weeks);
+                  const pr2 = calculatePR2(row.raw, isSenior, weeks);
+                  const pr3 = calculatePR3(row.raw, isSenior, weeks);
 
                   const displayTotal =
                     viewMode === "pr1"
@@ -931,27 +995,37 @@ export default function TeacherScoreEntryPage() {
                       : tr.remark;
 
                   return (
-                    <tr key={row.student_id} className="hover:bg-slate-50/50">
+                    <tr key={row.student_id} className={off ? "bg-slate-50 text-slate-400" : "hover:bg-slate-50/50"}>
                       {/* Name & Admission */}
                       <td className="px-4 py-2 sticky left-0 bg-white border-r border-slate-200 z-10 shadow-xs">
-                        <div className="font-bold text-slate-900 truncate max-w-[170px]">
+                        <div className={`font-bold truncate max-w-[170px] ${off ? "text-slate-400 line-through" : "text-slate-900"}`}>
                           {row.name}
                         </div>
-                        <div className="text-[10px] font-mono text-slate-400">
-                          {row.admission_no}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-mono text-slate-400">{row.admission_no}</span>
+                          <label className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 cursor-pointer whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              checked={off}
+                              disabled={!isEditable || togglingId === row.student_id || !currentSession}
+                              onChange={(e) => toggleNotOffering(row.student_id, row.name, e.target.checked)}
+                              className="w-3 h-3 accent-slate-700"
+                            />
+                            Not offering
+                          </label>
                         </div>
                       </td>
 
                       {/* CW Inputs */}
                       {(viewMode === "all" || viewMode === "pr1" || viewMode === "pr2" || viewMode === "pr3") &&
-                        Array.from({ length: viewMode === "pr1" ? 4 : viewMode === "pr2" ? 7 : 10 }).map((_, i) => (
+                        visibleCw.map((w) => w - 1).map((i) => (
                           <td key={`cw-${i}`} className="p-0.5 border-r border-slate-100 text-center">
                             <input
                               type="number"
                               min={0}
                               max={10}
                               step="any"
-                              disabled={!isEditable}
+                              disabled={!isEditable || off}
                               value={row.raw.cw[i] ?? ""}
                               onChange={(e) => updateScore(rIdx, "cw", i, e.target.value)}
                               onKeyDown={preventInvalidKeys}
@@ -965,14 +1039,14 @@ export default function TeacherScoreEntryPage() {
 
                       {/* HW Inputs */}
                       {(viewMode === "all" || viewMode === "pr1" || viewMode === "pr2" || viewMode === "pr3") &&
-                        Array.from({ length: viewMode === "pr1" ? 4 : viewMode === "pr2" ? 7 : 10 }).map((_, i) => (
+                        visibleHw.map((w) => w - 1).map((i) => (
                           <td key={`hw-${i}`} className="p-0.5 border-r border-slate-100 text-center">
                             <input
                               type="number"
                               min={0}
                               max={10}
                               step="any"
-                              disabled={!isEditable}
+                              disabled={!isEditable || off}
                               value={row.raw.hw[i] ?? ""}
                               onChange={(e) => updateScore(rIdx, "hw", i, e.target.value)}
                               onKeyDown={preventInvalidKeys}
@@ -993,7 +1067,7 @@ export default function TeacherScoreEntryPage() {
                               min={0}
                               max={15}
                               step="any"
-                              disabled={!isEditable}
+                              disabled={!isEditable || off}
                               value={row.raw.tests[0] ?? ""}
                               onChange={(e) => updateScore(rIdx, "tests", 0, e.target.value)}
                               onKeyDown={preventInvalidKeys}
@@ -1010,7 +1084,7 @@ export default function TeacherScoreEntryPage() {
                                 min={0}
                                 max={15}
                                 step="any"
-                                disabled={!isEditable}
+                                disabled={!isEditable || off}
                                 value={row.raw.tests[1] ?? ""}
                                 onChange={(e) => updateScore(rIdx, "tests", 1, e.target.value)}
                                 onKeyDown={preventInvalidKeys}
@@ -1028,7 +1102,7 @@ export default function TeacherScoreEntryPage() {
                                 min={0}
                                 max={30}
                                 step="any"
-                                disabled={!isEditable}
+                                disabled={!isEditable || off}
                                 value={row.raw.tests[2] ?? ""}
                                 onChange={(e) => updateScore(rIdx, "tests", 2, e.target.value)}
                                 onKeyDown={preventInvalidKeys}
@@ -1050,7 +1124,7 @@ export default function TeacherScoreEntryPage() {
                             min={0}
                             max={5}
                             step="any"
-                            disabled={!isEditable}
+                            disabled={!isEditable || off}
                             value={row.raw.project ?? ""}
                             onChange={(e) => updateScore(rIdx, "project", 0, e.target.value)}
                             onKeyDown={preventInvalidKeys}
@@ -1070,7 +1144,7 @@ export default function TeacherScoreEntryPage() {
                             min={0}
                             max={70}
                             step="any"
-                            disabled={!isEditable}
+                            disabled={!isEditable || off}
                             value={row.raw.exam ?? ""}
                             onChange={(e) => updateScore(rIdx, "exam", 0, e.target.value)}
                             onKeyDown={preventInvalidKeys}
@@ -1084,17 +1158,17 @@ export default function TeacherScoreEntryPage() {
 
                       {/* Calculated Total */}
                       <td className="px-2 py-1 border-r border-slate-200 text-center font-bold text-slate-900 bg-slate-50/50">
-                        {displayTotal}
+                        {off ? "—" : displayTotal}
                       </td>
 
                       {/* Calculated Grade */}
                       <td className="px-2 py-1 border-r border-slate-200 text-center font-bold text-emerald-700 bg-slate-50/50">
-                        {displayGrade}
+                        {off ? "—" : displayGrade}
                       </td>
 
                       {/* Calculated Remark */}
                       <td className="px-2 py-1 text-center font-semibold text-[10px] text-slate-600 bg-slate-50/50 truncate max-w-[100px]">
-                        {displayRemark}
+                        {off ? "Not offering" : displayRemark}
                       </td>
                     </tr>
                   );

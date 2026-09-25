@@ -1,350 +1,211 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
-import { isSeniorClass, getGradeAndRemark } from "@/lib/gradingEngine";
+import { calculateGPA, getGradeAndRemark, rankPositions } from "@/lib/gradingEngine";
+import { buildClassReports, Milestone, MILESTONES, promotionFor, StudentReport } from "@/lib/reportBuilder";
+import { getClassSubjects } from "@/lib/subjectGroups";
 
 export const dynamic = "force-dynamic";
 
+function gradeCounts(grades: string[]) {
+  const counts: Record<string, number> = { A: 0, B: 0, C: 0, D: 0, F: 0 };
+  grades.forEach((g) => {
+    if (g in counts) counts[g] += 1;
+  });
+  return counts;
+}
+
+function stats(values: number[]) {
+  if (!values.length) return { avg: null, highest: null, lowest: null, count: 0 };
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+  return {
+    avg: round1(values.reduce((a, b) => a + b, 0) / values.length),
+    highest: round1(Math.max(...values)),
+    lowest: round1(Math.min(...values)),
+    count: values.length,
+  };
+}
+
+/**
+ * GET ?classId=&session=&term=term1|term2|term3|annual&milestone=PR1|PR2|PR3|TR
+ * Class master broadsheet built with the same engine as the report cards
+ * (live scores, whether or not they are published).
+ */
 export async function GET(req: NextRequest) {
-  const authorization = await requireApiActor(req, ["admin", "teacher"]);
+  const authorization = await requireApiActor(req, ["admin"]);
   if ("response" in authorization) return authorization.response;
   const { service } = authorization.actor;
 
-  const { searchParams } = new URL(req.url);
-  const classId = searchParams.get("classId");
-  const session = (searchParams.get("session") || "").trim();
-  const term = searchParams.get("term") || "term1"; // term1, term2, term3, or annual
-
-  if (!classId) {
-    return NextResponse.json({ ok: false, error: "classId is required" }, { status: 400 });
-  }
+  const sp = req.nextUrl.searchParams;
+  const classId = sp.get("classId") || "";
+  const session = (sp.get("session") || "").trim();
+  const term = sp.get("term") || "term1";
+  const milestone = (sp.get("milestone") || "TR") as Milestone;
+  if (!classId || !session) return NextResponse.json({ ok: false, error: "classId and session are required." }, { status: 400 });
+  if (!MILESTONES.includes(milestone)) return NextResponse.json({ ok: false, error: "Invalid milestone." }, { status: 400 });
 
   try {
-    // 1. Fetch Class details
-    const { data: classRow, error: cErr } = await service
-      .from("classes")
-      .select("id, name")
-      .eq("id", classId)
-      .single();
+    const classSubjects = await getClassSubjects(service, classId);
+    const subjects = classSubjects.map((s) => ({ id: s.subject_id, name: s.subject_name, creditUnit: s.credit_unit }));
 
-    if (cErr || !classRow) {
-      return NextResponse.json({ ok: false, error: "Class not found" }, { status: 404 });
-    }
+    // ---------------- Term broadsheet (PR1 / PR2 / PR3 / TR) ----------------
+    if (term !== "annual") {
+      const build = await buildClassReports(service, { classId, term, session, milestone });
+      const isTR = milestone === "TR";
+      const reports = build.reports;
+      const isSenior = reports[0]?.isSenior ?? false;
 
-    const className = classRow.name;
-    const isSenior = isSeniorClass(className);
-
-    // 2. Resolve Students who are enrolled in this class during this session (Single Source of Truth)
-    const studentMap = new Map<string, { id: string; name: string; admission_no: string }>();
-
-    let enrollQuery = service
-      .from("student_enrollments")
-      .select("student_id, students(id, name, admission_no)")
-      .eq("class_id", classId)
-      .eq("status", "active");
-
-    if (session) {
-      enrollQuery = enrollQuery.eq("session", session);
-    }
-
-    const { data: enrollments } = await enrollQuery;
-    (enrollments || []).forEach((e: any) => {
-      if (e.students?.id) {
-        studentMap.set(e.students.id, e.students);
-      }
-    });
-
-    // Fallback: If no student_enrollments row exists for this class, fallback to students table class_id cache
-    if (studentMap.size === 0) {
-      const { data: stds } = await service
-        .from("students")
-        .select("id, name, admission_no")
-        .eq("class_id", classId);
-
-      (stds || []).forEach((st: any) => {
-        if (st?.id) {
-          studentMap.set(st.id, st);
-        }
+      const subjectStats: Record<string, any> = {};
+      subjects.forEach((sub) => {
+        const lines = reports.map((r) => r.subjects.find((l) => l.subjectId === sub.id)).filter(Boolean) as StudentReport["subjects"];
+        const values = lines.map((l) => (isTR ? l.total : l.percentage || 0));
+        subjectStats[sub.id] = {
+          ...stats(values),
+          grades: gradeCounts(lines.map((l) => l.grade)),
+          passes: lines.filter((l) => l.grade !== "F").length,
+        };
       });
-    }
 
-    const studentList = Array.from(studentMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+      const averages = reports.map((r) => r.summary.percentage);
+      const rows = [...reports]
+        .sort((a, b) =>
+          isTR && a.summary.position && b.summary.position
+            ? a.summary.position - b.summary.position
+            : b.summary.percentage - a.summary.percentage
+        )
+        .map((r) => ({
+          studentId: r.student.id,
+          name: r.student.name,
+          admissionNo: r.student.admissionNo,
+          lines: Object.fromEntries(r.subjects.map((l) => [l.subjectId, l])),
+          subjectsTaken: r.subjects.length,
+          total: r.summary.total,
+          average: r.summary.percentage,
+          grade: r.summary.grade,
+          remark: r.summary.remark,
+          gpa: r.summary.gpa,
+          position: r.summary.position,
+          attendance: r.attendance,
+          skillsTotal: r.skillsTotal,
+        }));
 
-    if (!studentList.length) {
+      // PR positions (not on PR report cards, but useful on the broadsheet)
+      if (!isTR) {
+        const pos = rankPositions(rows.map((r) => ({ id: r.studentId, value: r.average })));
+        rows.forEach((r) => (r.position = pos.get(r.studentId) ?? null));
+      }
+
       return NextResponse.json({
         ok: true,
-        className,
+        mode: "term",
+        className: build.className,
         isSenior,
         session,
         term,
-        studentsCount: 0,
-        subjects: [],
-        rows: [],
+        milestone,
+        classSize: reports[0]?.classSize ?? 0,
+        subjects,
+        rows,
+        subjectStats,
+        classSummary: {
+          evaluated: reports.length,
+          ...stats(averages),
+          grades: gradeCounts(reports.map((r) => r.summary.grade)),
+        },
+        issues: build.issues,
       });
     }
 
-    const studentIds = studentList.map((s) => s.id);
+    // ---------------- Annual broadsheet (1st + 2nd + 3rd term) ----------------
+    const builds = await Promise.all(
+      (["term1", "term2", "term3"] as const).map((t) => buildClassReports(service, { classId, term: t, session, milestone: "TR" }))
+    );
+    const isSenior = builds.find((b) => b.reports.length)?.reports[0]?.isSenior ?? false;
+    const className = builds[0].className;
 
-    // 3. Fetch all scores for these students in this session/term
-    let resQuery = service
-      .from("results")
-      .select(`
-        id, student_id, subject_id, class_id, term, session,
-        cw, hw, test, project, exam, total, grade, status,
-        subjects(id, name)
-      `)
-      .in("student_id", studentIds);
+    const byStudent = new Map<string, { name: string; admissionNo: string; terms: (StudentReport | null)[] }>();
+    builds.forEach((b, i) =>
+      b.reports.forEach((r) => {
+        const entry = byStudent.get(r.student.id) || { name: r.student.name, admissionNo: r.student.admissionNo, terms: [null, null, null] };
+        entry.terms[i] = r;
+        byStudent.set(r.student.id, entry);
+      })
+    );
 
-    if (session) {
-      resQuery = resQuery.eq("session", session);
-    }
-    if (term !== "annual") {
-      resQuery = resQuery.eq("term", term);
-    }
-
-    const { data: results, error: rErr } = await resQuery;
-    if (rErr) throw rErr;
-
-    // Collect all subjects for this class and broadsheet
-    const subjectsMap = new Map<string, string>();
-
-    // 1. From results
-    (results || []).forEach((r: any) => {
-      if (r.subject_id && r.subjects?.name) {
-        subjectsMap.set(r.subject_id, r.subjects.name);
-      }
-    });
-
-    // 2. From student_subject_enrollments
-    if (studentIds.length > 0) {
-      let sseQuery = service
-        .from("student_subject_enrollments")
-        .select(`
-          subject_id,
-          subjects(id, name),
-          student_enrollments!inner(student_id, academic_sessions(name))
-        `)
-        .in("student_enrollments.student_id", studentIds)
-        .eq("status", "enrolled");
-
-      if (session) {
-        sseQuery = sseQuery.eq("student_enrollments.academic_sessions.name", session);
-      }
-
-      const { data: sseData } = await sseQuery;
-      (sseData || []).forEach((se: any) => {
-        if (se.subject_id && (se.subjects as any)?.name) {
-          subjectsMap.set(se.subject_id, (se.subjects as any).name);
-        }
+    const rows = Array.from(byStudent.entries()).map(([studentId, e]) => {
+      const perSubject: Record<string, any> = {};
+      subjects.forEach((sub) => {
+        const totals = e.terms.map((r) => r?.subjects.find((l) => l.subjectId === sub.id)?.total ?? null);
+        const present = totals.filter((v): v is number => v !== null);
+        if (!present.length) return;
+        const annual = Math.round((present.reduce((a, b) => a + b, 0) / present.length) * 100) / 100;
+        const { grade, remark } = getGradeAndRemark(annual, isSenior);
+        perSubject[sub.id] = { term1: totals[0], term2: totals[1], term3: totals[2], annual, grade, remark };
       });
-    }
-
-    // 3. From subject_teacher_assignments for this class
-    const { data: staData } = await service
-      .from("subject_teacher_assignments")
-      .select("subject_id, subjects(id, name)")
-      .eq("class_id", classId);
-    (staData || []).forEach((a: any) => {
-      if (a.subject_id && a.subjects?.name) {
-        subjectsMap.set(a.subject_id, a.subjects.name);
-      }
-    });
-
-
-
-    // 5. If still no subjects found, load all subjects from database
-    if (subjectsMap.size === 0) {
-      const { data: allSubs } = await service
-        .from("subjects")
-        .select("id, name")
-        .order("name", { ascending: true });
-      (allSubs || []).forEach((s: any) => {
-        subjectsMap.set(s.id, s.name);
-      });
-    }
-
-    const subjectList = Array.from(subjectsMap.entries())
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-
-    // 4. Group results by student & subject
-    // studentId -> subjectId -> score details
-    const studentScoreMap = new Map<string, Map<string, {
-      total: number | null;
-      grade: string;
-      cw?: number | null;
-      test?: number | null;
-      exam?: number | null;
-      term1?: number | null;
-      term2?: number | null;
-      term3?: number | null;
-    }>>();
-
-    if (term === "annual") {
-      // Aggregate Term 1, Term 2, Term 3 for annual broadsheet
-      (results || []).forEach((r: any) => {
-        if (!studentScoreMap.has(r.student_id)) {
-          studentScoreMap.set(r.student_id, new Map());
-        }
-        const sMap = studentScoreMap.get(r.student_id)!;
-        if (!sMap.has(r.subject_id)) {
-          sMap.set(r.subject_id, {
-            total: null,
-            grade: "—",
-            cw: null,
-            test: null,
-            exam: null,
-            term1: null,
-            term2: null,
-            term3: null,
-          });
-        }
-        const subData = sMap.get(r.subject_id)!;
-        const tot = r.total !== null && r.total !== undefined ? Number(r.total) : null;
-        if (r.term === "term1") subData.term1 = tot;
-        if (r.term === "term2") subData.term2 = tot;
-        if (r.term === "term3") subData.term3 = tot;
-
-        // Calculate average across valid terms
-        const validTerms = [subData.term1, subData.term2, subData.term3].filter(
-          (v): v is number => v !== null && v !== undefined && Number.isFinite(v)
-        );
-        if (validTerms.length > 0) {
-          subData.total = +(validTerms.reduce((a, b) => a + b, 0) / validTerms.length).toFixed(1);
-          const computedGrade = getGradeAndRemark(subData.total, isSenior).grade;
-          subData.grade = r.grade && r.grade !== "—" ? r.grade : computedGrade;
-        }
-      });
-    } else {
-      (results || []).forEach((r: any) => {
-        if (!studentScoreMap.has(r.student_id)) {
-          studentScoreMap.set(r.student_id, new Map());
-        }
-        const sMap = studentScoreMap.get(r.student_id)!;
-        const tot = r.total !== null && r.total !== undefined ? Number(r.total) : null;
-        const computedGrade = tot !== null ? getGradeAndRemark(tot, isSenior).grade : "—";
-        sMap.set(r.subject_id, {
-          total: tot,
-          grade: r.grade && r.grade !== "—" ? r.grade : computedGrade,
-          cw: r.cw ?? null,
-          test: r.test ?? null,
-          exam: r.exam ?? null,
-        });
-      });
-    }
-
-    // 5. Build student broadsheet rows & calculate ranks
-    const studentRows = studentList.map((st) => {
-      const sMap = studentScoreMap.get(st.id) || new Map();
-      const subjectScores: Record<string, {
-        total: number | null;
-        grade: string;
-        cw: number | null;
-        test: number | null;
-        exam: number | null;
-        term1?: number | null;
-        term2?: number | null;
-        term3?: number | null;
-      }> = {};
-
-      let totalScoreSum = 0;
-      let evaluatedCount = 0;
-
-      subjectList.forEach((sub) => {
-        const sc = sMap.get(sub.id);
-        if (sc && sc.total !== null && Number.isFinite(sc.total)) {
-          subjectScores[sub.id] = {
-            total: sc.total,
-            grade: sc.grade,
-            cw: sc.cw ?? null,
-            test: sc.test ?? null,
-            exam: sc.exam ?? null,
-            term1: sc.term1 ?? null,
-            term2: sc.term2 ?? null,
-            term3: sc.term3 ?? null,
-          };
-          totalScoreSum += sc.total;
-          evaluatedCount++;
-        } else {
-          subjectScores[sub.id] = {
-            total: null,
-            grade: "—",
-            cw: null,
-            test: null,
-            exam: null,
-            term1: null,
-            term2: null,
-            term3: null,
-          };
-        }
-      });
-
-      const average = evaluatedCount > 0 ? +(totalScoreSum / evaluatedCount).toFixed(1) : 0;
-
+      const annuals = Object.entries(perSubject).map(([id, v]: any) => ({
+        total: v.annual as number,
+        creditUnit: subjects.find((s) => s.id === id)?.creditUnit ?? 0,
+      }));
+      const annualTotal = Math.round(annuals.reduce((a, b) => a + b.total, 0) * 100) / 100;
+      const average = annuals.length ? Math.round((annualTotal / annuals.length) * 100) / 100 : 0;
+      const { grade, remark } = getGradeAndRemark(average, isSenior);
       return {
-        studentId: st.id,
-        name: st.name,
-        admissionNo: st.admission_no,
-        subjectScores,
-        totalScore: +totalScoreSum.toFixed(1),
-        evaluatedCount,
+        studentId,
+        name: e.name,
+        admissionNo: e.admissionNo,
+        perSubject,
+        subjectsTaken: annuals.length,
+        termAverages: e.terms.map((r) => r?.summary.percentage ?? null),
+        annualTotal,
         average,
-        position: 0,
+        gpa: calculateGPA(annuals),
+        grade,
+        remark,
+        position: null as number | null,
+        promotion: promotionFor(className, isSenior, average),
       };
     });
 
-    // Sort students by totalScore descending for class position ranking
-    studentRows.sort((a, b) => b.totalScore - a.totalScore);
+    const pos = rankPositions(rows.map((r) => ({ id: r.studentId, value: isSenior ? r.gpa : r.average })));
+    rows.forEach((r) => (r.position = pos.get(r.studentId) ?? null));
+    rows.sort((a, b) => (a.position ?? 999) - (b.position ?? 999));
 
-    // Assign positions with standard tie handling
-    let currentRank = 1;
-    for (let i = 0; i < studentRows.length; i++) {
-      if (i > 0 && studentRows[i].totalScore === studentRows[i - 1].totalScore) {
-        studentRows[i].position = studentRows[i - 1].position;
-      } else {
-        studentRows[i].position = currentRank;
-      }
-      currentRank++;
-    }
-
-    // 6. Compute Subject Benchmarks (Subject Average, High, Low)
-    const subjectStats: Record<string, { avg: number; highest: number; lowest: number; count: number }> = {};
-    subjectList.forEach((sub) => {
-      const validScores = studentRows
-        .map((r) => r.subjectScores[sub.id]?.total)
-        .filter((sc): sc is number => sc !== null && sc !== undefined && Number.isFinite(sc));
-
-      if (validScores.length > 0) {
-        const sum = validScores.reduce((a, b) => a + b, 0);
-        subjectStats[sub.id] = {
-          avg: +(sum / validScores.length).toFixed(1),
-          highest: Math.max(...validScores),
-          lowest: Math.min(...validScores),
-          count: validScores.length,
-        };
-      } else {
-        subjectStats[sub.id] = { avg: 0, highest: 0, lowest: 0, count: 0 };
-      }
+    const subjectStats: Record<string, any> = {};
+    subjects.forEach((sub) => {
+      const vals = rows.map((r) => r.perSubject[sub.id]).filter(Boolean);
+      subjectStats[sub.id] = {
+        ...stats(vals.map((v: any) => v.annual)),
+        grades: gradeCounts(vals.map((v: any) => v.grade)),
+        passes: vals.filter((v: any) => v.grade !== "F").length,
+      };
     });
-
-    // 7. Overall Class Summary
-    const classTotalSum = studentRows.reduce((a, b) => a + b.average, 0);
-    const classAverage = studentRows.length > 0 ? +(classTotalSum / studentRows.length).toFixed(1) : 0;
 
     return NextResponse.json({
       ok: true,
+      mode: "annual",
       className,
       isSenior,
       session,
       term,
-      studentsCount: studentRows.length,
-      subjectsCount: subjectList.length,
-      classAverage,
-      subjects: subjectList,
+      milestone: "TR",
+      classSize: Math.max(...builds.map((b) => b.reports[0]?.classSize ?? 0), 0),
+      subjects,
+      rows,
       subjectStats,
-      rows: studentRows,
+      classSummary: {
+        evaluated: rows.length,
+        ...stats(rows.map((r) => r.average)),
+        grades: gradeCounts(rows.map((r) => r.grade)),
+        promotion: {
+          PROMOTED: rows.filter((r) => r.promotion?.status === "PROMOTED").length,
+          TRIAL: rows.filter((r) => r.promotion?.status === "TRIAL").length,
+          REPEAT: rows.filter((r) => r.promotion?.status === "REPEAT").length,
+        },
+      },
+      issues: [],
     });
   } catch (err: any) {
     console.error("Class broadsheet error:", err);
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
+

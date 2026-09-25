@@ -47,6 +47,8 @@ export default function AdminTeachersPage() {
 
   // Subject Teacher Tab State
   const [selectedSubjectClass, setSelectedSubjectClass] = useState("");
+  // Subjects on the selected class's subject list, in report order (null = no list set)
+  const [classSubjectOrder, setClassSubjectOrder] = useState<string[] | null>(null);
   const [subjectAssignments, setSubjectAssignments] = useState<SubjectTeacherAssignment[]>([]);
   const [selectedSubjectForHistory, setSelectedSubjectForHistory] = useState<SubjectRecord | null>(null);
   const [subjectHistoryModalOpen, setSubjectHistoryModalOpen] = useState(false);
@@ -463,6 +465,67 @@ export default function AdminTeachersPage() {
     setSubjectHistoryModalOpen(true);
   }
 
+  // Unassign (ends the assignment) or delete an assignment record
+  async function callAssignmentDelete(type: "class" | "subject", ids: string[], mode: "unassign" | "delete") {
+    const res = await fetch("/api/admin/teachers/assignments", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+      body: JSON.stringify({ type, ids, mode }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.ok) throw new Error(json.error || "Request failed.");
+  }
+
+  async function handleUnassign(type: "class" | "subject", ids: string[], teacherName: string, place: string) {
+    if (!ids.length) return;
+    if (!confirm(`Unassign ${teacherName} from ${place}? They will lose access to it immediately. The assignment stays in History.`)) return;
+    try {
+      await callAssignmentDelete(type, ids, "unassign");
+      await loadAssignments();
+    } catch (err: any) {
+      alert("Failed to unassign: " + err.message);
+    }
+  }
+
+  async function handleDeleteAssignmentRecord(type: "class" | "subject", id: string) {
+    if (!confirm("Delete this assignment record permanently? Use this only for test or mistaken entries.")) return;
+    try {
+      await callAssignmentDelete(type, [id], "delete");
+      if (type === "class") setClassHistoryList((prev) => prev.filter((h) => h.id !== id));
+      else setSubjectHistoryList((prev) => prev.filter((h) => h.id !== id));
+      await loadAssignments();
+    } catch (err: any) {
+      alert("Failed to delete record: " + err.message);
+    }
+  }
+
+  // Load the selected class's subject list
+  useEffect(() => {
+    if (!selectedSubjectClass) return;
+    let cancelled = false;
+    (async () => {
+      const { data: cls } = await supabase.from("classes").select("subject_group_code").eq("id", selectedSubjectClass).maybeSingle();
+      const group = (cls as any)?.subject_group_code;
+      if (!group) {
+        if (!cancelled) setClassSubjectOrder(null);
+        return;
+      }
+      const { data: list } = await supabase
+        .from("subject_group_subjects")
+        .select("subject_id")
+        .eq("group_code", group)
+        .order("display_order");
+      if (!cancelled) setClassSubjectOrder(list && list.length ? list.map((l: any) => l.subject_id) : null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSubjectClass]);
+
+  const classSubjects = classSubjectOrder
+    ? (classSubjectOrder.map((id) => subjects.find((sub) => sub.id === id)).filter(Boolean) as SubjectRecord[])
+    : subjects;
+
   // Directory Filter
   const filteredTeachers = teachers.filter((t) => {
     const matchesSearch =
@@ -782,6 +845,22 @@ export default function AdminTeachersPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 pt-1">
+                    {teacher && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleUnassign(
+                            "class",
+                            classAssignments.filter((a) => group.classIds.includes(a.class_id) && a.status === "active").map((a) => a.id),
+                            teacher.display_name || "this teacher",
+                            group.name
+                          )
+                        }
+                        className="col-span-2 w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-semibold text-xs cursor-pointer transition text-center"
+                      >
+                        Unassign
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleOpenAssignClassModal(group)}
@@ -873,6 +952,23 @@ export default function AdminTeachersPage() {
                             {teacher ? "Change Teacher" : "Assign Teacher"}
                           </button>
 
+                          {teacher && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUnassign(
+                                  "class",
+                                  classAssignments.filter((a) => group.classIds.includes(a.class_id) && a.status === "active").map((a) => a.id),
+                                  teacher.display_name || "this teacher",
+                                  group.name
+                                )
+                              }
+                              className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg font-semibold text-xs cursor-pointer transition"
+                            >
+                              Unassign
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => handleOpenClassHistory(group)}
@@ -923,13 +1019,15 @@ export default function AdminTeachersPage() {
             </div>
 
             <span className="text-xs text-slate-500 sm:ml-auto font-medium">
-              Showing all {subjects.length} subjects for <span className="font-bold text-slate-900">{classes.find((c) => c.id === selectedSubjectClass)?.name}</span>
+              {classSubjectOrder ? "Showing the" : "No subject list set up; showing all"} {classSubjects.length} subjects
+              {classSubjectOrder ? " on the class list for " : " for "}
+              <span className="font-bold text-slate-900">{classes.find((c) => c.id === selectedSubjectClass)?.name}</span>
             </span>
           </div>
 
           {/* MOBILE VIEW (< md): Touch-Friendly Subject Cards */}
           <div className="grid grid-cols-1 gap-3 md:hidden">
-            {subjects.map((sub) => {
+            {classSubjects.map((sub) => {
               const assignment = subjectAssignments.find(
                 (a) => a.class_id === selectedSubjectClass && a.subject_id === sub.id && a.status === "active"
               );
@@ -973,6 +1071,15 @@ export default function AdminTeachersPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 pt-1">
+                    {teacher && assignment && (
+                      <button
+                        type="button"
+                        onClick={() => handleUnassign("subject", [assignment.id], teacher.display_name || "this teacher", `${sub.name} (${classes.find((c) => c.id === selectedSubjectClass)?.name || "this class"})`)}
+                        className="col-span-2 w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-semibold text-xs cursor-pointer transition text-center"
+                      >
+                        Unassign
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleOpenAssignSubjectModal(sub)}
@@ -1007,7 +1114,7 @@ export default function AdminTeachersPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                  {subjects.map((sub) => {
+                  {classSubjects.map((sub) => {
                     const assignment = subjectAssignments.find(
                       (a) => a.class_id === selectedSubjectClass && a.subject_id === sub.id && a.status === "active"
                     );
@@ -1057,6 +1164,16 @@ export default function AdminTeachersPage() {
                           >
                             {teacher ? "Change Teacher" : "Assign Teacher"}
                           </button>
+
+                          {teacher && assignment && (
+                            <button
+                              type="button"
+                              onClick={() => handleUnassign("subject", [assignment.id], teacher.display_name || "this teacher", `${sub.name} (${classes.find((c) => c.id === selectedSubjectClass)?.name || "this class"})`)}
+                              className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg font-semibold text-xs cursor-pointer transition"
+                            >
+                              Unassign
+                            </button>
+                          )}
 
                           <button
                             type="button"
@@ -1225,6 +1342,15 @@ export default function AdminTeachersPage() {
                       {h.start_date} → {h.end_date || "Present"}
                     </div>
                     {h.notes && <div className="text-[11px] text-slate-600 mt-1 italic">{h.notes}</div>}
+                    {h.id && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAssignmentRecord("class", h.id)}
+                        className="mt-2 text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                      >
+                        Delete record
+                      </button>
+                    )}
                   </div>
                 ))
               )}
@@ -1378,6 +1504,15 @@ export default function AdminTeachersPage() {
                       {h.start_date} → {h.end_date || "Present"}
                     </div>
                     {h.notes && <div className="text-[11px] text-slate-600 mt-1 italic">{h.notes}</div>}
+                    {h.id && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAssignmentRecord("subject", h.id)}
+                        className="mt-2 text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                      >
+                        Delete record
+                      </button>
+                    )}
                   </div>
                 ))
               )}

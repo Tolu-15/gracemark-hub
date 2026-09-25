@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
+import { isDefaultPassword } from "@/lib/defaultPasswords";
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,6 +28,13 @@ export async function POST(req: NextRequest) {
     if (new_password.length < 6) {
       return NextResponse.json(
         { error: "Password must be at least 6 characters." },
+        { status: 400 }
+      );
+    }
+
+    if (isDefaultPassword(new_password)) {
+      return NextResponse.json(
+        { error: "Please choose your own password, not the default one given by the school." },
         { status: 400 }
       );
     }

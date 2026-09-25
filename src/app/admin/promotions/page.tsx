@@ -119,10 +119,12 @@ export default function AdminPromotionsPage() {
       // Fetch promotions history
       const { data: histData, error: hErr } = await supabase
         .from("promotions")
-        .select("id, session, promoted_at, summary, notes")
+        .select("id, from_session_id, promoted_at, summary, notes")
         .order("promoted_at", { ascending: false });
       if (hErr) throw hErr;
-      setHistory((histData as any) || []);
+      const { data: sessionNames } = await supabase.from("academic_sessions").select("id, name");
+      const nameOf = new Map((sessionNames || []).map((x: any) => [x.id, x.name]));
+      setHistory(((histData as any[]) || []).map((h) => ({ ...h, session: nameOf.get(h.from_session_id) || "—" })));
     } catch (err: any) {
       console.error("Failed to load promotions data:", err);
       alert("Failed to load promotions data: " + err.message);
