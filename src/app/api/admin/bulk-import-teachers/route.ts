@@ -201,11 +201,12 @@ export async function POST(req: NextRequest) {
       }
 
       // 5. Update teacher assignments in subject_teacher_assignments
-      if (activeSession?.id) {
+      if (activeSession?.id && userRow?.id) {
+        const nowIso = new Date().toISOString();
         await service
           .from("subject_teacher_assignments")
-          .update({ status: "ended", end_date: new Date().toISOString().split("T")[0] })
-          .eq("teacher_user_id", authUserId)
+          .update({ status: "ended", ended_at: nowIso })
+          .eq("teacher_user_id", userRow.id)
           .eq("academic_session_id", activeSession.id)
           .eq("status", "active");
 
@@ -215,12 +216,11 @@ export async function POST(req: NextRequest) {
             for (const sId of matchedSubjectIds) {
               assignmentsToInsert.push({
                 academic_session_id: activeSession.id,
-                session: activeSession.name,
-                teacher_user_id: authUserId,
+                teacher_user_id: userRow.id,
                 class_id: cId,
                 subject_id: sId,
                 status: "active",
-                start_date: new Date().toISOString().split("T")[0],
+                assigned_at: nowIso,
               });
             }
           }

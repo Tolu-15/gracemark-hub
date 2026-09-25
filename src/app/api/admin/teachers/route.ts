@@ -23,11 +23,11 @@ export async function GET(req: NextRequest) {
     const [ctaRes, staRes] = await Promise.all([
       service
         .from("class_teacher_assignments")
-        .select("teacher_user_id, session, class_id, classes(name)")
+        .select("teacher_user_id, class_id, classes(name)")
         .eq("status", "active"),
       service
         .from("subject_teacher_assignments")
-        .select("teacher_user_id, session, class_id, subject_id, classes(name), subjects(name)")
+        .select("teacher_user_id, class_id, subject_id, classes(name), subjects(name)")
         .eq("status", "active"),
     ]);
 
@@ -45,8 +45,8 @@ export async function GET(req: NextRequest) {
 
     const enriched = (teachers || []).map((t: any) => ({
       ...t,
-      classAssignments: ctaMap.get(t.auth_id) || [],
-      subjectAssignments: staMap.get(t.auth_id) || [],
+      classAssignments: ctaMap.get(t.id) || ctaMap.get(t.auth_id) || [],
+      subjectAssignments: staMap.get(t.id) || staMap.get(t.auth_id) || [],
     }));
 
     let maxNum = 0;

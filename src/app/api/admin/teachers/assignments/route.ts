@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase/server";
 
+function extractSessionName(academicSessions: any, fallback: string = ""): string {
+  if (Array.isArray(academicSessions)) {
+    return academicSessions[0]?.name || fallback;
+  }
+  return academicSessions?.name || fallback;
+}
+
 export async function GET(req: NextRequest) {
   const service = getServiceClient();
   if (!service) {
@@ -15,36 +22,65 @@ export async function GET(req: NextRequest) {
     let classAssignments: any[] = [];
     let subjectAssignments: any[] = [];
 
+    let targetSessionId: string | null = null;
+    if (session) {
+      const { data: sessRow } = await service
+        .from("academic_sessions")
+        .select("id")
+        .eq("name", session)
+        .maybeSingle();
+      if (sessRow?.id) {
+        targetSessionId = sessRow.id;
+      }
+    }
+
     if (!type || type === "class") {
       let query = service
         .from("class_teacher_assignments")
         .select(`
-          id, academic_session_id, session, class_id, section_id, teacher_user_id,
-          status, start_date, end_date, notes, created_at,
+          id, academic_session_id, class_id, section_id, teacher_user_id,
+          status, notes, assigned_at, ended_at,
           classes(id, name),
-          sections(id, name)
+          sections(id, name),
+          academic_sessions(id, name)
         `)
-        .order("created_at", { ascending: false });
+        .order("assigned_at", { ascending: false });
 
-      if (session) {
-        query = query.eq("session", session);
+      if (targetSessionId) {
+        query = query.eq("academic_session_id", targetSessionId);
       }
 
       const { data, error } = await query;
       if (!error && data) {
         // Enrich with teacher names from users table
-        const teacherIds = Array.from(new Set(data.map((d: any) => d.teacher_user_id)));
+        const teacherIds = Array.from(new Set(data.map((d: any) => d.teacher_user_id).filter(Boolean)));
         let teacherMap = new Map<string, any>();
         if (teacherIds.length > 0) {
           const { data: teachers } = await service
             .from("users")
-            .select("auth_id, display_name, email, staff_id")
-            .in("auth_id", teacherIds);
-          (teachers || []).forEach((t: any) => teacherMap.set(t.auth_id, t));
+            .select("id, auth_id, display_name, email, staff_id")
+            .or(`id.in.(${teacherIds.join(",")}),auth_id.in.(${teacherIds.join(",")})`);
+          (teachers || []).forEach((t: any) => {
+            teacherMap.set(t.id, t);
+            teacherMap.set(t.auth_id, t);
+          });
         }
 
         classAssignments = data.map((d: any) => ({
-          ...d,
+          id: d.id,
+          academic_session_id: d.academic_session_id,
+          session: extractSessionName(d.academic_sessions, session),
+          class_id: d.class_id,
+          section_id: d.section_id,
+          teacher_user_id: d.teacher_user_id,
+          status: d.status,
+          start_date: d.assigned_at ? d.assigned_at.split("T")[0] : "",
+          end_date: d.ended_at ? d.ended_at.split("T")[0] : null,
+          notes: d.notes,
+          created_at: d.assigned_at,
+          classes: d.classes,
+          sections: d.sections,
+          academic_sessions: d.academic_sessions,
           teacher: teacherMap.get(d.teacher_user_id) || null,
         }));
       }
@@ -54,32 +90,51 @@ export async function GET(req: NextRequest) {
       let query = service
         .from("subject_teacher_assignments")
         .select(`
-          id, academic_session_id, session, class_id, section_id, subject_id, teacher_user_id,
-          status, start_date, end_date, notes, created_at,
+          id, academic_session_id, class_id, section_id, subject_id, teacher_user_id,
+          status, notes, assigned_at, ended_at,
           classes(id, name),
           subjects(id, name),
-          sections(id, name)
+          sections(id, name),
+          academic_sessions(id, name)
         `)
-        .order("created_at", { ascending: false });
+        .order("assigned_at", { ascending: false });
 
-      if (session) {
-        query = query.eq("session", session);
+      if (targetSessionId) {
+        query = query.eq("academic_session_id", targetSessionId);
       }
 
       const { data, error } = await query;
       if (!error && data) {
-        const teacherIds = Array.from(new Set(data.map((d: any) => d.teacher_user_id)));
+        const teacherIds = Array.from(new Set(data.map((d: any) => d.teacher_user_id).filter(Boolean)));
         let teacherMap = new Map<string, any>();
         if (teacherIds.length > 0) {
           const { data: teachers } = await service
             .from("users")
-            .select("auth_id, display_name, email, staff_id")
-            .in("auth_id", teacherIds);
-          (teachers || []).forEach((t: any) => teacherMap.set(t.auth_id, t));
+            .select("id, auth_id, display_name, email, staff_id")
+            .or(`id.in.(${teacherIds.join(",")}),auth_id.in.(${teacherIds.join(",")})`);
+          (teachers || []).forEach((t: any) => {
+            teacherMap.set(t.id, t);
+            teacherMap.set(t.auth_id, t);
+          });
         }
 
         subjectAssignments = data.map((d: any) => ({
-          ...d,
+          id: d.id,
+          academic_session_id: d.academic_session_id,
+          session: extractSessionName(d.academic_sessions, session),
+          class_id: d.class_id,
+          section_id: d.section_id,
+          subject_id: d.subject_id,
+          teacher_user_id: d.teacher_user_id,
+          status: d.status,
+          start_date: d.assigned_at ? d.assigned_at.split("T")[0] : "",
+          end_date: d.ended_at ? d.ended_at.split("T")[0] : null,
+          notes: d.notes,
+          created_at: d.assigned_at,
+          classes: d.classes,
+          subjects: d.subjects,
+          sections: d.sections,
+          academic_sessions: d.academic_sessions,
           teacher: teacherMap.get(d.teacher_user_id) || null,
         }));
       }
@@ -142,7 +197,20 @@ export async function POST(req: NextRequest) {
       effectiveSessionId = newSess?.id;
     }
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    // Resolve teacher_user_id to public.users(id)
+    let resolvedTeacherUserId = teacherUserId;
+    const { data: userProfile } = await service
+      .from("users")
+      .select("id, auth_id")
+      .or(`id.eq.${teacherUserId},auth_id.eq.${teacherUserId}`)
+      .maybeSingle();
+
+    if (userProfile?.id) {
+      resolvedTeacherUserId = userProfile.id;
+    }
+
+    const nowIso = new Date().toISOString();
+    const todayStr = nowIso.split("T")[0];
 
     if (type === "class") {
       const targetClassIds: string[] = Array.isArray(body.classIds) && body.classIds.length > 0 
@@ -155,7 +223,7 @@ export async function POST(req: NextRequest) {
         // 1. Mark previous active class teacher as ended
         let endQuery = service
           .from("class_teacher_assignments")
-          .update({ status: "ended", end_date: todayStr })
+          .update({ status: "ended", ended_at: nowIso })
           .eq("academic_session_id", effectiveSessionId)
           .eq("class_id", cid)
           .eq("status", "active");
@@ -172,22 +240,36 @@ export async function POST(req: NextRequest) {
           .from("class_teacher_assignments")
           .insert({
             academic_session_id: effectiveSessionId,
-            session,
             class_id: cid,
             section_id: sectionId || null,
-            teacher_user_id: teacherUserId,
+            teacher_user_id: resolvedTeacherUserId,
             status: "active",
-            start_date: todayStr,
+            assigned_at: nowIso,
             notes: notes || null,
           })
-          .select("*")
+          .select(`
+            id, academic_session_id, class_id, section_id, teacher_user_id,
+            status, notes, assigned_at, ended_at,
+            classes(id, name),
+            sections(id, name),
+            academic_sessions(id, name)
+          `)
           .single();
 
         if (insErr) {
           return NextResponse.json({ ok: false, error: insErr.message }, { status: 400 });
         }
 
-        insertedList.push(newAssignment);
+        const rawClassAssignment: any = newAssignment;
+        const formatted = {
+          ...rawClassAssignment,
+          session: extractSessionName(rawClassAssignment?.academic_sessions, session),
+          start_date: rawClassAssignment?.assigned_at ? rawClassAssignment.assigned_at.split("T")[0] : todayStr,
+          end_date: rawClassAssignment?.ended_at ? rawClassAssignment.ended_at.split("T")[0] : null,
+          created_at: rawClassAssignment?.assigned_at,
+        };
+
+        insertedList.push(formatted);
       }
 
       return NextResponse.json({ ok: true, assignment: insertedList[0], assignments: insertedList });
@@ -202,7 +284,7 @@ export async function POST(req: NextRequest) {
       // 1. Mark previous active subject teacher as ended
       let endQuery = service
         .from("subject_teacher_assignments")
-        .update({ status: "ended", end_date: todayStr })
+        .update({ status: "ended", ended_at: nowIso })
         .eq("academic_session_id", effectiveSessionId)
         .eq("class_id", classId)
         .eq("subject_id", subjectId)
@@ -220,23 +302,38 @@ export async function POST(req: NextRequest) {
         .from("subject_teacher_assignments")
         .insert({
           academic_session_id: effectiveSessionId,
-          session,
           class_id: classId,
           section_id: sectionId || null,
           subject_id: subjectId,
-          teacher_user_id: teacherUserId,
+          teacher_user_id: resolvedTeacherUserId,
           status: "active",
-          start_date: todayStr,
+          assigned_at: nowIso,
           notes: notes || null,
         })
-        .select("*")
+        .select(`
+          id, academic_session_id, class_id, section_id, subject_id, teacher_user_id,
+          status, notes, assigned_at, ended_at,
+          classes(id, name),
+          subjects(id, name),
+          sections(id, name),
+          academic_sessions(id, name)
+        `)
         .single();
 
       if (insErr) {
         return NextResponse.json({ ok: false, error: insErr.message }, { status: 400 });
       }
 
-      return NextResponse.json({ ok: true, assignment: newAssignment });
+      const rawSubjectAssignment: any = newAssignment;
+      const formatted = {
+        ...rawSubjectAssignment,
+        session: extractSessionName(rawSubjectAssignment?.academic_sessions, session),
+        start_date: rawSubjectAssignment?.assigned_at ? rawSubjectAssignment.assigned_at.split("T")[0] : todayStr,
+        end_date: rawSubjectAssignment?.ended_at ? rawSubjectAssignment.ended_at.split("T")[0] : null,
+        created_at: rawSubjectAssignment?.assigned_at,
+      };
+
+      return NextResponse.json({ ok: true, assignment: formatted });
     }
 
     return NextResponse.json({ ok: false, error: "Invalid assignment type" }, { status: 400 });

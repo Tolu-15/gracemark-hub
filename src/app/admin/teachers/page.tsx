@@ -360,7 +360,7 @@ export default function AdminTeachersPage() {
   function handleOpenAssignClassModal(group: ClassGroup) {
     setTargetClassForAssignment(group);
     const current = classAssignments.find((a) => group.classIds.includes(a.class_id) && a.status === "active");
-    setSelectedTeacherForClass(current?.teacher_user_id || "");
+    setSelectedTeacherForClass(current?.teacher?.auth_id || current?.teacher_user_id || "");
     setClassAssignNotes("");
     setAssignClassModalOpen(true);
   }
@@ -412,7 +412,7 @@ export default function AdminTeachersPage() {
     const current = subjectAssignments.find(
       (a) => a.class_id === selectedSubjectClass && a.subject_id === sub.id && a.status === "active"
     );
-    setSelectedTeacherForSubject(current?.teacher_user_id || "");
+    setSelectedTeacherForSubject(current?.teacher?.auth_id || current?.teacher_user_id || "");
     setSubjectAssignNotes("");
     setAssignSubjectModalOpen(true);
   }

@@ -83,3 +83,36 @@
   ALTER TABLE public.users 
   ADD COLUMN IF NOT EXISTS personal_email text;
 
+  -- 4. Add compatibility columns to teacher assignments tables
+  ALTER TABLE public.class_teacher_assignments 
+  ADD COLUMN IF NOT EXISTS session text,
+  ADD COLUMN IF NOT EXISTS start_date date,
+  ADD COLUMN IF NOT EXISTS end_date date,
+  ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+
+  ALTER TABLE public.subject_teacher_assignments 
+  ADD COLUMN IF NOT EXISTS session text,
+  ADD COLUMN IF NOT EXISTS start_date date,
+  ADD COLUMN IF NOT EXISTS end_date date,
+  ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+
+  -- Backfill session text from academic_sessions
+  UPDATE public.class_teacher_assignments cta
+  SET 
+    session = s.name,
+    start_date = cta.assigned_at::date,
+    end_date = cta.ended_at::date,
+    created_at = COALESCE(cta.created_at, cta.assigned_at)
+  FROM public.academic_sessions s
+  WHERE cta.academic_session_id = s.id AND cta.session IS NULL;
+
+  UPDATE public.subject_teacher_assignments sta
+  SET 
+    session = s.name,
+    start_date = sta.assigned_at::date,
+    end_date = sta.ended_at::date,
+    created_at = COALESCE(sta.created_at, sta.assigned_at)
+  FROM public.academic_sessions s
+  WHERE sta.academic_session_id = s.id AND sta.session IS NULL;
+
+
