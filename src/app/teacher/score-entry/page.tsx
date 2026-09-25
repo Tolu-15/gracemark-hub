@@ -29,6 +29,7 @@ interface StudentScoreRow {
 }
 
 export default function TeacherScoreEntryPage() {
+  const [userRole, setUserRole] = useState<string>("teacher");
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
   const [selectedClass, setSelectedClass] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("");
@@ -70,8 +71,13 @@ export default function TeacherScoreEntryPage() {
       });
       return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
     }
-    return allSubjects;
-  }, [selectedClass, teacherAssignments, allSubjects]);
+    // Teachers should ONLY see subjects assigned to them per class
+    // Only administrators have the privilege to view/enter scores for unassigned subjects
+    if (userRole === "admin") {
+      return allSubjects;
+    }
+    return [];
+  }, [selectedClass, teacherAssignments, allSubjects, userRole]);
 
   // Keep selectedSubject in sync with available subjects
   useEffect(() => {
@@ -107,19 +113,34 @@ export default function TeacherScoreEntryPage() {
       const user = sessionData?.session?.user;
       if (!user) return;
 
+      const { data: profile } = await supabase
+        .from("users")
+        .select("id, role")
+        .eq("auth_id", user.id)
+        .maybeSingle();
+
+      const role = profile?.role || "teacher";
+      setUserRole(role);
+
+      const teacherUid = profile?.id || user.id;
+      const idList = Array.from(new Set([user.id, teacherUid].filter(Boolean)));
+
       let parsedAssignments: Array<{ class_id: string; class_name: string; subject_id: string; subject_name: string }> = [];
       try {
         let q = supabase
           .from("subject_teacher_assignments")
-          .select("class_id, subject_id, classes(id, name), subjects(id, name)")
-          .eq("teacher_user_id", user.id)
+          .select("class_id, subject_id, academic_session_id, classes(id, name), subjects(id, name)")
+          .in("teacher_user_id", idList)
           .eq("status", "active");
-        if (activeSessionId) {
-          q = q.eq("academic_session_id", activeSessionId);
-        }
+
         const { data: subAssigns, error: subErr } = await q;
         if (!subErr && subAssigns && subAssigns.length > 0) {
-          parsedAssignments = subAssigns.map((a: any) => ({
+          const sessionMatched = activeSessionId
+            ? subAssigns.filter((a: any) => a.academic_session_id === activeSessionId)
+            : [];
+          const effective = sessionMatched.length > 0 ? sessionMatched : subAssigns;
+
+          parsedAssignments = effective.map((a: any) => ({
             class_id: a.class_id,
             class_name: a.classes?.name || "",
             subject_id: a.subject_id,
@@ -135,8 +156,22 @@ export default function TeacherScoreEntryPage() {
       // Extract unique classes
       const classMap = new Map<string, { id: string; name: string }>();
       parsedAssignments.forEach((a) => {
-        if (a.class_id) classMap.set(a.class_id, { id: a.class_id, name: a.class_name });
+        if (a.class_id && a.class_name) classMap.set(a.class_id, { id: a.class_id, name: a.class_name });
       });
+
+      // Also include classes where the teacher is class teacher
+      try {
+        const { data: cta } = await supabase
+          .from("class_teacher_assignments")
+          .select("class_id, classes(id, name)")
+          .in("teacher_user_id", idList)
+          .eq("status", "active");
+        (cta || []).forEach((c: any) => {
+          if (c.classes?.id && c.classes?.name) classMap.set(c.classes.id, c.classes);
+        });
+      } catch (ctaErr) {
+        console.warn("Could not query class_teacher_assignments:", ctaErr);
+      }
 
       let cList = Array.from(classMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 
@@ -146,7 +181,8 @@ export default function TeacherScoreEntryPage() {
 
       if (allSub) setAllSubjects(allSub);
 
-      if (!cList.length && allCl) {
+      // Only fallback to all classes if user is ADMIN. Teachers only see assigned classes!
+      if (role === "admin" && !cList.length && allCl) {
         cList = allCl;
       }
 
@@ -180,38 +216,90 @@ export default function TeacherScoreEntryPage() {
     setStatusMsg("");
 
     try {
-      // 1. Fetch students: Query student_subject_enrollments with student_enrollments join
-      let subQuery = supabase
-        .from("student_subject_enrollments")
-        .select(`
-          id,
-          status,
-          enrollment_id,
-          student_enrollments!inner (
+      // 1. Fetch students for the selected class and subject
+      let studentList: { id: string; name: string; admission_no: string }[] = [];
+
+      // Try fetching via student_subject_enrollments
+      try {
+        let subQuery = supabase
+          .from("student_subject_enrollments")
+          .select(`
             id,
-            student_id,
-            class_id,
-            academic_session_id,
-            students (id, name, admission_no)
-          )
-        `)
-        .eq("subject_id", selectedSubject)
-        .eq("status", "enrolled")
-        .eq("student_enrollments.class_id", selectedClass);
+            status,
+            enrollment_id,
+            student_enrollments (
+              id,
+              student_id,
+              class_id,
+              academic_session_id,
+              students (id, name, admission_no)
+            )
+          `)
+          .eq("subject_id", selectedSubject)
+          .eq("status", "enrolled")
+          .eq("student_enrollments.class_id", selectedClass);
 
-      if (currentSessionId) {
-        subQuery = subQuery.eq("student_enrollments.academic_session_id", currentSessionId);
+        if (currentSessionId) {
+          const { data: sessData } = await subQuery.eq("student_enrollments.academic_session_id", currentSessionId);
+          if (sessData && sessData.length > 0) {
+            studentList = sessData
+              .map((e: any) => e.student_enrollments?.students)
+              .filter(Boolean);
+          }
+        }
+
+        // If session-specific query didn't return students, try without session filter
+        if (!studentList.length) {
+          const { data: anyData } = await subQuery;
+          if (anyData && anyData.length > 0) {
+            studentList = anyData
+              .map((e: any) => e.student_enrollments?.students)
+              .filter(Boolean);
+          }
+        }
+      } catch (subErr) {
+        console.warn("student_subject_enrollments query failed:", subErr);
       }
 
-      const { data: subEnrolled, error: subErr } = await subQuery;
-      if (subErr) {
-        throw new Error(subErr.message || "Failed to load student subject enrollments.");
+      // CRITICAL GUARANTEE: If student_subject_enrollments has no students yet for this subject,
+      // load all active students in the selected class from `students` table & enrollments
+      if (!studentList.length && selectedClass) {
+        const [studentRes, enrollRes] = await Promise.all([
+          supabase
+            .from("students")
+            .select("id, name, admission_no")
+            .eq("class_id", selectedClass)
+            .order("name"),
+          supabase
+            .from("student_enrollments")
+            .select("student_id, students(id, name, admission_no)")
+            .eq("class_id", selectedClass)
+            .eq("status", "active"),
+        ]);
+
+        const map = new Map<string, { id: string; name: string; admission_no: string }>();
+        (studentRes.data || []).forEach((s: any) => {
+          if (s.id) map.set(s.id, { id: s.id, name: s.name || "Student", admission_no: s.admission_no || "—" });
+        });
+        (enrollRes.data || []).forEach((e: any) => {
+          if (e.students?.id && !map.has(e.students.id)) {
+            map.set(e.students.id, { id: e.students.id, name: e.students.name || "Student", admission_no: e.students.admission_no || "—" });
+          }
+        });
+
+        studentList = Array.from(map.values());
       }
 
-      const studentList: { id: string; name: string; admission_no: string }[] = (subEnrolled || [])
-        .map((e: any) => e.student_enrollments?.students || e.students)
-        .filter(Boolean)
-        .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
+      // Deduplicate student list by id
+      const uniqueStudentMap = new Map<string, { id: string; name: string; admission_no: string }>();
+      studentList.forEach((s) => {
+        if (s?.id && !uniqueStudentMap.has(s.id)) {
+          uniqueStudentMap.set(s.id, s);
+        }
+      });
+      studentList = Array.from(uniqueStudentMap.values()).sort((a, b) =>
+        (a.name || "").localeCompare(b.name || "")
+      );
 
       if (!studentList.length) {
         setRows([]);

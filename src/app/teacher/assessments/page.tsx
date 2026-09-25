@@ -145,11 +145,21 @@ export default function TeacherAssessmentsPage() {
       setCurrentSession(settings?.current_session || "");
       setCurrentTerm(settings?.current_term || "term1");
 
+      // Fetch profile to resolve internal DB id
+      const { data: profile } = await supabase
+        .from("users")
+        .select("id, role")
+        .eq("auth_id", user.id)
+        .maybeSingle();
+
+      const teacherUid = profile?.id || user.id;
+      const idList = Array.from(new Set([user.id, teacherUid].filter(Boolean)));
+
       // Fetch teacher assignments
       const { data: assignments } = await supabase
         .from("subject_teacher_assignments")
         .select("class_id, subject_id, classes(name), subjects(name)")
-        .eq("teacher_user_id", user.id)
+        .in("teacher_user_id", idList)
         .eq("status", "active");
 
       const classesMap = new Map<string, string>();

@@ -21,7 +21,7 @@ export default function TeacherDashboardPage() {
       // Fetch profile
       const { data: profile } = await supabase
         .from("users")
-        .select("display_name")
+        .select("id, display_name, role")
         .eq("auth_id", user.id)
         .maybeSingle();
 
@@ -29,22 +29,25 @@ export default function TeacherDashboardPage() {
         setTeacherName(profile.display_name);
       }
 
+      const teacherUid = profile?.id || user.id;
+      const idList = Array.from(new Set([user.id, teacherUid].filter(Boolean)));
+
       // 1. Fetch Class & Subject Teacher duties
       const [ctaRes, staRes, ctClassesRes] = await Promise.all([
         supabase
           .from("class_teacher_assignments")
           .select("class_id, classes(id, name)")
-          .eq("teacher_user_id", user.id)
+          .in("teacher_user_id", idList)
           .eq("status", "active"),
         supabase
           .from("subject_teacher_assignments")
           .select("class_id, subject_id, classes(id, name), subjects(id, name)")
-          .eq("teacher_user_id", user.id)
+          .in("teacher_user_id", idList)
           .eq("status", "active"),
         supabase
           .from("classes")
           .select("id, name")
-          .eq("class_teacher_id", user.id),
+          .in("class_teacher_id", idList),
       ]);
 
       const classMap = new Map<string, { id: string; name: string }>();

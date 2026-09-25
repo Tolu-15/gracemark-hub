@@ -618,10 +618,10 @@ export default function AdminTeachersPage() {
                     filteredTeachers.map((t) => {
                       const isFormer = t.status === "former";
                       const classDuties = classAssignments.filter(
-                        (a) => a.teacher_user_id === t.auth_id && a.status === "active"
+                        (a) => (a.teacher_user_id === t.auth_id || a.teacher_user_id === t.id) && a.status === "active"
                       );
                       const subjectDuties = subjectAssignments.filter(
-                        (a) => a.teacher_user_id === t.auth_id && a.status === "active"
+                        (a) => (a.teacher_user_id === t.auth_id || a.teacher_user_id === t.id) && a.status === "active"
                       );
 
                       return (

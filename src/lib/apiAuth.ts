@@ -5,6 +5,7 @@ export type ApiRole = "admin" | "teacher" | "student";
 
 export interface ApiActor {
   authId: string;
+  dbUserId?: string;
   role: ApiRole;
   service: NonNullable<ReturnType<typeof getServiceClient>>;
 }
@@ -38,7 +39,7 @@ export async function requireApiActor(
 
   const { data: profile, error: profileError } = await service
     .from("users")
-    .select("role")
+    .select("id, role")
     .eq("auth_id", userData.user.id)
     .maybeSingle();
   const role = profile?.role as ApiRole | undefined;
@@ -47,7 +48,7 @@ export async function requireApiActor(
     return { response: NextResponse.json({ error: "You are not allowed to perform this action." }, { status: 403 }) };
   }
 
-  return { actor: { authId: userData.user.id, role, service } };
+  return { actor: { authId: userData.user.id, dbUserId: profile?.id, role, service } };
 }
 
 export async function requireTeacherAssignment(
@@ -59,14 +60,23 @@ export async function requireTeacherAssignment(
   if (actor.role === "admin") return true;
   if (!classId || !subjectId) return false;
 
+  const idList = Array.from(new Set([actor.authId, actor.dbUserId].filter(Boolean)));
+
   let assignment = actor.service
     .from("subject_teacher_assignments")
     .select("id")
-    .eq("teacher_user_id", actor.authId)
+    .in("teacher_user_id", idList)
     .eq("class_id", classId)
     .eq("subject_id", subjectId)
     .eq("status", "active");
-  if (academicSessionId) assignment = assignment.eq("academic_session_id", academicSessionId);
+
+  if (academicSessionId) {
+    const { data: sessMatch } = await assignment.eq("academic_session_id", academicSessionId).limit(1);
+    if (sessMatch && sessMatch.length > 0) return true;
+  }
+
+  // Fallback to active assignment across sessions if not explicitly constrained
   const { data } = await assignment.limit(1);
   return Boolean(data?.length);
 }
+
