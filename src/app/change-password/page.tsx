@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import { fetchUserProfileByAuthId, destinationForRole } from "@/lib/auth";
 import PoweredBy from "@/components/shared/PoweredBy";
 
@@ -63,7 +63,7 @@ export default function ChangePasswordPage() {
 
       const res = await fetch("/api/auth/change-password", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
         body: JSON.stringify({
           user_id: currentUser.id,
           new_password: password,

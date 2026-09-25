@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 
 export default function TeacherGradebookPage() {
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
@@ -129,7 +129,7 @@ export default function TeacherGradebookPage() {
       if (session) url.searchParams.set("session", session);
       if (selectedSubject) url.searchParams.set("subject_id", selectedSubject);
 
-      const res = await fetch(url.toString());
+      const res = await fetch(url.toString(), { headers: await getAuthHeaders() });
       if (!res.ok) {
         throw new Error("Failed to fetch gradebook from server.");
       }

@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/supabase/server";
+import { requireApiActor } from "@/lib/apiAuth";
 import { sendTeacherWelcomeEmail } from "@/lib/email";
 
 const GOOGLE_FORM_URL = "https://forms.gle/bhiJ4CUkXJbHRP5p6";
 
 export async function GET(req: NextRequest) {
-  const service = getServiceClient();
-  if (!service) {
-    return NextResponse.json({ ok: false, error: "Database client unavailable" }, { status: 500 });
-  }
+  const authorization = await requireApiActor(req, ["admin"]);
+  if ("response" in authorization) return authorization.response;
+  const { service } = authorization.actor;
 
   try {
     const { data: teachers, error: tErr } = await service
@@ -66,10 +65,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const service = getServiceClient();
-  if (!service) {
-    return NextResponse.json({ ok: false, error: "Database client unavailable" }, { status: 500 });
-  }
+  const authorization = await requireApiActor(req, ["admin"]);
+  if ("response" in authorization) return authorization.response;
+  const { service } = authorization.actor;
 
   try {
     const body = await req.json();
@@ -198,10 +196,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const service = getServiceClient();
-  if (!service) {
-    return NextResponse.json({ ok: false, error: "Database client unavailable" }, { status: 500 });
-  }
+  const authorization = await requireApiActor(req, ["admin"]);
+  if ("response" in authorization) return authorization.response;
+  const { service } = authorization.actor;
 
   try {
     const body = await req.json();
@@ -252,10 +249,9 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const service = getServiceClient();
-  if (!service) {
-    return NextResponse.json({ ok: false, error: "Database client unavailable" }, { status: 500 });
-  }
+  const authorization = await requireApiActor(req, ["admin"]);
+  if ("response" in authorization) return authorization.response;
+  const { service } = authorization.actor;
 
   try {
     const { searchParams } = new URL(req.url);

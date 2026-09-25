@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/supabase/server";
+import { requireApiActor } from "@/lib/apiAuth";
 import { calculateStudentResult, emptyRawScores, normalizeBreakdown, toStoredScores } from "@/lib/gradingEngine";
 
 export async function POST(req: NextRequest) {
-  const service = getServiceClient();
-  if (!service) {
-    return NextResponse.json({ ok: false, error: "Database client unavailable" }, { status: 500 });
-  }
+  const authorization = await requireApiActor(req, ["admin", "teacher", "student"]);
+  if ("response" in authorization) return authorization.response;
+  const { service } = authorization.actor;
 
   try {
     const body = await req.json();

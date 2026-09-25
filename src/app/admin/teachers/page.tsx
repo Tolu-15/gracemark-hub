@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import { ClassRecord, SubjectRecord } from "@/types/database";
 import { StaffProfile, ClassTeacherAssignment, SubjectTeacherAssignment } from "@/types/academic";
 import { getAcademicSessions } from "@/lib/academicSessions";
@@ -79,7 +79,7 @@ export default function AdminTeachersPage() {
 
   const loadTeachers = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/teachers");
+      const res = await fetch("/api/admin/teachers", { headers: await getAuthHeaders() });
       if (res.ok) {
         const json = await res.json();
         if (json.ok) {
@@ -189,7 +189,9 @@ export default function AdminTeachersPage() {
   const loadAssignments = useCallback(async () => {
     if (!selectedSession) return;
     try {
-      const res = await fetch(`/api/admin/teachers/assignments?session=${encodeURIComponent(selectedSession)}`);
+      const res = await fetch(`/api/admin/teachers/assignments?session=${encodeURIComponent(selectedSession)}`, {
+        headers: await getAuthHeaders(),
+      });
       if (res.ok) {
         const json = await res.json();
         if (json.ok) {
@@ -263,7 +265,7 @@ export default function AdminTeachersPage() {
         // Create new teacher directly via server POST API
         const res = await fetch("/api/admin/teachers", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
           body: JSON.stringify({
             name: teacherFormData.name.trim(),
             staffId: teacherFormData.staffId.trim().toUpperCase(),
@@ -281,7 +283,7 @@ export default function AdminTeachersPage() {
         // Update existing teacher profile via server PATCH API
         const res = await fetch("/api/admin/teachers", {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
           body: JSON.stringify({
             teacherId: editingTeacher.id,
             authId: editingTeacher.auth_id,
@@ -318,7 +320,7 @@ export default function AdminTeachersPage() {
     try {
       const res = await fetch("/api/admin/teachers", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
         body: JSON.stringify({
           authId: t.auth_id,
           teacherId: t.id,
@@ -375,7 +377,7 @@ export default function AdminTeachersPage() {
     try {
       const res = await fetch("/api/admin/teachers/assignments", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
         body: JSON.stringify({
           type: "class",
           session: selectedSession,
@@ -428,7 +430,7 @@ export default function AdminTeachersPage() {
     try {
       const res = await fetch("/api/admin/teachers/assignments", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
         body: JSON.stringify({
           type: "subject",
           session: selectedSession,

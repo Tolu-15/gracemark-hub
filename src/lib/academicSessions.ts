@@ -1,4 +1,4 @@
-import { supabase } from "./supabase/client";
+import { supabase, getAuthHeaders } from "./supabase/client";
 import { getAppSettings, setAppSettings } from "./appSettings";
 
 export interface AcademicSession {
@@ -17,7 +17,7 @@ export interface AcademicSession {
 export async function getAcademicSessions(): Promise<AcademicSession[]> {
   if (typeof window !== "undefined") {
     try {
-      const res = await fetch("/api/admin/sessions");
+      const res = await fetch("/api/admin/sessions", { headers: await getAuthHeaders() });
       if (res.ok) {
         const json = await res.json();
         if (json.ok && Array.isArray(json.sessions) && json.sessions.length > 0) {

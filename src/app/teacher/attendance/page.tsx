@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 
 interface StudentAttendance {
   student_id: string;
@@ -113,7 +113,7 @@ export default function TeacherAttendancePage() {
     setLoading(true);
     try {
       const q = `/api/teacher/attendance?class_id=${encodeURIComponent(selectedClass)}&term=${encodeURIComponent(currentTerm)}&session=${encodeURIComponent(currentSession)}&date=${encodeURIComponent(selectedDate)}`;
-      const res = await fetch(q);
+      const res = await fetch(q, { headers: await getAuthHeaders() });
       if (!res.ok) {
         throw new Error("Failed to load attendance from server.");
       }
@@ -210,7 +210,7 @@ export default function TeacherAttendancePage() {
 
       const res = await fetch("/api/teacher/attendance", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
         body: JSON.stringify({
           action: "save_daily",
           records: recordsToUpsert,
@@ -270,7 +270,7 @@ export default function TeacherAttendancePage() {
 
       const res = await fetch("/api/teacher/attendance", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
         body: JSON.stringify({
           action: "save_summary",
           records: payload,

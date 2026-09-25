@@ -31,3 +31,10 @@ export function getSupabaseBrowserClient() {
 export const getSupabaseClient = getSupabaseBrowserClient;
 export const supabase = getSupabaseBrowserClient();
 
+/** Returns fetch headers carrying the current session's bearer token, for calling protected API routes. */
+export async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+

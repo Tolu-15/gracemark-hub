@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import ResultDashboardApp from "@/components/student/ResultDashboardApp";
 import { fetchStudentReport } from "@/lib/studentReport";
 import { getAcademicSessions } from "@/lib/academicSessions";
@@ -78,7 +78,9 @@ export default function AdminHistoricalResultsPage() {
 
     setIsSearching(true);
     try {
-      const res = await fetch(`/api/admin/historical-lookup?q=${encodeURIComponent(q.trim())}`);
+      const res = await fetch(`/api/admin/historical-lookup?q=${encodeURIComponent(q.trim())}`, {
+        headers: await getAuthHeaders(),
+      });
       if (res.ok) {
         const json = await res.json();
         if (json.ok) {
@@ -98,7 +100,9 @@ export default function AdminHistoricalResultsPage() {
     setSearchResults([]);
     setLoadingCareer(true);
     try {
-      const res = await fetch(`/api/admin/historical-lookup?studentId=${encodeURIComponent(sId)}`);
+      const res = await fetch(`/api/admin/historical-lookup?studentId=${encodeURIComponent(sId)}`, {
+        headers: await getAuthHeaders(),
+      });
       if (res.ok) {
         const json = await res.json();
         if (json.ok) {
@@ -146,7 +150,8 @@ export default function AdminHistoricalResultsPage() {
 
     try {
       const res = await fetch(
-        `/api/admin/class-broadsheet?classId=${encodeURIComponent(selectedBroadsheetClass)}&session=${encodeURIComponent(selectedBroadsheetSession)}&term=${encodeURIComponent(selectedBroadsheetTerm)}`
+        `/api/admin/class-broadsheet?classId=${encodeURIComponent(selectedBroadsheetClass)}&session=${encodeURIComponent(selectedBroadsheetSession)}&term=${encodeURIComponent(selectedBroadsheetTerm)}`,
+        { headers: await getAuthHeaders() }
       );
       const json = await res.json();
       if (!res.ok || !json.ok) {

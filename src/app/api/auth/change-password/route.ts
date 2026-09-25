@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/supabase/server";
+import { requireApiActor } from "@/lib/apiAuth";
 
 export async function POST(req: NextRequest) {
   try {
+    const authorization = await requireApiActor(req, ["admin", "teacher", "student"]);
+    if ("response" in authorization) return authorization.response;
+    const { actor } = authorization;
+
     const body = await req.json();
     const { user_id, new_password } = body;
 
@@ -13,6 +17,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (actor.role !== "admin" && actor.authId !== user_id) {
+      return NextResponse.json(
+        { error: "You can only change your own password." },
+        { status: 403 }
+      );
+    }
+
     if (new_password.length < 6) {
       return NextResponse.json(
         { error: "Password must be at least 6 characters." },
@@ -20,13 +31,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const service = getServiceClient();
-    if (!service) {
-      return NextResponse.json(
-        { error: "Supabase service client not configured." },
-        { status: 503 }
-      );
-    }
+    const service = actor.service;
 
     // 1. Update Supabase Auth User password
     const { error: authErr } = await service.auth.admin.updateUserById(user_id, {

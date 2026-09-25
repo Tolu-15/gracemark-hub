@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getAuthHeaders } from "@/lib/supabase/client";
+import { resolveStudentUserIdCandidates } from "@/lib/auth";
 
 interface StudentAssessment {
   id: string;
@@ -80,10 +81,11 @@ export default function StudentAssessmentsPage() {
       const user = authData?.user;
       if (!user) return;
 
+      const candidateIds = await resolveStudentUserIdCandidates(user.id);
       const { data: student } = await supabase
         .from("students")
         .select("id, class_id")
-        .eq("user_id", user.id)
+        .in("user_id", candidateIds)
         .maybeSingle();
 
       if (!student) {
@@ -330,7 +332,7 @@ export default function StudentAssessmentsPage() {
       try {
         await fetch("/api/admin/exams/import-to-gradebook", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
           body: JSON.stringify({ examId: selectedAssessment?.id }),
         });
       } catch (syncErr) {

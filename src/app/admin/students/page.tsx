@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import { StudentRecord, ClassRecord } from "@/types/database";
 import {
   STANDARD_JSS_SUBJECTS,
@@ -63,7 +63,7 @@ export default function AdminStudentsPage() {
     try {
       const res = await fetch("/api/admin/students/reset-password", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
         body: JSON.stringify({ student_id: resetModalStudent.id }),
       });
       const data = await res.json();
@@ -111,7 +111,9 @@ export default function AdminStudentsPage() {
       setAvailableSubjects(sortedSubs);
 
       // 2. Load existing enrollments for this student
-      const res = await fetch(`/api/admin/students/subject-enrollments?studentId=${s.id}`);
+      const res = await fetch(`/api/admin/students/subject-enrollments?studentId=${s.id}`, {
+        headers: await getAuthHeaders(),
+      });
       if (res.ok) {
         const json = await res.json();
         if (json.ok && json.enrollments) {
@@ -135,7 +137,7 @@ export default function AdminStudentsPage() {
     try {
       const res = await fetch("/api/admin/students/subject-enrollments", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
         body: JSON.stringify({ action: "get-track-defaults", className }),
       });
       if (res.ok) {
@@ -164,7 +166,7 @@ export default function AdminStudentsPage() {
     try {
       const res = await fetch("/api/admin/students/subject-enrollments", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
         body: JSON.stringify({
           action: "save-student-subjects",
           studentId: subjectModalStudent.id,
@@ -197,7 +199,7 @@ export default function AdminStudentsPage() {
       for (const jc of jssClasses) {
         const res = await fetch("/api/admin/students/subject-enrollments", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
           body: JSON.stringify({ action: "auto-enroll-jss", classId: jc.id }),
         });
         const d = await res.json();
@@ -1119,7 +1121,7 @@ export default function AdminStudentsPage() {
                       setLoadingSubjects(true);
                       await fetch("/api/admin/students/subject-enrollments", {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
+                        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
                         body: JSON.stringify({ action: "auto-enroll-jss", classId: subjectModalStudent.class_id }),
                       });
                       await handleOpenSubjectModal(subjectModalStudent);

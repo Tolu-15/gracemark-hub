@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/supabase/server";
+import { requireApiActor } from "@/lib/apiAuth";
 
-export async function GET() {
-  const service = getServiceClient();
-  if (!service) {
-    return NextResponse.json({ ok: false, error: "Database client unavailable" }, { status: 500 });
-  }
+export async function GET(req: NextRequest) {
+  const authorization = await requireApiActor(req, ["admin", "teacher", "student"]);
+  if ("response" in authorization) return authorization.response;
+  const { service } = authorization.actor;
 
   try {
     const { data, error } = await service
@@ -50,10 +49,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const service = getServiceClient();
-  if (!service) {
-    return NextResponse.json({ ok: false, error: "Database client unavailable" }, { status: 500 });
-  }
+  const authorization = await requireApiActor(req, ["admin"]);
+  if ("response" in authorization) return authorization.response;
+  const { service } = authorization.actor;
 
   try {
     const body = await req.json();

@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/supabase/server";
+import { requireApiActor } from "@/lib/apiAuth";
 import { setTermEditOverride } from "@/lib/termPermissions";
 
 export async function POST(req: NextRequest) {
+  const authorization = await requireApiActor(req, ["admin"]);
+  if ("response" in authorization) return authorization.response;
+  const { service } = authorization.actor;
+
   try {
     const body = await req.json();
     const { session, term, allow_edit } = body || {};
@@ -17,7 +21,6 @@ export async function POST(req: NextRequest) {
     const boolAllow = Boolean(allow_edit);
     setTermEditOverride(session, term, boolAllow);
 
-    const service = getServiceClient();
     if (service) {
       try {
         await service.from("terms").upsert(

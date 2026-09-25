@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceClient } from "@/lib/supabase/server";
-import { supabase as fallbackClient } from "@/lib/supabase/client";
+import { requireApiActor } from "@/lib/apiAuth";
 
 export async function GET(req: NextRequest) {
+  const authorization = await requireApiActor(req, ["admin", "teacher", "student"]);
+  if ("response" in authorization) return authorization.response;
+  const { service: client } = authorization.actor;
+
   const searchParams = req.nextUrl.searchParams;
   const classId = searchParams.get("class_id");
   const term = searchParams.get("term") || "term1";
@@ -12,8 +15,6 @@ export async function GET(req: NextRequest) {
   if (!classId) {
     return NextResponse.json({ error: "class_id is required" }, { status: 400 });
   }
-
-  const client = getServiceClient() || fallbackClient;
 
   // 1. Fetch all students in this class
   const { data: students, error: sErr } = await client

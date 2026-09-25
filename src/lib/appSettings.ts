@@ -1,4 +1,4 @@
-import { supabase } from "./supabase/client";
+import { supabase, getAuthHeaders } from "./supabase/client";
 
 export interface AppSettings {
   id?: number;
@@ -14,7 +14,7 @@ export interface AppSettings {
 export async function getAppSettings(): Promise<AppSettings | null> {
   if (typeof window !== "undefined") {
     try {
-      const res = await fetch("/api/admin/settings");
+      const res = await fetch("/api/admin/settings", { headers: await getAuthHeaders() });
       if (res.ok) {
         const json = await res.json();
         if (json.ok && json.settings) {
@@ -64,7 +64,7 @@ export async function setAppSettings({
     try {
       const res = await fetch("/api/admin/settings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
         body: JSON.stringify({ current_term, current_session }),
       });
       if (res.ok) {

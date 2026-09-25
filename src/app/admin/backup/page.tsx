@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 
 export default function AdminBackupPage() {
   const [downloading, setDownloading] = useState(false);
@@ -60,7 +60,7 @@ export default function AdminBackupPage() {
   async function handleDownloadBackup() {
     setDownloading(true);
     try {
-      const res = await fetch("/api/admin/backup");
+      const res = await fetch("/api/admin/backup", { headers: await getAuthHeaders() });
       if (!res.ok) {
         const json = await res.json();
         throw new Error(json.error || "Failed to download backup");
