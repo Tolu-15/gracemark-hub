@@ -237,7 +237,7 @@ export default function AdminStudentsPage() {
       } else {
         const resLegacy = await supabase
           .from("students")
-          .select("id, name, admission_no, class_id, portal_access_status, portal_lock_reason, classes(id, name), users(email)")
+          .select("id, name, admission_no, class_id, portal_access_status, portal_lock_reason, classes:class_id(id, name), users(email)")
           .order("name", { ascending: true });
         if (resLegacy.error) throw resCanonical.error || resLegacy.error;
         finalStudentsData = resLegacy.data || [];

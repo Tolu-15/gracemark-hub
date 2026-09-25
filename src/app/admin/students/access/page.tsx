@@ -20,7 +20,7 @@ export default function AdminStudentAccessPage() {
         supabase.from("classes").select("id, name").order("name", { ascending: true }),
         supabase
           .from("students")
-          .select("id, name, admission_no, class_id, portal_access_status, portal_lock_reason, classes(name)")
+          .select("id, name, admission_no, class_id, portal_access_status, portal_lock_reason, classes:class_id(name)")
           .order("name", { ascending: true }),
       ]);
 

@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
         .from("students")
         .select(`
           id, name, admission_no, gender, dob, class_id, portal_access_status,
-          classes(id, name)
+          classes:class_id(id, name)
         `)
         .or(`name.ilike.%${q}%,admission_no.ilike.%${q}%`)
         .order("name", { ascending: true })
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
         .select(`
           id, name, admission_no, gender, dob, guardian_name, guardian_phone,
           portal_access_status, created_at,
-          classes(id, name)
+          classes:class_id(id, name)
         `)
         .eq("id", studentId)
         .single();

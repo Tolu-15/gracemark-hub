@@ -27,7 +27,7 @@ export default function StudentFinancialReportPage() {
         const candidateIds = await resolveStudentUserIdCandidates(user.id);
         const { data: std } = await supabase
           .from("students")
-          .select("id, name, admission_no, classes(name)")
+          .select("id, name, admission_no, classes:class_id(name)")
           .in("user_id", candidateIds)
           .maybeSingle();
 

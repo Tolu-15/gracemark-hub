@@ -48,9 +48,6 @@ export default function StudentDashboardPage() {
   const [upcomingCbt, setUpcomingCbt] = useState<any[]>([]);
   const [recentCbtAttempts, setRecentCbtAttempts] = useState<any[]>([]);
 
-  // TEMP DEBUG — remove after diagnosing student lookup issue
-  const [debugInfo, setDebugInfo] = useState<any>(null);
-
   // 1. Initial Profile & Settings Load
   useEffect(() => {
     async function init() {
@@ -64,20 +61,11 @@ export default function StudentDashboardPage() {
 
       // Fetch student profile, tolerant of both user_id storage conventions
       const candidateIds = await resolveStudentUserIdCandidates(user.id);
-      let { data: std, error: stdErr } = await supabase
+      let { data: std } = await supabase
         .from("students")
-        .select("id, admission_no, name, class_id, classes(id, name)")
+        .select("id, admission_no, name, class_id, classes:class_id(id, name)")
         .in("user_id", candidateIds)
         .maybeSingle();
-
-      // TEMP DEBUG — remove after diagnosing student lookup issue
-      setDebugInfo({
-        authUserId: user.id,
-        candidateIds,
-        stdFound: Boolean(std),
-        stdResult: std,
-        stdError: stdErr ? { message: stdErr.message, code: (stdErr as any).code, details: (stdErr as any).details, hint: (stdErr as any).hint } : null,
-      });
 
       if (std) {
         setStudent(std as any);
@@ -342,14 +330,6 @@ export default function StudentDashboardPage() {
           </p>
         </div>
       </header>
-
-      {/* TEMP DEBUG PANEL — remove after diagnosing student lookup issue */}
-      {debugInfo && (
-        <div className="mx-4 sm:mx-6 lg:mx-8 mt-4 p-4 rounded-xl border-2 border-amber-400 bg-amber-50 text-xs font-mono text-slate-800 whitespace-pre-wrap break-all">
-          <div className="font-bold text-amber-800 mb-2 font-sans">TEMP DEBUG INFO (screenshot this)</div>
-          {JSON.stringify(debugInfo, null, 2)}
-        </div>
-      )}
 
       {/* Main Content */}
       <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full flex-1">

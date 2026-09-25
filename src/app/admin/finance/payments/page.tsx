@@ -64,7 +64,7 @@ export default function AdminFinancePaymentsPage() {
         supabase.from("students").select("id, name, admission_no, class_id").order("name"),
         supabase
           .from("payment_records")
-          .select("*, students(id, name, admission_no, classes(name)), payment_invoices(academic_session, term, class_id)")
+          .select("*, students(id, name, admission_no, classes:class_id(name)), payment_invoices(academic_session, term, class_id)")
           .order("payment_date", { ascending: false }),
         getAcademicSessions(),
       ]);

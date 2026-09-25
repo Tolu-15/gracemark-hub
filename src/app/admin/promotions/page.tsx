@@ -109,7 +109,7 @@ export default function AdminPromotionsPage() {
       } else {
         const resLegacy = await supabase
           .from("students")
-          .select("id, name, admission_no, class_id, classes(name)")
+          .select("id, name, admission_no, class_id, classes:class_id(name)")
           .eq("is_alumni", false);
         if (resLegacy.error) throw resCanonical.error || resLegacy.error;
         stdData = resLegacy.data;

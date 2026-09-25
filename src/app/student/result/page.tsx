@@ -29,7 +29,7 @@ export default function StudentResultPage() {
         const candidateIds = await resolveStudentUserIdCandidates(user.id);
         const { data: studentRecord, error: stdErr } = await supabase
           .from("students")
-          .select("id, admission_no, name, class_id, classes(name)")
+          .select("id, admission_no, name, class_id, classes:class_id(name)")
           .in("user_id", candidateIds)
           .maybeSingle();
 

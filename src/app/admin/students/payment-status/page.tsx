@@ -37,7 +37,7 @@ export default function AdminPaymentStatusPage() {
       if (studentsResCanonical.error) {
         const { data: legacyStds } = await supabase
           .from("students")
-          .select("id, name, admission_no, class_id, classes(name)")
+          .select("id, name, admission_no, class_id, classes:class_id(name)")
           .order("name");
         rawStudents = (legacyStds as any[]) || [];
       }

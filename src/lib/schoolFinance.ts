@@ -95,7 +95,7 @@ export async function getStudentCurrentInvoice(studentId: string) {
 
   const { data: sData } = await supabase
     .from("students")
-    .select("id, name, admission_no, class_id, portal_access_status, portal_lock_reason, classes(name)")
+    .select("id, name, admission_no, class_id, portal_access_status, portal_lock_reason, classes:class_id(name)")
     .eq("id", studentId)
     .maybeSingle();
 

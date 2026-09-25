@@ -28,7 +28,7 @@ export default function StudentProfilePage() {
         const candidateIds = await resolveStudentUserIdCandidates(user.id);
         const { data: std } = await supabase
           .from("students")
-          .select("*, classes(name)")
+          .select("*, classes:class_id(name)")
           .in("user_id", candidateIds)
           .maybeSingle();
 

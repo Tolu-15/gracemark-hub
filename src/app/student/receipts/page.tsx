@@ -28,7 +28,7 @@ export default function StudentReceiptsPage() {
         let query = supabase
           .from("payment_records")
           .select(
-            "*, payment_invoices(*), students(id, name, admission_no, classes(name))"
+            "*, payment_invoices(*), students(id, name, admission_no, classes:class_id(name))"
           );
 
         if (paymentId) {
