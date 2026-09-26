@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import { getAppSettings } from "@/lib/appSettings";
 import { ensureClassByName } from "@/lib/schoolContext";
 
@@ -26,6 +26,7 @@ interface PromotionRecord {
   promoted_at: string;
   summary: any[];
   notes?: string | null;
+  rolled_back_at?: string | null;
 }
 
 function getNextSessionLogical(sessionStr: string): string {
@@ -62,6 +63,7 @@ export default function AdminPromotionsPage() {
   const [targetNextSession, setTargetNextSession] = useState("");
   const [notes, setNotes] = useState("");
   const [processing, setProcessing] = useState(false);
+  const [rollingBackId, setRollingBackId] = useState<string | null>(null);
 
   const loadData = async () => {
     try {
@@ -119,7 +121,7 @@ export default function AdminPromotionsPage() {
       // Fetch promotions history
       const { data: histData, error: hErr } = await supabase
         .from("promotions")
-        .select("id, from_session_id, promoted_at, summary, notes")
+        .select("id, from_session_id, promoted_at, summary, notes, rolled_back_at")
         .order("promoted_at", { ascending: false });
       if (hErr) throw hErr;
       const { data: sessionNames } = await supabase.from("academic_sessions").select("id, name");
@@ -231,6 +233,38 @@ export default function AdminPromotionsPage() {
       setProcessing(false);
     }
   };
+
+  const handleRollback = async (record: PromotionRecord) => {
+    const count = Array.isArray(record.summary) ? record.summary.length : 0;
+    if (
+      !confirm(
+        `Undo this promotion?\n\n${count} students will be moved back to their previous classes and the new-session enrollments created by this promotion will be removed.\n\nStudents who already have results in the new session, or whose class was changed afterwards, are skipped and listed for you.`
+      )
+    )
+      return;
+    setRollingBackId(record.id);
+    try {
+      const res = await fetch("/api/admin/promotions/rollback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+        body: JSON.stringify({ promotionId: record.id }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.ok) throw new Error(result.error || "Rollback failed.");
+      const skipped: { name: string; reason: string }[] = result.skipped || [];
+      alert(
+        result.message +
+          (skipped.length ? "\n\nSkipped:\n" + skipped.map((s) => `• ${s.name} — ${s.reason}`).join("\n") : "")
+      );
+      await loadData();
+    } catch (err: any) {
+      alert("Could not roll back: " + err.message);
+    } finally {
+      setRollingBackId(null);
+    }
+  };
+
+  const latestActiveId = history.find((h) => !h.rolled_back_at)?.id;
 
   return (
     <AuthGuard allowedRoles={["admin"]}>
@@ -355,8 +389,26 @@ export default function AdminPromotionsPage() {
                           Promoted on {date} · Notes: {h.notes || "None"}
                         </div>
                       </div>
-                      <div className="text-xs font-semibold bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg shrink-0">
-                        {count} students promoted / graduated
+                      <div className="flex items-center gap-2 shrink-0">
+                        {h.rolled_back_at ? (
+                          <span className="text-xs font-semibold bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg">
+                            Rolled back {new Date(h.rolled_back_at).toLocaleDateString()}
+                          </span>
+                        ) : (
+                          <span className="text-xs font-semibold bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg">
+                            {count} students promoted / graduated
+                          </span>
+                        )}
+                        {h.id === latestActiveId && (
+                          <button
+                            type="button"
+                            onClick={() => handleRollback(h)}
+                            disabled={rollingBackId === h.id}
+                            className="text-xs font-bold text-rose-700 border border-rose-200 bg-white hover:bg-rose-50 px-3 py-1.5 rounded-lg disabled:opacity-50 cursor-pointer"
+                          >
+                            {rollingBackId === h.id ? "Undoing…" : "Undo promotion"}
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -395,7 +447,7 @@ export default function AdminPromotionsPage() {
                 <li>All historical records (results, exams) remain untouched</li>
               </ul>
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-800 text-xs">
-                <strong>⚠ This cannot be undone.</strong> Make sure you have completed all result approvals before promoting.
+                <strong>⚠ Double-check before promoting.</strong> The most recent promotion can be undone from the history list below. Make sure you have completed all result approvals before promoting.
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">

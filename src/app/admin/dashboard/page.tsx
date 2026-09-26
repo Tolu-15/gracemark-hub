@@ -10,6 +10,7 @@ import {
   deleteAcademicSession,
   deleteAllAcademicSessions,
 } from "@/lib/academicSessions";
+import { SkeletonValue } from "@/components/shared/Skeleton";
 
 interface TermStatus {
   term: string;
@@ -30,6 +31,7 @@ export default function AdminDashboardPage() {
     totalOutstanding: 0,
   });
 
+  const [statsLoading, setStatsLoading] = useState(true);
   const [term, setTerm] = useState("1st Term");
   const [session, setSession] = useState("");
   const [sessionsList, setSessionsList] = useState<string[]>([]);
@@ -94,6 +96,7 @@ export default function AdminDashboardPage() {
         totalCollected: coll,
         totalOutstanding: out,
       });
+      setStatsLoading(false);
 
       // 2. Settings & Sessions
       const appSettings = await getAppSettings();
@@ -108,6 +111,8 @@ export default function AdminDashboardPage() {
       await loadTermPermissions();
     } catch (err) {
       console.error("Failed to load dashboard data:", err);
+    } finally {
+      setStatsLoading(false);
     }
   }
 
@@ -306,7 +311,7 @@ export default function AdminDashboardPage() {
               Total Students
             </span>
             <div className="text-3xl font-extrabold text-slate-900 mt-1">
-              {stats.studentsCount}
+              <SkeletonValue loading={statsLoading} className="h-9 w-16">{stats.studentsCount}</SkeletonValue>
             </div>
           </div>
           <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
@@ -327,7 +332,7 @@ export default function AdminDashboardPage() {
               Active Classes
             </span>
             <div className="text-3xl font-extrabold text-slate-900 mt-1">
-              {stats.classesCount}
+              <SkeletonValue loading={statsLoading} className="h-9 w-16">{stats.classesCount}</SkeletonValue>
             </div>
           </div>
           <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
@@ -348,7 +353,7 @@ export default function AdminDashboardPage() {
               Total Teachers
             </span>
             <div className="text-3xl font-extrabold text-slate-900 mt-1">
-              {stats.teachersCount}
+              <SkeletonValue loading={statsLoading} className="h-9 w-16">{stats.teachersCount}</SkeletonValue>
             </div>
           </div>
           <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
@@ -369,7 +374,7 @@ export default function AdminDashboardPage() {
               Locked Portals
             </span>
             <div className="text-3xl font-extrabold text-rose-600 mt-1">
-              {stats.lockedCount}
+              <SkeletonValue loading={statsLoading} className="h-9 w-16">{stats.lockedCount}</SkeletonValue>
             </div>
           </div>
           <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
@@ -403,19 +408,19 @@ export default function AdminDashboardPage() {
           <div>
             <div className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Total Invoiced</div>
             <div className="text-2xl font-bold text-slate-100 mt-1">
-              ₦{stats.totalExpected.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+              <SkeletonValue loading={statsLoading} dark className="h-7 w-36">₦{stats.totalExpected.toLocaleString("en-NG", { minimumFractionDigits: 2 })}</SkeletonValue>
             </div>
           </div>
           <div>
             <div className="text-xs uppercase tracking-wider text-emerald-400 font-semibold">Total Collected</div>
             <div className="text-2xl font-bold text-emerald-400 mt-1">
-              ₦{stats.totalCollected.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+              <SkeletonValue loading={statsLoading} dark className="h-7 w-36">₦{stats.totalCollected.toLocaleString("en-NG", { minimumFractionDigits: 2 })}</SkeletonValue>
             </div>
           </div>
           <div>
             <div className="text-xs uppercase tracking-wider text-amber-400 font-semibold">Total Outstanding</div>
             <div className="text-2xl font-bold text-amber-400 mt-1">
-              ₦{stats.totalOutstanding.toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+              <SkeletonValue loading={statsLoading} dark className="h-7 w-36">₦{stats.totalOutstanding.toLocaleString("en-NG", { minimumFractionDigits: 2 })}</SkeletonValue>
             </div>
           </div>
         </div>

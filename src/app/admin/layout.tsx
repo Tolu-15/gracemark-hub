@@ -55,6 +55,11 @@ const adminNavItems: NavItem[] = [
     href: "/admin/historical-results",
   },
   {
+    category: "Academics & Staff",
+    label: "Bulk Report Cards",
+    href: "/admin/report-cards",
+  },
+  {
     category: "Students & Portal",
     label: "Manage Students",
     href: "/admin/students",
@@ -108,6 +113,11 @@ const adminNavItems: NavItem[] = [
     category: "Settings",
     label: "Database Backup & Recovery",
     href: "/admin/backup",
+  },
+  {
+    category: "Settings",
+    label: "Audit Log",
+    href: "/admin/audit-log",
   },
   {
     category: "Settings",

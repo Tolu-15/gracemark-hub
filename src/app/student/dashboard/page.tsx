@@ -9,6 +9,7 @@ import { getAppSettings } from "@/lib/appSettings";
 import { getStudentCurrentInvoice, formatPaymentStatus } from "@/lib/schoolFinance";
 import { PAYMENTS_ENABLED } from "@/lib/features";
 import { getAcademicSessions } from "@/lib/academicSessions";
+import { Skeleton, SkeletonValue } from "@/components/shared/Skeleton";
 import ResultDashboardApp from "@/components/student/ResultDashboardApp";
 
 interface StudentProfile {
@@ -168,10 +169,11 @@ export default function StudentDashboardPage() {
       <header className={`bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-20 shrink-0 ${showFullReport ? "print:hidden" : ""}`}>
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
-            Welcome, {student?.name || "Student"}
+            Welcome, {student ? student.name : <Skeleton className="h-6 w-44 align-middle" />}
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Academic session: <span className="font-semibold text-emerald-700">{session}</span>
+            Academic session:{" "}
+            <SkeletonValue loading={!session} className="h-4 w-20"><span className="font-semibold text-emerald-700">{session}</span></SkeletonValue>
           </p>
         </div>
       </header>
@@ -188,7 +190,7 @@ export default function StudentDashboardPage() {
             </div>
             <div>
               <div className="text-sm font-medium text-slate-500 mb-1">Admission Number</div>
-              <div className="text-xl font-bold text-slate-900">{student?.admission_no || "—"}</div>
+              <div className="text-xl font-bold text-slate-900"><SkeletonValue loading={!student} className="h-6 w-32">{student?.admission_no || "—"}</SkeletonValue></div>
             </div>
           </div>
 
@@ -200,7 +202,7 @@ export default function StudentDashboardPage() {
             </div>
             <div>
               <div className="text-sm font-medium text-slate-500 mb-1">Enrolled Class</div>
-              <div className="text-xl font-bold text-slate-900">{student?.classes?.name || "Unassigned"}</div>
+              <div className="text-xl font-bold text-slate-900"><SkeletonValue loading={!student} className="h-6 w-24">{student?.classes?.name || "Unassigned"}</SkeletonValue></div>
             </div>
           </div>
 
@@ -286,7 +288,14 @@ export default function StudentDashboardPage() {
           </div>
 
           {loadingResults ? (
-            <p className="py-8 text-center text-sm text-slate-500">Checking published results…</p>
+            <div className="mt-4 flex items-center justify-between gap-4 rounded-xl bg-slate-50 border border-slate-200 p-4">
+              <div className="space-y-2">
+                <Skeleton block className="h-3 w-24" />
+                <Skeleton block className="h-5 w-48" />
+                <Skeleton block className="h-3 w-32" />
+              </div>
+              <Skeleton className="h-10 w-32 rounded-lg" />
+            </div>
           ) : !latest ? (
             <div className="py-8 text-center">
               <p className="font-bold text-slate-900">No results released yet</p>

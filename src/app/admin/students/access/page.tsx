@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import { StudentRecord, ClassRecord } from "@/types/database";
 
 export default function AdminStudentAccessPage() {
@@ -54,15 +54,13 @@ export default function AdminStudentAccessPage() {
     setUpdatingId(student.id);
     try {
       const newStatus = isCurrentlyLocked ? "active" : "locked";
-      const { error } = await supabase
-        .from("students")
-        .update({
-          portal_access_status: newStatus,
-          portal_lock_reason: newStatus === "locked" ? newReason : null,
-        })
-        .eq("id", student.id);
-
-      if (error) throw error;
+      const res = await fetch("/api/admin/students/access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+        body: JSON.stringify({ id: student.id, locked: newStatus === "locked", reason: newReason }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.error || "Update failed.");
       await loadData();
     } catch (err: any) {
       console.error("Toggle access error:", err);

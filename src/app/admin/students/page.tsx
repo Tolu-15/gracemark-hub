@@ -346,8 +346,13 @@ export default function AdminStudentsPage() {
     }
 
     try {
-      const { error } = await supabase.from("students").delete().eq("id", id);
-      if (error) throw error;
+      const res = await fetch("/api/admin/students/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+        body: JSON.stringify({ id }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.error || "Delete failed.");
       loadData();
     } catch (err: any) {
       console.error("Delete student error:", err);

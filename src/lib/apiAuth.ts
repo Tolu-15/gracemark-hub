@@ -6,6 +6,7 @@ export type ApiRole = "admin" | "teacher" | "student";
 export interface ApiActor {
   authId: string;
   dbUserId?: string;
+  email?: string;
   role: ApiRole;
   service: NonNullable<ReturnType<typeof getServiceClient>>;
 }
@@ -68,7 +69,7 @@ export async function requireApiActor(
     }
   }
 
-  return { actor: { authId: userData.user.id, dbUserId: profile?.id, role, service } };
+  return { actor: { authId: userData.user.id, dbUserId: profile?.id, email: userData.user.email, role, service } };
 }
 
 export async function requireTeacherAssignment(

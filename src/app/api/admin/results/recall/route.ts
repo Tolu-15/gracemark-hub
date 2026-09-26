@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
+import { logAudit } from "@/lib/audit";
 import { Milestone, MILESTONES, STATUS_COLUMN } from "@/lib/reportBuilder";
 
 /**
@@ -57,5 +58,13 @@ export async function POST(req: NextRequest) {
     .in("student_id", studentIds);
   if (stErr) return NextResponse.json({ ok: false, error: stErr.message }, { status: 500 });
 
+  const { data: cls } = await service.from("classes").select("name").eq("id", class_id).maybeSingle();
+  await logAudit(authorization.actor, {
+    action: "results.recall",
+    entityType: "class",
+    entityId: class_id,
+    summary: `Recalled ${milestone} for ${cls?.name || "class"} (${term}, ${session}) back to draft`,
+    metadata: { class_id, term, session, milestone },
+  });
   return NextResponse.json({ ok: true });
 }

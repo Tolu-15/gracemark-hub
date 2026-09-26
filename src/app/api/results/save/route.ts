@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isTermEditable } from "@/lib/termPermissions";
 import { requireApiActor, requireTeacherAssignment } from "@/lib/apiAuth";
 import { validateRawScores } from "@/lib/gradingEngine";
+import { logAudit } from "@/lib/audit";
 
 export async function POST(req: NextRequest) {
   const authorization = await requireApiActor(req, ["admin", "teacher"]);
@@ -173,6 +174,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (!cleanRecords.length) {
+      if (deletedResultIds.length) {
+        await logAudit(actor, {
+          action: "scores.delete",
+          entityType: "results",
+          summary: `Removed ${deletedResultIds.length} score record(s)`,
+          metadata: { ids: deletedResultIds },
+        });
+      }
       return NextResponse.json({ ok: true, count: 0, deleted: deletedResultIds.length });
     }
 
@@ -183,6 +192,23 @@ export async function POST(req: NextRequest) {
     if (error) {
       console.error("Save results DB error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Draft autosaves are not logged; submissions, admin edits and removals are.
+    const submitted = cleanRecords.filter((r: any) => r.status === "submitted").length;
+    if (submitted || actor.role === "admin" || deletedResultIds.length) {
+      const first = cleanRecords[0];
+      const [{ data: cls }, { data: sub }] = await Promise.all([
+        service.from("classes").select("name").eq("id", first.class_id).maybeSingle(),
+        service.from("subjects").select("name").eq("id", first.subject_id).maybeSingle(),
+      ]);
+      await logAudit(actor, {
+        action: submitted ? "scores.submit" : "scores.edit",
+        entityType: "results",
+        entityId: first.class_id,
+        summary: `${submitted ? "Submitted" : "Edited"} ${cleanRecords.length} score record(s) — ${sub?.name || "subject"}, ${cls?.name || "class"} (${first.term}, ${first.session})${deletedResultIds.length ? `; removed ${deletedResultIds.length}` : ""}`,
+        metadata: { class_id: first.class_id, subject_id: first.subject_id, term: first.term, session: first.session, records: cleanRecords.length, submitted, deleted: deletedResultIds.length },
+      });
     }
 
     return NextResponse.json({ ok: true, count: records.length });

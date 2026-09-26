@@ -346,7 +346,7 @@
 @media print {
   @page {
     size: A4 portrait;
-    margin: 10mm 8mm;
+    margin: 8mm 8mm;
   }
 
   body {
@@ -453,21 +453,117 @@
   }
 }
 
-/* Report sheet (components/results/ReportSheet.tsx) on A4 */
+/* Report sheet (components/results/ReportSheet.tsx) on A4.
+   Tailwind's md:/lg: breakpoints do not apply inside a ~190mm print page, so the
+   multi-column layouts are forced here; boxes are flattened and tightened to save paper. */
 @media print {
   .report-sheet {
-    font-size: 9pt;
+    font-size: 8.5pt;
+    line-height: 1.25;
+    color: #0f172a;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
+  .report-sheet > * + * {
+    margin-top: 2.5mm !important;
+  }
+
+  /* header */
+  .report-sheet .rs-header {
+    gap: 3mm !important;
+    padding-bottom: 2mm !important;
+  }
+  .report-sheet .rs-header img {
+    width: 11mm !important;
+    height: 11mm !important;
+  }
+  .report-sheet .rs-header h1 {
+    font-size: 13pt !important;
+  }
+
+  /* student details on one line */
+  .report-sheet .rs-details {
+    grid-template-columns: 2fr 1fr 1fr !important;
+    gap: 1mm 4mm !important;
+  }
+  .report-sheet .rs-details > div:first-child {
+    grid-column: auto !important;
+  }
+
+  /* tables */
   .report-sheet table {
-    font-size: 8pt !important;
+    font-size: 7.5pt !important;
+    width: 100% !important;
   }
   .report-sheet th,
   .report-sheet td {
-    padding: 3px 4px !important;
+    padding: 1.5px 3px !important;
   }
+  .report-sheet th {
+    font-size: 6.5pt !important;
+    background: #f1f5f9 !important;
+  }
+  .report-sheet .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  /* boxes: flatten and shrink */
+  .report-sheet .rs-stats {
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 2mm !important;
+  }
+  .report-sheet .rs-stat {
+    padding: 1.5mm 2.5mm !important;
+    border-radius: 1.5mm !important;
+  }
+  .report-sheet .rs-stat > div:nth-child(2) {
+    font-size: 11pt !important;
+    margin-top: 0 !important;
+  }
+  .report-sheet .rs-summary {
+    padding: 1.5mm 3mm !important;
+    border-radius: 1.5mm !important;
+  }
+  .report-sheet .rs-summary .text-2xl {
+    font-size: 12pt !important;
+  }
+  .report-sheet .rs-lower {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 3mm !important;
+  }
+  .report-sheet .rs-lower > div {
+    border-radius: 1.5mm !important;
+  }
+  .report-sheet .rs-lower > div > div {
+    padding-top: 1mm !important;
+    padding-bottom: 1mm !important;
+  }
+  .report-sheet .rs-lower .space-y-3 > * + * {
+    margin-top: 1.5mm !important;
+  }
+  .report-sheet .rs-footer {
+    padding-top: 1.5mm !important;
+    font-size: 6.5pt !important;
+  }
+
   .report-sheet section,
-  .report-sheet header {
+  .report-sheet header,
+  .report-sheet footer,
+  .report-sheet tr {
     break-inside: avoid;
+  }
+
+  /* bulk printing: one report per sheet */
+  .bulk-report-page {
+    break-after: page;
+    page-break-after: always;
+  }
+  .bulk-report-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
   }
 }
 
@@ -492,3 +588,90 @@
     position: static !important;
   }
 }
+
+/* Same compact layout for the off-screen capture used by the bulk PDF zip. */
+.pdf-capture .report-sheet {
+    font-size: 8.5pt;
+    line-height: 1.25;
+    color: #0f172a;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+.pdf-capture .report-sheet > * + * {
+    margin-top: 2.5mm !important;
+  }
+.pdf-capture .report-sheet .rs-header {
+    gap: 3mm !important;
+    padding-bottom: 2mm !important;
+  }
+.pdf-capture .report-sheet .rs-header img {
+    width: 11mm !important;
+    height: 11mm !important;
+  }
+.pdf-capture .report-sheet .rs-header h1 {
+    font-size: 13pt !important;
+  }
+.pdf-capture .report-sheet .rs-details {
+    grid-template-columns: 2fr 1fr 1fr !important;
+    gap: 1mm 4mm !important;
+  }
+.pdf-capture .report-sheet .rs-details > div:first-child {
+    grid-column: auto !important;
+  }
+.pdf-capture .report-sheet table {
+    font-size: 7.5pt !important;
+    width: 100% !important;
+  }
+.pdf-capture .report-sheet th,.pdf-capture .report-sheet td {
+    padding: 1.5px 3px !important;
+  }
+.pdf-capture .report-sheet th {
+    font-size: 6.5pt !important;
+    background: #f1f5f9 !important;
+  }
+.pdf-capture .report-sheet .overflow-x-auto {
+    overflow: visible !important;
+  }
+.pdf-capture .report-sheet .rs-stats {
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 2mm !important;
+  }
+.pdf-capture .report-sheet .rs-stat {
+    padding: 1.5mm 2.5mm !important;
+    border-radius: 1.5mm !important;
+  }
+.pdf-capture .report-sheet .rs-stat > div:nth-child(2) {
+    font-size: 11pt !important;
+    margin-top: 0 !important;
+  }
+.pdf-capture .report-sheet .rs-summary {
+    padding: 1.5mm 3mm !important;
+    border-radius: 1.5mm !important;
+  }
+.pdf-capture .report-sheet .rs-summary .text-2xl {
+    font-size: 12pt !important;
+  }
+.pdf-capture .report-sheet .rs-lower {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 3mm !important;
+  }
+.pdf-capture .report-sheet .rs-lower > div {
+    border-radius: 1.5mm !important;
+  }
+.pdf-capture .report-sheet .rs-lower > div > div {
+    padding-top: 1mm !important;
+    padding-bottom: 1mm !important;
+  }
+.pdf-capture .report-sheet .rs-lower .space-y-3 > * + * {
+    margin-top: 1.5mm !important;
+  }
+.pdf-capture .report-sheet .rs-footer {
+    padding-top: 1.5mm !important;
+    font-size: 6.5pt !important;
+  }
+.pdf-capture .report-sheet section,.pdf-capture .report-sheet header,.pdf-capture .report-sheet footer,.pdf-capture .report-sheet tr {
+    break-inside: avoid;
+  }

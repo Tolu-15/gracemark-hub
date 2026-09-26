@@ -51,7 +51,7 @@ function Td({ children, className = "" }: { children: React.ReactNode; className
 
 function Stat({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+    <div className="rs-stat rounded-xl border border-slate-200 bg-white px-4 py-3">
       <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</div>
       <div className="mt-1 text-xl font-black text-slate-900 tabular-nums">{value}</div>
       {sub && <div className="text-[11px] text-slate-500 mt-0.5">{sub}</div>}
@@ -223,7 +223,7 @@ export default function ReportSheet({ report }: { report: Report }) {
   return (
     <article className="report-sheet bg-white text-slate-900 rounded-2xl border border-slate-200 print:border-0 print:rounded-none p-4 sm:p-6 print:p-0 space-y-5">
       {/* School header */}
-      <header className="flex items-center gap-4 border-b-2 border-slate-900 pb-4">
+      <header className="rs-header flex items-center gap-4 border-b-2 border-slate-900 pb-4">
         <img src="/assets/icons/logo.jpg" alt="" className="w-14 h-14 rounded-lg object-cover" />
         <div className="flex-1 min-w-0">
           <h1 className="text-xl sm:text-2xl font-black uppercase tracking-tight leading-tight">Gracemark Academy</h1>
@@ -238,7 +238,7 @@ export default function ReportSheet({ report }: { report: Report }) {
       </header>
 
       {/* Student details */}
-      <section className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 text-xs">
+      <section className="rs-details grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 text-xs">
         <div className="col-span-2">
           <div className="text-[10px] font-bold uppercase text-slate-500">Student Name</div>
           <div className="font-bold text-sm">{report.student.name}</div>
@@ -275,7 +275,7 @@ export default function ReportSheet({ report }: { report: Report }) {
 
       {/* Summary */}
       {isTR ? (
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <section className="rs-stats grid grid-cols-2 lg:grid-cols-4 gap-2">
           <Stat label="Overall total" value={fmt(report.summary.total)} sub={`${report.subjects.length} subjects`} />
           <Stat label="Percentage" value={`${fmt(report.summary.percentage)}%`} sub={`${report.summary.grade} · ${report.summary.remark}`} />
           <Stat label="GPA" value={fmt(report.summary.gpa, 2)} sub="out of 5.00" />
@@ -286,7 +286,7 @@ export default function ReportSheet({ report }: { report: Report }) {
           />
         </section>
       ) : (
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 border border-slate-200 px-4 py-3">
+        <section className="rs-summary flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 border border-slate-200 px-4 py-3">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Overall percentage</div>
             <div className="text-2xl font-black tabular-nums">{fmt(report.summary.percentage)}%</div>
@@ -299,7 +299,7 @@ export default function ReportSheet({ report }: { report: Report }) {
       )}
 
       {isTR && (
-        <section className="grid md:grid-cols-2 gap-4">
+        <section className="rs-lower grid md:grid-cols-2 gap-4">
           <div className="rounded-xl border border-slate-200 overflow-hidden">
             <div className="bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-600">Personal skills (1 – 5)</div>
             {report.skills ? (
@@ -364,7 +364,7 @@ export default function ReportSheet({ report }: { report: Report }) {
       )}
 
       {/* Grading key */}
-      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3 text-[10px] text-slate-500">
+      <footer className="rs-footer flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3 text-[10px] text-slate-500">
         <div className="flex flex-wrap gap-x-3 gap-y-1">
           {bands.map((b, i) => {
             const upper = i === 0 ? 100 : bands[i - 1].min;

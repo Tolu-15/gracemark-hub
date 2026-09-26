@@ -1,0 +1,71 @@
+/* Shared skeleton loading placeholders. Shimmer is a transform on a pseudo-element
+   (GPU composited) so it stays smooth even on low-end phones. */
+.gm-skel {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: middle;
+  background: #eef1f6;
+  border-radius: 0.5rem;
+  animation: gm-skel-fade 0.35s ease both;
+}
+.gm-skel--block { display: block; }
+.gm-skel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+  will-change: transform;
+  animation: gm-skel-shimmer 1.4s ease-in-out infinite;
+}
+.gm-skel--dark { background: rgba(255, 255, 255, 0.1); }
+.gm-skel--dark::after { background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent); }
+
+@keyframes gm-skel-shimmer { to { transform: translateX(100%); } }
+@keyframes gm-skel-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* Content that replaces a skeleton eases in instead of popping. */
+.gm-reveal { animation: gm-reveal 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes gm-reveal {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Installed-app launch splash: painted from server HTML before any JS runs. */
+#gm-splash {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: #ffffff;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 1.4rem;
+  transition: opacity 0.35s ease;
+}
+@media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
+  #gm-splash { display: flex; }
+}
+#gm-splash.gm-splash--out { opacity: 0; pointer-events: none; }
+#gm-splash .gm-splash__mark { position: relative; width: 112px; height: 112px; display: grid; place-items: center; }
+#gm-splash .gm-splash__ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 2px solid #eef1f6; border-top-color: #c9a84c;
+  animation: gm-splash-spin 1.4s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
+}
+#gm-splash img { width: 64px; height: 64px; border-radius: 16px; object-fit: cover; animation: gm-reveal 0.6s ease both; }
+#gm-splash .gm-splash__name { font-weight: 700; font-size: 1.05rem; color: #0f172a; letter-spacing: -0.01em; }
+#gm-splash .gm-splash__bar { position: relative; width: 140px; height: 2px; border-radius: 2px; background: #eef1f6; overflow: hidden; }
+#gm-splash .gm-splash__bar::after {
+  content: ""; position: absolute; inset: 0; width: 40%;
+  background: linear-gradient(90deg, transparent, #c9a84c, transparent);
+  animation: gm-splash-bar 1.2s ease-in-out infinite;
+}
+@keyframes gm-splash-spin { to { transform: rotate(360deg); } }
+@keyframes gm-splash-bar { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .gm-skel::after, .gm-reveal, #gm-splash *, #gm-splash { animation: none !important; transition: none !important; }
+}

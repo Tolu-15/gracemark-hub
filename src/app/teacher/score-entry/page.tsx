@@ -18,6 +18,7 @@ import {
   isSeniorClass,
 } from "@/lib/gradingEngine";
 import { RawScores } from "@/types/result";
+import { SkeletonRows } from "@/components/shared/Skeleton";
 
 type ViewMode = "all" | "pr1" | "pr2" | "pr3" | "tr";
 
@@ -57,6 +58,7 @@ export default function TeacherScoreEntryPage() {
 
   const [rows, setRows] = useState<StudentScoreRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [metaLoading, setMetaLoading] = useState(true);
   const [savingAction, setSavingAction] = useState<"none" | "draft" | "submit">("none");
   const saving = savingAction !== "none";
   const [statusMsg, setStatusMsg] = useState("");
@@ -242,6 +244,8 @@ export default function TeacherScoreEntryPage() {
       }
     } catch (err) {
       console.error("Load score entry metadata error:", err);
+    } finally {
+      setMetaLoading(false);
     }
   }, [selectedClass]);
 
@@ -947,12 +951,8 @@ export default function TeacherScoreEntryPage() {
             </thead>
 
             <tbody className="divide-y divide-slate-100 text-xs">
-              {loading ? (
-                <tr>
-                  <td colSpan={30} className="px-6 py-12 text-center text-slate-400">
-                    Loading mark sheet…
-                  </td>
-                </tr>
+              {loading || metaLoading ? (
+                <SkeletonRows rows={10} cols={12} />
               ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={30} className="px-6 py-12 text-center text-slate-400">

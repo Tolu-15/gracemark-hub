@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
+import { logAudit } from "@/lib/audit";
 import { buildClassReports, ensureEnrollments, Milestone, MILESTONES, STATUS_COLUMN } from "@/lib/reportBuilder";
 
 /**
@@ -13,6 +14,7 @@ export async function POST(req: NextRequest) {
   const authorization = await requireApiActor(req, ["admin"]);
   if ("response" in authorization) return authorization.response;
   const { service, dbUserId } = authorization.actor;
+  const actor = authorization.actor;
 
   let body: any;
   try {
@@ -86,6 +88,15 @@ export async function POST(req: NextRequest) {
     await service.from("results").update({ [col]: "draft" }).eq("term", term).eq("session", session).in("student_id", studentIds);
     const { error: stErr } = await service.from("results").update({ [col]: "published", published_at: publishedAt }).in("id", build.resultIds);
     if (stErr) throw stErr;
+
+    const { data: cls } = await service.from("classes").select("name").eq("id", class_id).maybeSingle();
+    await logAudit(actor, {
+      action: "results.publish",
+      entityType: "class",
+      entityId: class_id,
+      summary: `Published ${milestone} for ${cls?.name || "class"} (${term}, ${session}) — ${snapshots.length} students${force ? " (forced past warnings)" : ""}`,
+      metadata: { class_id, term, session, milestone, students: snapshots.length, forced: Boolean(force) },
+    });
 
     return NextResponse.json({ ok: true, published: snapshots.length, publishedAt });
   } catch (err: any) {

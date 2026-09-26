@@ -3,6 +3,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/supabase/client";
 import ReportSheet from "@/components/results/ReportSheet";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { printWithTitle } from "@/lib/printTitle";
 
 const TERMS = [
   { value: "term1", label: "1st Term" },
@@ -143,7 +145,13 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
           )}
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={() =>
+              printWithTitle(
+                `${data?.student.name || "Student"} - ${data?.student.className || ""} - ${
+                  tab === "TR" ? "Terminal Result" : MILESTONE_TABS.find((m) => m.key === tab)?.label || "Report"
+                } - ${termLabel} ${session}`
+              )
+            }
             disabled={!current}
             className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold disabled:opacity-40 cursor-pointer"
           >
@@ -158,7 +166,27 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
       </div>
 
       {loading ? (
-        <div className="py-20 text-center text-sm text-slate-500">Loading results…</div>
+        <div className="space-y-4 py-6" role="status" aria-label="Loading results">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="border border-slate-200 rounded-xl p-4 space-y-2">
+                <Skeleton block className="h-3 w-16" />
+                <Skeleton block className="h-6 w-20" />
+              </div>
+            ))}
+          </div>
+          <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+              <div key={i} className="flex items-center gap-4">
+                <Skeleton className="h-4 w-6" />
+                <Skeleton className="h-4 flex-1" />
+                <Skeleton className="h-4 w-10" />
+                <Skeleton className="h-4 w-10" />
+                <Skeleton className="h-4 w-12" />
+              </div>
+            ))}
+          </div>
+        </div>
       ) : error ? (
         <div className="p-6 text-center rounded-2xl border border-rose-200 bg-rose-50">
           <p className="text-sm font-semibold text-rose-700">{error}</p>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { resolveStudentUserIdCandidates } from "@/lib/auth";
 import { getAppSettings } from "@/lib/appSettings";
+import { Skeleton, SkeletonValue } from "@/components/shared/Skeleton";
 import ResultDashboardApp from "@/components/student/ResultDashboardApp";
 
 export default function StudentResultPage() {
@@ -57,12 +58,33 @@ export default function StudentResultPage() {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center">
-        <div className="flex items-center gap-3 mb-2">
-          <img src="/assets/icons/logo.jpg" alt="Logo" className="w-8 h-8 rounded-lg object-cover" />
-          <span className="font-bold text-slate-900 text-lg tracking-tight">Gracemark Academy</span>
+      <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto w-full space-y-5" role="status" aria-label="Loading report sheet">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-2">
+            <Skeleton block className="h-6 w-56" />
+            <Skeleton block className="h-3 w-36" />
+          </div>
+          <Skeleton className="h-9 w-28 rounded-lg" />
         </div>
-        <p className="text-sm font-medium text-slate-500 animate-pulse">Loading academic report sheet...</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
+              <Skeleton block className="h-3 w-16" />
+              <Skeleton block className="h-6 w-20" />
+            </div>
+          ))}
+        </div>
+        <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+          {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="flex items-center gap-4">
+              <Skeleton className="h-4 w-6" />
+              <Skeleton className="h-4 flex-1" />
+              <Skeleton className="h-4 w-10" />
+              <Skeleton className="h-4 w-10" />
+              <Skeleton className="h-4 w-12" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

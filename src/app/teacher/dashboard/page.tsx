@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
+import { SkeletonValue } from "@/components/shared/Skeleton";
 
 export default function TeacherDashboardPage() {
   const [teacherName, setTeacherName] = useState("Teacher");
@@ -186,7 +187,7 @@ export default function TeacherDashboardPage() {
           </span>
           <div>
             <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              {loading ? "—" : assignedClasses.length}
+              <SkeletonValue loading={loading} className="h-8 w-14">{assignedClasses.length}</SkeletonValue>
             </span>
             <span className="text-xs text-slate-400 block mt-0.5">Class cohorts under your care</span>
           </div>
@@ -198,7 +199,7 @@ export default function TeacherDashboardPage() {
           </span>
           <div>
             <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              {loading ? "—" : studentCount}
+              <SkeletonValue loading={loading} className="h-8 w-14">{studentCount}</SkeletonValue>
             </span>
             <span className="text-xs text-slate-400 block mt-0.5">Students in your assigned classes</span>
           </div>
@@ -210,7 +211,7 @@ export default function TeacherDashboardPage() {
           </span>
           <div>
             <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              {loading ? "—" : assignedSubjects.length}
+              <SkeletonValue loading={loading} className="h-8 w-14">{assignedSubjects.length}</SkeletonValue>
             </span>
             <span className="text-xs text-slate-400 block mt-0.5">Authorized curriculum subjects</span>
           </div>

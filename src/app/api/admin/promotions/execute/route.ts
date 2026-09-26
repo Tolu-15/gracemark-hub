@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
+import { logAudit } from "@/lib/audit";
 
 export async function POST(req: NextRequest) {
   const authorization = await requireApiActor(req, ["admin"]);
   if ("response" in authorization) return authorization.response;
   const { service, dbUserId } = authorization.actor;
+  const actor = authorization.actor;
 
   try {
     const body = await req.json();
@@ -89,6 +91,7 @@ export async function POST(req: NextRequest) {
           student_id: studentId,
           name: studentName,
           from_class: fromClass?.name || "Unknown",
+          from_class_id: fromClassId,
           to_class: "Alumni (Graduated)",
           graduated: true,
           action: "graduated",
@@ -111,6 +114,8 @@ export async function POST(req: NextRequest) {
           student_id: studentId,
           name: studentName,
           from_class: fromClass?.name || "Unknown",
+          from_class_id: fromClassId,
+          to_class_id: fromClassId,
           to_class: fromClass?.name || "Unknown",
           graduated: false,
           action: "repeat",
@@ -171,6 +176,8 @@ export async function POST(req: NextRequest) {
           student_id: studentId,
           name: studentName,
           from_class: fromClass?.name || "Unknown",
+          from_class_id: fromClassId,
+          to_class_id: toClassId,
           to_class: toClass?.name || "Unknown",
           graduated: false,
           action: "promoted",
@@ -197,6 +204,18 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (pErr) console.warn("Promotion history log warning:", pErr);
+
+    await logAudit(actor, {
+      action: "promotion.execute",
+      entityType: "promotion",
+      entityId: promoRow?.id,
+      summary: `Promoted ${summary.length} students (${currentSession || "?"} → ${effectiveNextSession || "?"})`,
+      metadata: {
+        promoted: summary.filter((s) => s.action === "promoted").length,
+        graduated: summary.filter((s) => s.action === "graduated").length,
+        repeated: summary.filter((s) => s.action === "repeat").length,
+      },
+    });
 
     return NextResponse.json({
       ok: true,
