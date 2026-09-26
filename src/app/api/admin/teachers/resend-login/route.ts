@@ -13,7 +13,7 @@ async function listPendingTeachers(service: any) {
     .select("id, auth_id, staff_id, display_name, email, status, must_change_password")
     .eq("role", "teacher")
     .eq("must_change_password", true)
-    .neq("status", "former")
+    .eq("status", "active")
     .order("display_name", { ascending: true });
   if (error) throw error;
   return (data || []) as any[];

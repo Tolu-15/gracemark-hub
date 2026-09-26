@@ -225,21 +225,15 @@ export async function PATCH(req: NextRequest) {
 
     if (error) throw error;
 
-    // If teacher is marked as 'former', optionally end their active assignments
-    if (status === "former" && authId) {
-      const todayStr = new Date().toISOString().split("T")[0];
-      await Promise.all([
-        service
-          .from("class_teacher_assignments")
-          .update({ status: "ended", end_date: todayStr })
-          .eq("teacher_user_id", authId)
-          .eq("status", "active"),
-        service
-          .from("subject_teacher_assignments")
-          .update({ status: "ended", end_date: todayStr })
-          .eq("teacher_user_id", authId)
-          .eq("status", "active"),
-      ]);
+    // A teacher marked inactive (former staff) loses their active assignments.
+    if (status === "inactive" && data) {
+      const ids = [data.id, data.auth_id].filter(Boolean);
+      const endedAt = new Date().toISOString();
+      await Promise.all(
+        ["class_teacher_assignments", "subject_teacher_assignments"].map((table) =>
+          service.from(table).update({ status: "ended", ended_at: endedAt }).in("teacher_user_id", ids).eq("status", "active")
+        )
+      );
     }
 
     return NextResponse.json({ ok: true, teacher: data });

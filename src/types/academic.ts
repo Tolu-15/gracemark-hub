@@ -83,7 +83,7 @@ export interface StaffProfile {
   phone?: string | null;
   display_name: string;
   role: "admin" | "teacher" | "student";
-  status: "active" | "former" | "suspended";
+  status: "active" | "inactive" | "suspended";
   must_change_password?: boolean;
   created_at?: string;
 }

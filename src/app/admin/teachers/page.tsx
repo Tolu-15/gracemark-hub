@@ -31,7 +31,7 @@ export default function AdminTeachersPage() {
 
   // Search & Filter in Directory
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "former">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
 
   // Class Teacher Tab State
   const [classAssignments, setClassAssignments] = useState<ClassTeacherAssignment[]>([]);
@@ -312,9 +312,9 @@ export default function AdminTeachersPage() {
   }
 
   async function handleToggleTeacherStatus(t: StaffProfile) {
-    const newStatus = t.status === "former" ? "active" : "former";
+    const newStatus = t.status === "inactive" ? "active" : "inactive";
     const promptMsg =
-      newStatus === "former"
+      newStatus === "inactive"
         ? `Mark ${t.display_name} as Former Staff?\nThis will end their current active duties and revoke portal access.`
         : `Reactivate ${t.display_name} as Active Staff?`;
 
@@ -535,12 +535,12 @@ export default function AdminTeachersPage() {
       (t.email || "").toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus =
-      statusFilter === "all" ? true : statusFilter === "former" ? t.status === "former" : t.status !== "former";
+      statusFilter === "all" ? true : statusFilter === "inactive" ? t.status === "inactive" : t.status !== "inactive";
 
     return matchesSearch && matchesStatus;
   });
 
-  const activeTeachers = teachers.filter((t) => t.status !== "former");
+  const activeTeachers = teachers.filter((t) => t.status !== "inactive");
 
   return (
     <div className="space-y-6">
@@ -641,7 +641,7 @@ export default function AdminTeachersPage() {
               >
                 <option value="all">All Status</option>
                 <option value="active">Active Staff Only</option>
-                <option value="former">Former Staff Only</option>
+                <option value="inactive">Former Staff Only</option>
               </select>
             </div>
 
@@ -684,7 +684,7 @@ export default function AdminTeachersPage() {
                     </tr>
                   ) : (
                     filteredTeachers.map((t) => {
-                      const isFormer = t.status === "former";
+                      const isFormer = t.status === "inactive";
                       const classDuties = classAssignments.filter(
                         (a) => (a.teacher_user_id === t.auth_id || a.teacher_user_id === t.id) && a.status === "active"
                       );

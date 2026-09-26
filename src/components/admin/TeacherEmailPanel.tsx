@@ -29,6 +29,7 @@ export default function TeacherEmailPanel({ refreshKey = 0 }: { refreshKey?: num
   const [changes, setChanges] = useState<ChangeTeacher[]>([]);
   const [changesError, setChangesError] = useState("");
   const [logins, setLogins] = useState<PendingLogin[]>([]);
+  const [loginsError, setLoginsError] = useState("");
   const [open, setOpen] = useState<"changes" | "logins" | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result>(null);
@@ -51,8 +52,16 @@ export default function TeacherEmailPanel({ refreshKey = 0 }: { refreshKey?: num
     try {
       const res = await fetch("/api/admin/teachers/resend-login", { headers });
       const json = await res.json();
-      if (json.ok) setLogins(json.teachers || []);
-    } catch {}
+      if (json.ok) {
+        setLogins(json.teachers || []);
+        setLoginsError("");
+      } else {
+        setLogins([]);
+        setLoginsError(json.error || "Could not load teachers who have not signed in.");
+      }
+    } catch {
+      setLoginsError("Could not load teachers who have not signed in.");
+    }
   }, []);
 
   useEffect(() => {
@@ -146,7 +155,9 @@ export default function TeacherEmailPanel({ refreshKey = 0 }: { refreshKey?: num
 
       {open === "logins" && (
         <div className="border border-slate-200 rounded-xl p-3 space-y-3">
-          {logins.length === 0 ? (
+          {loginsError ? (
+            <p className="text-xs text-red-700">{loginsError}</p>
+          ) : logins.length === 0 ? (
             <p className="text-xs text-slate-500">Every teacher has completed their first sign-in.</p>
           ) : (
             <>
