@@ -68,8 +68,62 @@ export async function POST(req: NextRequest) {
       return data;
     }
 
-    // Process each student atomically
+    // The verdict comes from each student's published 3rd-term Terminal Result, whose
+    // overall percentage is the average of the three terms (annual average). Students
+    // without one are skipped, and a REPEAT verdict cannot be promoted, unless the admin
+    // explicitly overrode that student on the promotions page.
+    let gateSessionId = currentSessionId as string | undefined;
+    if (!gateSessionId && currentSession) {
+      const { data: gs } = await service.from("academic_sessions").select("id").eq("name", currentSession).maybeSingle();
+      gateSessionId = gs?.id;
+    }
+    const verdictByStudent = new Map<string, { status: string; pct: number | null }>();
+    if (gateSessionId) {
+      const ids = promotions.map((p: any) => p.studentId).filter(Boolean);
+      const { data: enr } = await service
+        .from("student_enrollments")
+        .select("id, student_id")
+        .eq("academic_session_id", gateSessionId)
+        .in("student_id", ids);
+      const studentByEnrollment = new Map((enr || []).map((e: any) => [e.id, e.student_id]));
+      if (studentByEnrollment.size) {
+        const { data: snaps } = await service
+          .from("result_snapshots")
+          .select("enrollment_id, snapshot_data")
+          .eq("term", "term3")
+          .eq("report_type", "TR")
+          .in("enrollment_id", Array.from(studentByEnrollment.keys()));
+        (snaps || []).forEach((s: any) => {
+          const sid = studentByEnrollment.get(s.enrollment_id);
+          const st = s.snapshot_data?.promotion?.status;
+          if (sid && st) verdictByStudent.set(sid, { status: st, pct: s.snapshot_data?.summary?.percentage ?? null });
+        });
+      }
+    }
+
+    const skipped: { name: string; reason: string }[] = [];
+    let overridden = 0;
+    const effective: any[] = [];
     for (const item of promotions) {
+      if (item.override) {
+        overridden++;
+        effective.push(item);
+        continue;
+      }
+      const verdict = verdictByStudent.get(item.studentId);
+      if (!verdict) {
+        skipped.push({ name: item.studentName || "Student", reason: "3rd-term result not published" });
+        continue;
+      }
+      if (verdict.status === "REPEAT" && item.action !== "repeat") {
+        effective.push({ ...item, action: "repeat", toClassId: undefined });
+      } else {
+        effective.push(item);
+      }
+    }
+
+    // Process each student atomically
+    for (const item of effective) {
       const { studentId, studentName, fromClassId, toClassId, action = "promote" } = item;
       const fromClass = await getClass(fromClassId);
       const toClass = toClassId ? await getClass(toClassId) : null;
@@ -214,12 +268,15 @@ export async function POST(req: NextRequest) {
         promoted: summary.filter((s) => s.action === "promoted").length,
         graduated: summary.filter((s) => s.action === "graduated").length,
         repeated: summary.filter((s) => s.action === "repeat").length,
+        skipped_unpublished: skipped.length,
+        admin_overrides: overridden,
       },
     });
 
     return NextResponse.json({
       ok: true,
-      message: `Successfully processed promotions for ${summary.length} students!`,
+      message: `Processed ${summary.length} students.${skipped.length ? ` ${skipped.length} skipped (3rd-term result not published).` : ""}`,
+      skipped,
       summary,
       promotionId: promoRow?.id,
     });

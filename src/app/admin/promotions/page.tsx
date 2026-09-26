@@ -20,6 +20,9 @@ interface StudentItem {
   classes?: { name: string } | null;
 }
 
+type Verdict = { status: "PROMOTED" | "TRIAL" | "REPEAT"; pct: number | null };
+type Choice = "auto" | "promote" | "repeat" | "hold";
+
 interface PromotionRecord {
   id: string;
   session: string;
@@ -56,6 +59,10 @@ export default function AdminPromotionsPage() {
   const [classList, setClassList] = useState<ClassItem[]>([]);
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [history, setHistory] = useState<PromotionRecord[]>([]);
+  // 3rd-term Terminal Result verdicts (annual average = mean of the three terms), keyed by student id
+  const [verdicts, setVerdicts] = useState<Map<string, Verdict>>(new Map());
+  const [choices, setChoices] = useState<Record<string, Choice>>({});
+  const [showReview, setShowReview] = useState(false);
 
   // Modal and config state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -118,6 +125,32 @@ export default function AdminPromotionsPage() {
       }
       setStudents((stdData as any) || []);
 
+      // Verdicts from the published 3rd-term Terminal Result of this session
+      const vmap = new Map<string, Verdict>();
+      const sessId = sessRow?.id;
+      if (sessId && stdData?.length) {
+        const { data: enr } = await supabase
+          .from("student_enrollments")
+          .select("id, student_id")
+          .eq("academic_session_id", sessId)
+          .in("student_id", stdData.map((s: any) => s.id));
+        const studentByEnrollment = new Map((enr || []).map((e: any) => [e.id, e.student_id as string]));
+        if (studentByEnrollment.size) {
+          const { data: snaps } = await supabase
+            .from("result_snapshots")
+            .select("enrollment_id, snapshot_data")
+            .eq("term", "term3")
+            .eq("report_type", "TR")
+            .in("enrollment_id", Array.from(studentByEnrollment.keys()));
+          (snaps || []).forEach((s: any) => {
+            const sid = studentByEnrollment.get(s.enrollment_id);
+            const st = s.snapshot_data?.promotion?.status;
+            if (sid && st) vmap.set(sid, { status: st, pct: s.snapshot_data?.summary?.percentage ?? null });
+          });
+        }
+      }
+      setVerdicts(vmap);
+
       // Fetch promotions history
       const { data: histData, error: hErr } = await supabase
         .from("promotions")
@@ -144,14 +177,34 @@ export default function AdminPromotionsPage() {
     studentCountMap.set(s.class_id, (studentCountMap.get(s.class_id) || 0) + 1);
   });
 
-  const eligibleCount = students.filter((s) => {
+  /** What will happen to a student: the 3rd-term verdict unless the admin overrides it. */
+  const decisionFor = (s: StudentItem): "promote" | "repeat" | "hold" => {
     const next = getNextClassLogical(s.classes?.name, jss3Track);
-    return next !== "STAYS IN CLASS (CUSTOM)";
-  }).length;
+    if (next === "STAYS IN CLASS (CUSTOM)") return "hold";
+    const choice = choices[s.id] || "auto";
+    if (choice !== "auto") return choice;
+    const v = verdicts.get(s.id);
+    if (!v) return "hold";
+    return v.status === "REPEAT" ? "repeat" : "promote";
+  };
+  const autoDecision = (s: StudentItem): "promote" | "repeat" | "hold" => {
+    const v = verdicts.get(s.id);
+    if (!v) return "hold";
+    return v.status === "REPEAT" ? "repeat" : "promote";
+  };
+
+  const eligibleCount = students.filter((s) => decisionFor(s) === "promote").length;
+  const repeatCount = students.filter((s) => decisionFor(s) === "repeat").length;
+  const holdCount = students.filter((s) => decisionFor(s) === "hold").length;
+  const unpublishedCount = students.filter((s) => !verdicts.has(s.id)).length;
 
   const handleOpenModal = () => {
-    if (eligibleCount === 0) {
-      alert("No active students are currently eligible for promotion.");
+    if (eligibleCount === 0 && repeatCount === 0) {
+      alert(
+        unpublishedCount > 0
+          ? "No student has a published 3rd-term Terminal Result yet. Publish the 3rd-term results first, or override students in the review list."
+          : "No active students are currently eligible for promotion."
+      );
       return;
     }
     setIsModalOpen(true);
@@ -167,6 +220,20 @@ export default function AdminPromotionsPage() {
       for (const student of students) {
         const currentClassName = student.classes?.name || "";
         const nextClassName = getNextClassLogical(currentClassName, jss3Track);
+        const decision = decisionFor(student);
+        const overrideFlag = decision !== autoDecision(student);
+
+        if (decision === "hold") continue;
+        if (decision === "repeat") {
+          promotionsPayload.push({
+            studentId: student.id,
+            studentName: student.name,
+            fromClassId: student.class_id,
+            action: "repeat",
+            override: overrideFlag,
+          });
+          continue;
+        }
 
         if (nextClassName === "ALUMNI (GRADUATED)") {
           promotionsPayload.push({
@@ -174,6 +241,7 @@ export default function AdminPromotionsPage() {
             studentName: student.name,
             fromClassId: student.class_id,
             action: "graduate",
+            override: overrideFlag,
           });
         } else if (nextClassName !== "STAYS IN CLASS (CUSTOM)") {
           let targetClass = classMap.get(nextClassName.toUpperCase());
@@ -190,6 +258,7 @@ export default function AdminPromotionsPage() {
               toClassId: targetClass.id,
               nextClassName,
               action: "promote",
+              override: overrideFlag,
             });
           }
         }
@@ -222,7 +291,12 @@ export default function AdminPromotionsPage() {
         throw new Error(result.error || "Failed to execute promotions.");
       }
 
-      alert(result.message || "Academic student promotions executed successfully!");
+      const skippedList: { name: string; reason: string }[] = result.skipped || [];
+      alert(
+        (result.message || "Academic student promotions executed successfully!") +
+          (skippedList.length ? "\n\nSkipped:\n" + skippedList.map((s) => `• ${s.name} — ${s.reason}`).join("\n") : "")
+      );
+      setChoices({});
       setIsModalOpen(false);
       setNotes("");
       await loadData();
@@ -305,6 +379,86 @@ export default function AdminPromotionsPage() {
               Promotion moves students to their next class in this session.
             </div>
           </div>
+
+          {unpublishedCount > 0 && !loading && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900">
+              <strong>{unpublishedCount}</strong> of {students.length} students have no published 3rd-term Terminal Result. They will not
+              be promoted automatically. Publish the 3rd-term results from Approvals first, or override individual students below.
+            </div>
+          )}
+
+          {/* Per-student verdicts */}
+          <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowReview((v) => !v)}
+              className="w-full px-6 py-4 flex items-center justify-between gap-3 text-left cursor-pointer"
+            >
+              <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Student Results Review</h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {eligibleCount} promote · {repeatCount} repeat · {holdCount} on hold — based on the annual average (mean of 1st, 2nd and 3rd term)
+                </p>
+              </div>
+              <span className="text-xs font-bold text-indigo-600">{showReview ? "Hide" : "Review & override"}</span>
+            </button>
+            {showReview && (
+              <div className="overflow-x-auto border-t border-slate-100">
+                <table className="w-full text-left text-sm text-slate-600">
+                  <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3">Student</th>
+                      <th className="px-4 py-3">Class</th>
+                      <th className="px-4 py-3">Annual avg</th>
+                      <th className="px-4 py-3">Result</th>
+                      <th className="px-4 py-3">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {[...students]
+                      .sort((a, b) => (a.classes?.name || "").localeCompare(b.classes?.name || "") || a.name.localeCompare(b.name))
+                      .map((s) => {
+                        const v = verdicts.get(s.id);
+                        const d = decisionFor(s);
+                        return (
+                          <tr key={s.id}>
+                            <td className="px-4 py-2.5 font-semibold text-slate-900">{s.name}</td>
+                            <td className="px-4 py-2.5">{s.classes?.name || "—"}</td>
+                            <td className="px-4 py-2.5 tabular-nums">{v?.pct != null ? `${v.pct}%` : "—"}</td>
+                            <td className="px-4 py-2.5">
+                              {v ? (
+                                <span
+                                  className={`px-2 py-0.5 rounded-md text-[11px] font-bold ${
+                                    v.status === "PROMOTED" ? "bg-emerald-50 text-emerald-700" : v.status === "TRIAL" ? "bg-amber-50 text-amber-800" : "bg-rose-50 text-rose-700"
+                                  }`}
+                                >
+                                  {v.status === "TRIAL" ? "On trial" : v.status === "REPEAT" ? "Repeat" : "Pass"}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-slate-400">Not published</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <select
+                                value={choices[s.id] || "auto"}
+                                onChange={(e) => setChoices((c) => ({ ...c, [s.id]: e.target.value as Choice }))}
+                                className="px-2 py-1 border border-slate-300 rounded-md text-xs font-semibold bg-white"
+                              >
+                                <option value="auto">Auto ({autoDecision(s) === "promote" ? "promote" : autoDecision(s) === "repeat" ? "repeat" : "hold"})</option>
+                                <option value="promote">Force promote</option>
+                                <option value="repeat">Force repeat</option>
+                                <option value="hold">Skip</option>
+                              </select>
+                              {d !== autoDecision(s) && <span className="ml-2 text-[10px] font-bold text-indigo-600">override</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
 
           {/* Class Preview Table */}
           <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -440,8 +594,18 @@ export default function AdminPromotionsPage() {
               </p>
               <ul className="text-sm text-slate-600 space-y-1 list-disc pl-4">
                 <li>
-                  Move <strong>{eligibleCount}</strong> students to their next class
+                  Move <strong>{eligibleCount}</strong> students to their next class (annual average of the 3 terms is a pass)
                 </li>
+                {repeatCount > 0 && (
+                  <li>
+                    Keep <strong>{repeatCount}</strong> student{repeatCount === 1 ? "" : "s"} in the same class to repeat
+                  </li>
+                )}
+                {holdCount > 0 && (
+                  <li>
+                    Leave <strong>{holdCount}</strong> student{holdCount === 1 ? "" : "s"} untouched (3rd-term result not published)
+                  </li>
+                )}
                 <li>Graduate SSS 3 students as Alumni</li>
                 <li>Log this promotion event with timestamp</li>
                 <li>All historical records (results, exams) remain untouched</li>
