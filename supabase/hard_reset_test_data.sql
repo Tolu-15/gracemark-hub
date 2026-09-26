@@ -33,7 +33,10 @@ DELETE FROM public.users WHERE role IN ('teacher', 'student');
 TRUNCATE TABLE public.classes CASCADE;
 
 INSERT INTO public.classes (school_id, name, session)
-SELECT '00000000-0000-0000-0000-000000000001', c.name, '2025/2026'
+SELECT 
+  '00000000-0000-0000-0000-000000000001', 
+  c.name, 
+  coalesce((SELECT current_session FROM public.app_settings LIMIT 1), '')
 FROM (VALUES
   ('JSS 1'),
   ('JSS 2'),

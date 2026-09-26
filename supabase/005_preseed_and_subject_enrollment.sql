@@ -37,9 +37,17 @@ CREATE TABLE IF NOT EXISTS public.student_subject_enrollments (
 ALTER TABLE public.student_subject_enrollments ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow read access to authenticated users" ON public.student_subject_enrollments;
-CREATE POLICY "Allow read access to authenticated users" ON public.student_subject_enrollments
-  FOR SELECT TO authenticated USING (true);
-
 DROP POLICY IF EXISTS "Allow all access to admin and teachers" ON public.student_subject_enrollments;
-CREATE POLICY "Allow all access to admin and teachers" ON public.student_subject_enrollments
-  FOR ALL TO authenticated USING (true);
+
+CREATE POLICY "enrollments_admin_teacher_all" ON public.student_subject_enrollments
+  FOR ALL TO authenticated
+  USING (public.is_admin() OR public.is_teacher())
+  WITH CHECK (public.is_admin() OR public.is_teacher());
+
+CREATE POLICY "enrollments_student_read_own" ON public.student_subject_enrollments
+  FOR SELECT TO authenticated
+  USING (
+    public.is_admin()
+    OR public.is_teacher()
+    OR student_id = public.current_student_id()
+  );

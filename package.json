@@ -2,12 +2,32 @@
   "name": "gracemark",
   "version": "1.0.0",
   "private": true,
+  "main": "server.js",
   "description": "Gracemark school portal with extensionless routes",
   "scripts": {
-    "start": "node server.js"
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.106.1",
-    "ws": "^8.21.3"
+    "@supabase/supabase-js": "^2.109.0",
+    "lucide-react": "^1.47.0",
+    "next": "^14.2.15",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ws": "^8.21.3",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.9.3"
   }
 }
