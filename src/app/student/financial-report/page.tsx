@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { resolveStudentUserIdCandidates } from "@/lib/auth";
-import { formatCurrency, formatDate } from "@/lib/schoolFinance";
+import { formatCurrency, formatDate, getStudentHistory } from "@/lib/schoolFinance";
 
 export default function StudentFinancialReportPage() {
   const router = useRouter();
@@ -34,13 +34,7 @@ export default function StudentFinancialReportPage() {
         if (std) {
           setStudent(std);
 
-          const { data: invList, error } = await supabase
-            .from("payment_invoices")
-            .select("*, payment_records(*)")
-            .eq("student_id", std.id)
-            .order("created_at", { ascending: false });
-
-          if (error) throw error;
+          const { invoices: invList } = await getStudentHistory(std.id);
           setInvoices(invList || []);
         }
       } catch (err) {

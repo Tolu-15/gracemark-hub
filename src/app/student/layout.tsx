@@ -3,6 +3,7 @@
 import React from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
 import PortalLayout, { NavItem } from "@/components/shared/PortalLayout";
+import { PAYMENTS_ENABLED } from "@/lib/features";
 
 const studentNavItems: NavItem[] = [
   {
@@ -65,21 +66,25 @@ const studentNavItems: NavItem[] = [
     category: "Fees & Financials",
     label: "School Fees",
     href: "/student/school-fees",
+    disabled: !PAYMENTS_ENABLED,
   },
   {
     category: "Fees & Financials",
     label: "Payment History",
     href: "/student/payment-history",
+    disabled: !PAYMENTS_ENABLED,
   },
   {
     category: "Fees & Financials",
     label: "Payment Receipts",
     href: "/student/receipts",
+    disabled: !PAYMENTS_ENABLED,
   },
   {
     category: "Fees & Financials",
     label: "Financial Report",
     href: "/student/financial-report",
+    disabled: !PAYMENTS_ENABLED,
   },
   {
     category: "Account",

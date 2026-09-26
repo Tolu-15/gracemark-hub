@@ -1,5 +1,6 @@
 "use client";
 
+import { PAYMENTS_ENABLED } from "@/lib/features";
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -38,11 +39,15 @@ export default function StudentLockedPage() {
             setLockReason(std.portal_lock_reason);
           }
 
-          const fin = await getStudentCurrentInvoice(std.id);
+          const fin = PAYMENTS_ENABLED ? await getStudentCurrentInvoice(std.id) : null;
+          if (!PAYMENTS_ENABLED && std.portal_access_status !== "locked") {
+            router.push("/student/dashboard");
+            return;
+          }
           if (fin) {
             setBalance(fin.outstandingBalance);
             // If already fully paid and unlocked
-            if (fin.outstandingBalance <= 0 && std.portal_access_status !== "LOCKED") {
+            if (fin.outstandingBalance <= 0 && std.portal_access_status !== "locked") {
               router.push("/student/dashboard");
               return;
             }
@@ -77,7 +82,7 @@ export default function StudentLockedPage() {
         <div>
           <h1 className="text-2xl font-extrabold text-white tracking-tight">PORTAL ACCESS RESTRICTED</h1>
           <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-            Your student portal access has been temporarily restricted due to an outstanding school fee balance or administrative lock policy.
+            Your student portal access has been locked by the school administrator.
           </p>
         </div>
 
@@ -86,16 +91,19 @@ export default function StudentLockedPage() {
             <span className="text-slate-400 font-semibold">Student Name:</span>
             <span className="font-bold text-white">{student?.name || "Student"}</span>
           </div>
+          {PAYMENTS_ENABLED && (
           <div className="flex justify-between items-center text-xs border-t border-slate-800 pt-2">
-            <span className="text-slate-400 font-semibold">Outstanding Balance:</span>
-            <span className="font-extrabold text-rose-400 text-sm">{formatCurrency(balance)}</span>
-          </div>
+              <span className="text-slate-400 font-semibold">Outstanding Balance:</span>
+              <span className="font-extrabold text-rose-400 text-sm">{formatCurrency(balance)}</span>
+            </div>
+          )}
           <div className="text-xs border-t border-slate-800 pt-2">
             <span className="text-slate-400 font-semibold block mb-1">Lock Reason:</span>
             <span className="text-slate-300 italic text-[11px] block">{lockReason}</span>
           </div>
         </div>
 
+        {PAYMENTS_ENABLED && (
         <div className="space-y-3">
           <Link
             href="/student/school-fees"
@@ -118,6 +126,7 @@ export default function StudentLockedPage() {
             </Link>
           </div>
         </div>
+        )}
 
         <p className="text-[11px] text-slate-500">
           If you believe this is an error, please contact the school administrator.

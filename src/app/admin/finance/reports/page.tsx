@@ -34,8 +34,8 @@ export default function AdminFinanceReportsPage() {
         await Promise.all([
           supabase.from("classes").select("id, name").order("name"),
           getAppSettings(),
-          supabase.from("payment_invoices").select("*"),
-          supabase.from("students").select("id, class_id"),
+          supabase.from("payment_invoices").select("*, fee_structures(class_id, term, academic_sessions(name))"),
+          supabase.from("students").select("id, class_id, current_class_id"),
           getAcademicSessions(),
         ]);
 
@@ -59,8 +59,14 @@ export default function AdminFinanceReportsPage() {
 
       // Group by class
       const clsList = classesData || [];
-      const stdList = studentsData || [];
-      const invList = (invoicesData || []).filter(
+      const stdList = (studentsData || []).map((s: any) => ({ ...s, class_id: s.current_class_id || s.class_id }));
+      const one = (v: any) => (Array.isArray(v) ? v[0] : v);
+      const invList = (invoicesData || [])
+        .map((i: any) => {
+          const fee = one(i.fee_structures);
+          return { ...i, class_id: fee?.class_id, term: fee?.term, academic_session: one(fee?.academic_sessions)?.name };
+        })
+        .filter(
         (i: any) =>
           (!session || i.academic_session === session) && (!term || i.term === term)
       );

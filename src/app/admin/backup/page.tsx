@@ -34,7 +34,7 @@ export default function AdminBackupPage() {
 
         let payCount = 0;
         try {
-          const { count: pC } = await supabase.from("fee_payments").select("*", { count: "exact", head: true });
+          const { count: pC } = await supabase.from("payment_transactions").select("*", { count: "exact", head: true });
           payCount = pC || 0;
         } catch {
           // ignore
@@ -95,7 +95,7 @@ export default function AdminBackupPage() {
     { name: "published_snapshots", label: "Published Report Snapshots", desc: "Frozen milestone snapshots for students" },
     { name: "users", label: "Staff & User Profiles", desc: "Teachers, Admins, Staff IDs (Passcodes sanitized)" },
     { name: "class_teacher_assignments & subject_teacher_assignments", label: "Class & Subject Delegations", desc: "Teacher assignments per session and class arm" },
-    { name: "fee_structures & fee_payments", label: "School Finance & Payments", desc: "Receipt logs, transactions, balances" },
+    { name: "fee_structures & payment_transactions", label: "School Finance & Payments", desc: "Receipt logs, transactions, balances" },
     { name: "attendance & attendance_records", label: "School Attendance Registers", desc: "Daily morning/afternoon rolls, days present" },
     { name: "promotions", label: "Annual Class Promotions", desc: "Historical promotion logs and alumni graduation" },
     { name: "school_settings", label: "Institution Branding & Signatures", desc: "Principal stamp, resumption dates, policies" },

@@ -76,7 +76,7 @@ export default function AdminDashboardPage() {
         supabase.from("students").select("id", { count: "exact", head: true }),
         supabase.from("classes").select("id", { count: "exact", head: true }),
         supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "teacher"),
-        supabase.from("students").select("id", { count: "exact", head: true }).eq("portal_access_status", "LOCKED"),
+        supabase.from("students").select("id", { count: "exact", head: true }).eq("portal_access_status", "locked"),
         supabase.from("payment_invoices").select("total_amount, amount_paid"),
       ]);
 

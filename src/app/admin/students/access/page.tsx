@@ -39,7 +39,7 @@ export default function AdminStudentAccessPage() {
   }, [loadData]);
 
   async function handleToggleAccess(student: StudentRecord) {
-    const isCurrentlyLocked = student.portal_access_status === "LOCKED";
+    const isCurrentlyLocked = student.portal_access_status === "locked";
     let newReason: string | null = null;
 
     if (!isCurrentlyLocked) {
@@ -53,12 +53,12 @@ export default function AdminStudentAccessPage() {
 
     setUpdatingId(student.id);
     try {
-      const newStatus = isCurrentlyLocked ? "ACTIVE" : "LOCKED";
+      const newStatus = isCurrentlyLocked ? "active" : "locked";
       const { error } = await supabase
         .from("students")
         .update({
           portal_access_status: newStatus,
-          portal_lock_reason: newStatus === "LOCKED" ? newReason : null,
+          portal_lock_reason: newStatus === "locked" ? newReason : null,
         })
         .eq("id", student.id);
 
@@ -131,8 +131,8 @@ export default function AdminStudentAccessPage() {
             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
           >
             <option value="">All Statuses</option>
-            <option value="ACTIVE">Active (Unlocked)</option>
-            <option value="LOCKED">Locked</option>
+            <option value="active">Active (Unlocked)</option>
+            <option value="locked">Locked</option>
           </select>
         </div>
       </div>
@@ -166,7 +166,7 @@ export default function AdminStudentAccessPage() {
                 </tr>
               ) : (
                 filteredStudents.map((s) => {
-                  const isLocked = s.portal_access_status === "LOCKED";
+                  const isLocked = s.portal_access_status === "locked";
                   return (
                     <tr key={s.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="px-6 py-3.5 font-bold text-slate-900">

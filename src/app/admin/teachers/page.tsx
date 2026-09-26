@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
+import TeacherEmailPanel from "@/components/admin/TeacherEmailPanel";
 import { ClassRecord, SubjectRecord } from "@/types/database";
 import { StaffProfile, ClassTeacherAssignment, SubjectTeacherAssignment } from "@/types/academic";
 import { getAcademicSessions } from "@/lib/academicSessions";
@@ -615,6 +616,8 @@ export default function AdminTeachersPage() {
           </span>
         </button>
       </div>
+
+      <TeacherEmailPanel refreshKey={classAssignments.length + subjectAssignments.length + teachers.length} />
 
       {/* ==================================================================== */}
       {/* TAB 1: STAFF DIRECTORY */}

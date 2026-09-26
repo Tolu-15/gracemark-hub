@@ -1,3 +1,4 @@
+import { PAYMENTS_ENABLED } from "./features";
 import { supabase } from "./supabase/client";
 import { fetchUserProfileByAuthId, destinationForRole, resolveStudentUserIdCandidates } from "./auth";
 import { UserProfile, UserRole } from "@/types/database";
@@ -85,9 +86,9 @@ export async function verifyRoleAccess(
         .in("user_id", candidateIds)
         .maybeSingle();
 
-      let isLocked = student?.portal_access_status === "LOCKED";
+      let isLocked = student?.portal_access_status === "locked";
 
-      if (student?.id) {
+      if (student?.id && PAYMENTS_ENABLED) {
         try {
           const { evaluateStudentPortalAccess } = await import("./schoolFinance");
           const evalResult = await evaluateStudentPortalAccess(student.id);

@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/lib/supabase/client";
-import { getAppSettings } from "@/lib/appSettings";
+import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import { getAcademicSessions } from "@/lib/academicSessions";
 import { ClassRecord, StudentRecord } from "@/types/database";
 
@@ -54,26 +53,48 @@ export default function AdminFinancePaymentsPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [
-        { data: classesData },
-        { data: studentsData },
-        { data: recordsData, error: rErr },
-        dbSessions,
-      ] = await Promise.all([
+      const [{ data: classesData }, { data: studentsData }, { data: txData, error: rErr }, dbSessions] = await Promise.all([
         supabase.from("classes").select("id, name").order("name"),
-        supabase.from("students").select("id, name, admission_no, class_id").order("name"),
+        supabase.from("students").select("id, name, full_name, admission_no, class_id, current_class_id"),
         supabase
-          .from("payment_records")
-          .select("*, students(id, name, admission_no, classes:class_id(name)), payment_invoices(academic_session, term, class_id)")
-          .order("payment_date", { ascending: false }),
+          .from("payment_transactions")
+          .select("*, payment_invoices(student_id, fee_structures(class_id, term, academic_sessions(name)))")
+          .order("paid_at", { ascending: false }),
         getAcademicSessions(),
       ]);
-
-      setClasses(classesData || []);
-      setStudents((studentsData as any[]) || []);
-      setSessionsList(dbSessions.map((s) => s.name));
       if (rErr) throw rErr;
-      setPayments((recordsData as any[]) || []);
+
+      const classList = (classesData as any[]) || [];
+      const className = new Map(classList.map((c) => [c.id, c.name]));
+      const studentList = ((studentsData as any[]) || [])
+        .map((s) => ({ ...s, name: s.full_name || s.name || "", class_id: s.current_class_id || s.class_id }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const byId = new Map(studentList.map((s) => [s.id, s]));
+      const one = (v: any) => (Array.isArray(v) ? v[0] : v);
+
+      setClasses(classList);
+      setStudents(studentList as any[]);
+      setSessionsList(dbSessions.map((s) => s.name));
+      setPayments(
+        ((txData as any[]) || []).map((t) => {
+          const inv = one(t.payment_invoices);
+          const fee = one(inv?.fee_structures);
+          const st = byId.get(inv?.student_id);
+          return {
+            ...t,
+            payment_gateway: t.gateway,
+            payment_date: t.paid_at,
+            students: st
+              ? { id: st.id, name: st.name, admission_no: st.admission_no, classes: { name: className.get(st.class_id) || "" } }
+              : null,
+            payment_invoices: {
+              academic_session: one(fee?.academic_sessions)?.name || "",
+              term: fee?.term || "",
+              class_id: fee?.class_id,
+            },
+          };
+        })
+      );
     } catch (err) {
       console.error("Failed to load payment records:", err);
     } finally {
@@ -94,81 +115,19 @@ export default function AdminFinancePaymentsPage() {
 
     setSaving(true);
     try {
-      const amt = Number(formData.amount);
-      const student = students.find((s) => s.id === formData.student_id);
-      if (!student) throw new Error("Student not found.");
-
-      // Find or create active invoice
-      let { data: invoice } = await supabase
-        .from("payment_invoices")
-        .select("*")
-        .eq("student_id", student.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!invoice) {
-        const settings = await getAppSettings();
-        const activeSession = settings?.current_session || (sessionsList[0] || "");
-        const activeTerm = settings?.current_term || "term1";
-        const invNumber = `INV-${Date.now()}`;
-        const { data: newInv, error: invErr } = await supabase
-          .from("payment_invoices")
-          .insert([
-            {
-              student_id: student.id,
-              class_id: student.class_id,
-              total_amount: amt,
-              amount_paid: 0,
-              academic_session: activeSession,
-              term: activeTerm,
-              status: "UNPAID",
-              invoice_number: invNumber,
-            },
-          ])
-          .select()
-          .single();
-
-        if (invErr) throw invErr;
-        invoice = newInv;
-      }
-
-      const year = new Date().getFullYear();
-      const receiptNumber = `REC-${year}-${Math.floor(100000 + Math.random() * 900000)}`;
-      const paymentRef = `MANUAL-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
-      const { error: recErr } = await supabase.from("payment_records").insert([
-        {
-          invoice_id: invoice.id,
-          student_id: student.id,
-          payment_reference: paymentRef,
-          receipt_number: receiptNumber,
-          amount: amt,
-          payment_gateway: formData.payment_gateway,
-          status: "successful",
-          payment_date: new Date().toISOString(),
-          verified_at: new Date().toISOString(),
+      // The server finds/creates the invoice, records the payment and applies the fee-lock policy.
+      const res = await fetch("/api/admin/finance/manual-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+        body: JSON.stringify({
+          student_id: formData.student_id,
+          amount: Number(formData.amount),
+          method: formData.payment_gateway,
           notes: formData.notes,
-        },
-      ]);
-      if (recErr) throw recErr;
-
-      // Update invoice
-      const newPaid = Number(invoice.amount_paid || 0) + amt;
-      const totalAmt = Number(invoice.total_amount || 0);
-      const newStatus = newPaid >= totalAmt && totalAmt > 0 ? "FULLY PAID" : "PARTIALLY PAID";
-
-      await supabase
-        .from("payment_invoices")
-        .update({ amount_paid: newPaid, status: newStatus })
-        .eq("id", invoice.id);
-
-      if (newStatus === "FULLY PAID") {
-        await supabase
-          .from("students")
-          .update({ portal_access_status: "ACTIVE", portal_lock_reason: null })
-          .eq("id", student.id);
-      }
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || "Could not record payment.");
 
       setIsModalOpen(false);
       setFormData({ student_id: "", amount: "", payment_gateway: "cash", notes: "" });

@@ -1,13 +1,7 @@
 import { NextResponse } from "next/server";
+import { getServiceClient } from "@/lib/supabase/server";
+import { getPaystackPublicKey } from "@/lib/financeServer";
 
 export async function GET() {
-  const publicKey =
-    process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY ||
-    process.env.PAYSTACK_PUBLIC_KEY ||
-    "";
-
-  return NextResponse.json({
-    ok: true,
-    public_key: publicKey,
-  });
+  return NextResponse.json({ ok: true, public_key: await getPaystackPublicKey(getServiceClient()) });
 }

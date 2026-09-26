@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Script from "next/script";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase/client";
-import { ensureClassByName } from "@/lib/schoolContext";
+import PoweredBy from "@/components/shared/PoweredBy";
+import { PAYMENTS_ENABLED } from "@/lib/features";
 
 declare const PaystackPop: any;
 
@@ -16,10 +16,24 @@ export default function PublicAdmissionFormPage() {
   const [firstNames, setFirstNames] = useState("");
   const [dob, setDob] = useState("");
   const [gender, setGender] = useState("");
-  const [desiredClass, setDesiredClass] = useState("");
+  const [desiredClass, setDesiredClass] = useState(""); // classes.id
+  const [options, setOptions] = useState<{
+    form: { id: string; name: string; amount: number } | null;
+    classes: { id: string; name: string }[];
+  } | null>(null);
+  const [optionsError, setOptionsError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/admissions/options")
+      .then((r) => r.json())
+      .then((d) => (d.ok ? setOptions({ form: d.form, classes: d.classes }) : setOptionsError(d.error || "Could not load admission options.")))
+      .catch(() => setOptionsError("Could not load admission options."));
+  }, []);
+
+  const className = options?.classes.find((c) => c.id === desiredClass)?.name || "Selected Class";
+  const feeText = "₦" + Number(options?.form?.amount || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 });
   const [stateOfOrigin, setStateOfOrigin] = useState("");
   const [homeAddress, setHomeAddress] = useState("");
-  const [studentPassword, setStudentPassword] = useState("");
   const [passportPhotoUrl, setPassportPhotoUrl] = useState("");
 
   const [prevSchoolName, setPrevSchoolName] = useState("");
@@ -40,7 +54,10 @@ export default function PublicAdmissionFormPage() {
   const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false);
   const [completedAdmNo, setCompletedAdmNo] = useState("");
   const [completedEmail, setCompletedEmail] = useState("");
-  const [completedPassword, setCompletedPassword] = useState("");
+  // Application already saved on the server but not yet paid (lets the parent retry payment without a duplicate).
+  const [pendingApp, setPendingApp] = useState<null | {
+    admission_id: string; application_number: string; reference: string; amount: number; email: string; public_key: string;
+  }>(null);
 
   const stepsCount = 5;
   const stepTitles = [
@@ -83,193 +100,116 @@ export default function PublicAdmissionFormPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateStep(currentStep)) return;
-
+    if (!validateStep(currentStep) || submitting) return;
+    if (!options?.form) {
+      alert(optionsError || "Admissions are not open right now.");
+      return;
+    }
     setSubmitting(true);
-    const admissionNumber = `ADM-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const fullName = `${surname.trim()} ${firstNames.trim()}`;
-    const finalPassword = studentPassword.trim() || "gracemark";
-    const userEmail = parentEmail.trim().toLowerCase();
-    const APPLICATION_FEE = 10000;
-    const uniqueRef = `ADM-${admissionNumber}-${Date.now()}`;
 
     try {
-      // 1. Insert into admissions table
-      const admissionPayload = {
-        admission_number: admissionNumber,
-        surname: surname.trim(),
-        first_names: firstNames.trim(),
-        date_of_birth: dob,
-        gender,
-        desired_class: desiredClass,
-        state_of_origin: stateOfOrigin.trim(),
-        home_address: homeAddress.trim(),
-        passport_photo_url: passportPhotoUrl.trim() || null,
-        previous_school_name: prevSchoolName.trim(),
-        previous_school_address: prevSchoolAddress.trim() || null,
-        previous_class: prevClass.trim() || null,
-        parent_guardian_name: parentName.trim(),
-        parent_guardian_email: userEmail,
-        parent_guardian_phone: parentPhone.trim(),
-        parent_guardian_occupation: parentOccupation.trim() || null,
-        is_boarding: isBoarding,
-        boarding_type: isBoarding ? boardingType : null,
-        medical_conditions: medicalConditions.trim() || null,
-        application_status: "submitted",
-      };
-
-      const { data: admRecord, error: admErr } = await supabase
-        .from("admissions")
-        .insert([admissionPayload])
-        .select()
-        .single();
-      if (admErr) throw admErr;
-
-      // 2. Fetch Paystack key
-      let paystackKey: string | null = null;
-      try {
-        const cfgRes = await fetch("/api/paystack-config");
-        const cfgData = await cfgRes.json();
-        paystackKey = cfgData?.public_key || null;
-      } catch (_) {}
-
-      if (!paystackKey) {
-        paystackKey = "pk_test_b867c4273574971c66708b5e9f8350bbbf4c2c01";
+      // 1. Save the application on the server (payment pending). No account is created.
+      let app = pendingApp;
+      if (!app) {
+        const res = await fetch("/api/admissions/apply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            surname, first_names: firstNames, date_of_birth: dob, gender, desired_class_id: desiredClass,
+            state_of_origin: stateOfOrigin, home_address: homeAddress, passport_photo_url: passportPhotoUrl,
+            previous_school_name: prevSchoolName, previous_school_address: prevSchoolAddress, previous_class: prevClass,
+            parent_name: parentName, parent_email: parentEmail, parent_phone: parentPhone, parent_occupation: parentOccupation,
+            is_boarding: isBoarding, boarding_type: boardingType, medical_conditions: medicalConditions,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not save your application.");
+        app = data;
+        setPendingApp(data);
       }
 
-      // Function to create student account after payment
-      const processAccountCreation = async () => {
-        try {
-          const cls = await ensureClassByName(desiredClass);
+      const current = app!;
+      if (!current.public_key || typeof PaystackPop === "undefined") {
+        alert(
+          `Your application ${current.application_number} was saved, but online payment is unavailable right now. ` +
+            "Please try again shortly or contact the school."
+        );
+        setSubmitting(false);
+        return;
+      }
 
-          let userId: string | null = null;
-          try {
-            const regRes = await fetch("/api/register-student", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                email: userEmail,
-                password: finalPassword,
-                display_name: fullName,
-              }),
-            });
-            const regData = await regRes.json();
-            if (regRes.ok && regData?.user?.id) {
-              userId = regData.user.id;
-            }
-          } catch (apiErr: any) {
-            console.warn("Backend register-student fallback:", apiErr?.message);
-          }
-
-          if (!userId) {
-            const { data: authData } = await supabase.auth.signUp({
-              email: userEmail,
-              password: finalPassword,
-              options: { data: { display_name: fullName, role: "student" } },
-            });
-            userId = authData?.user?.id || null;
-          }
-
-          if (userId) {
-            await supabase.from("users").upsert(
-              { auth_id: userId, role: "student", display_name: fullName, email: userEmail },
-              { onConflict: "auth_id" }
-            );
-
-            const { data: newStudent } = await supabase
-              .from("students")
-              .insert({
-                class_id: cls.id,
-                user_id: userId,
-                admission_no: admissionNumber,
-                name: fullName,
-              })
-              .select()
-              .maybeSingle();
-
-            if (newStudent?.id && admRecord?.id) {
-              await supabase
-                .from("admissions")
-                .update({ created_student_id: newStudent.id })
-                .eq("id", admRecord.id);
-            }
-          }
-        } catch (accErr: any) {
-          console.warn("Auto student account creation:", accErr?.message);
-        }
-      };
-
-      const finishAndShowModal = () => {
-        setCompletedAdmNo(admissionNumber);
-        setCompletedEmail(userEmail);
-        setCompletedPassword(finalPassword);
-        setIsCompleteModalOpen(true);
-      };
-
-      if (typeof PaystackPop !== "undefined" && paystackKey && !paystackKey.includes("placeholder")) {
-        try {
-          const handler = PaystackPop.setup({
-            key: paystackKey,
-            email: userEmail,
-            amount: APPLICATION_FEE * 100,
-            currency: "NGN",
-            ref: uniqueRef,
-            label: `Admission Fee — ${fullName}`,
-            metadata: {
-              admission_id: admRecord.id,
-              admission_number: admissionNumber,
-              student_name: fullName,
-              desired_class: desiredClass,
-            },
-            callback: async (response: any) => {
-              try {
-                await supabase.from("admission_payments").insert([
-                  {
-                    admission_id: admRecord.id,
-                    payment_reference: response.reference,
-                    amount: APPLICATION_FEE,
-                    status: "successful",
-                    payment_gateway: "paystack",
-                    paid_at: new Date().toISOString(),
-                  },
-                ]);
-                await supabase
-                  .from("admissions")
-                  .update({
-                    payment_status: "paid",
-                    payment_reference: response.reference,
-                  })
-                  .eq("id", admRecord.id);
-              } catch (recErr: any) {
-                console.warn("Payment record note:", recErr?.message);
-              }
-
-              await processAccountCreation();
-              finishAndShowModal();
-            },
-            onClose: () => {
+      // 2. Take payment. Only the server confirming with Paystack marks it paid.
+      const handler = PaystackPop.setup({
+        key: current.public_key,
+        email: current.email,
+        amount: current.amount * 100,
+        currency: "NGN",
+        ref: current.reference,
+        label: `Admission Fee - ${current.application_number}`,
+        metadata: { admission_id: current.admission_id, application_number: current.application_number },
+        callback: (response: any) => {
+          (async () => {
+            try {
+              const res = await fetch("/api/admissions/verify", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reference: response.reference }),
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || "Payment could not be confirmed.");
+              setCompletedAdmNo(data.application_number || current.application_number);
+              setCompletedEmail(current.email);
+              setPendingApp(null);
+              setIsCompleteModalOpen(true);
+            } catch (err: any) {
               alert(
-                `Payment window closed.\nYour application reference is ${admissionNumber}.\nPlease complete payment to activate your account.`
+                `We received your payment but could not confirm it yet (${err.message}). ` +
+                  `Please keep your payment reference ${response.reference} and contact the school.`
               );
-            },
-          });
-          handler.openIframe();
-        } catch (pErr) {
-          console.warn("Paystack popup error:", pErr);
-          await processAccountCreation();
-          finishAndShowModal();
-        }
-      } else {
-        // Fallback test mode
-        await processAccountCreation();
-        finishAndShowModal();
-      }
+            } finally {
+              setSubmitting(false);
+            }
+          })();
+        },
+        onClose: () => {
+          setSubmitting(false);
+          alert(
+            `Payment window closed. Your application number is ${current.application_number}. ` +
+              "Press Submit again to complete payment."
+          );
+        },
+      });
+      handler.openIframe();
     } catch (err: any) {
       alert("Failed to submit application: " + err.message);
-    } finally {
       setSubmitting(false);
     }
   };
+
+  if (!PAYMENTS_ENABLED) {
+    return (
+      <div className="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+        <main className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-md w-full bg-white border border-slate-200 rounded-3xl p-8 sm:p-10 text-center shadow-sm">
+            <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center text-2xl font-bold">
+              !
+            </div>
+            <h1 className="text-2xl font-extrabold text-slate-900">Not available</h1>
+            <p className="text-sm text-slate-500 mt-2">
+              Online admission is coming soon. Please check back later or contact the school directly.
+            </p>
+            <Link
+              href="/"
+              className="inline-block mt-6 px-6 py-2.5 bg-slate-900 text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition"
+            >
+              Back to Home
+            </Link>
+          </div>
+        </main>
+        <PoweredBy />
+      </div>
+    );
+  }
 
   return (
     <div className="bg-slate-50 text-slate-800 min-h-screen flex flex-col justify-between selection:bg-slate-900 selection:text-white">
@@ -392,18 +332,11 @@ export default function PublicAdmissionFormPage() {
                     className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm outline-none focus:border-slate-900"
                   >
                     <option value="">Select Class</option>
-                    <option value="JSS 1">JSS 1</option>
-                    <option value="JSS 2">JSS 2</option>
-                    <option value="JSS 3">JSS 3</option>
-                    <option value="SSS 1 Science">SSS 1 Science</option>
-                    <option value="SSS 1 Arts">SSS 1 Arts</option>
-                    <option value="SSS 1 Commercial">SSS 1 Commercial</option>
-                    <option value="SSS 2 Science">SSS 2 Science</option>
-                    <option value="SSS 2 Arts">SSS 2 Arts</option>
-                    <option value="SSS 2 Commercial">SSS 2 Commercial</option>
-                    <option value="SSS 3 Science">SSS 3 Science</option>
-                    <option value="SSS 3 Arts">SSS 3 Arts</option>
-                    <option value="SSS 3 Commercial">SSS 3 Commercial</option>
+                    {(options?.classes || []).map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -434,21 +367,6 @@ export default function PublicAdmissionFormPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Student Account Password (Optional)
-                  </label>
-                  <input
-                    type="password"
-                    value={studentPassword}
-                    onChange={(e) => setStudentPassword(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm outline-none focus:border-slate-900"
-                    placeholder="Default is: gracemark"
-                  />
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Leave blank to use default password: <code className="text-slate-700 bg-slate-100 px-1 py-0.5 rounded">gracemark</code>
-                  </p>
-                </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Passport Photo URL (Image Link)
@@ -515,7 +433,7 @@ export default function PublicAdmissionFormPage() {
               <div className="border-b border-slate-100 pb-3">
                 <h2 className="text-xl font-bold text-slate-900">Parent / Guardian Information</h2>
                 <p className="text-xs text-slate-500">
-                  Login credentials and invoices will be sent to guardian contact details.
+                  The school will use these contact details to reach you about this application.
                 </p>
               </div>
 
@@ -638,11 +556,11 @@ export default function PublicAdmissionFormPage() {
               <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">Application Fee:</span>
-                  <strong className="text-slate-900">₦10,000.00</strong>
+                  <strong className="text-slate-900">{feeText}</strong>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">Target Class:</span>
-                  <strong className="text-slate-900">{desiredClass || "Selected Class"}</strong>
+                  <strong className="text-slate-900">{className}</strong>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">Candidate Name:</span>
@@ -650,7 +568,7 @@ export default function PublicAdmissionFormPage() {
                 </div>
                 <div className="border-t border-slate-200 pt-3 flex justify-between text-base font-bold">
                   <span className="text-slate-700">Total Payable:</span>
-                  <span className="text-slate-900 text-lg">₦10,000.00</span>
+                  <span className="text-slate-900 text-lg">{feeText}</span>
                 </div>
               </div>
 
@@ -705,33 +623,29 @@ export default function PublicAdmissionFormPage() {
               ✓
             </div>
             <div className="text-center">
-              <h3 className="text-xl font-extrabold text-slate-900">Registration Successful!</h3>
-              <p className="text-xs text-slate-500 mt-1">Your student account has been created automatically.</p>
+              <h3 className="text-xl font-extrabold text-slate-900">Application Received!</h3>
+              <p className="text-xs text-slate-500 mt-1">Your payment was confirmed. The school will contact you about the next steps.</p>
             </div>
 
             <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-slate-500">Admission No:</span>
+                <span className="text-slate-500">Application No:</span>
                 <strong className="text-slate-900 font-mono">{completedAdmNo}</strong>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Email:</span>
+                <span className="text-slate-500">Contact email:</span>
                 <strong className="text-slate-900">{completedEmail}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Password:</span>
-                <strong className="text-slate-900 font-mono">{completedPassword}</strong>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Link
-                href="/"
-                className="w-full block text-center py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm text-sm"
-              >
-                Log In & Take Entrance Exam →
-              </Link>
-            </div>
+            <p className="text-[11px] text-slate-400 text-center">Please keep your application number for reference.</p>
+
+            <Link
+              href="/"
+              className="w-full block text-center py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm text-sm"
+            >
+              Back to Home
+            </Link>
           </div>
         </div>
       )}

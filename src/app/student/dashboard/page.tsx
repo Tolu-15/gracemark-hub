@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient, getAuthHeaders } from "@/lib/supabase/client";
 import { resolveStudentUserIdCandidates } from "@/lib/auth";
 import { getAppSettings } from "@/lib/appSettings";
+import { getStudentCurrentInvoice, formatPaymentStatus } from "@/lib/schoolFinance";
+import { PAYMENTS_ENABLED } from "@/lib/features";
 import { getAcademicSessions } from "@/lib/academicSessions";
 import ResultDashboardApp from "@/components/student/ResultDashboardApp";
 
@@ -80,40 +82,13 @@ export default function StudentDashboardPage() {
       // Fee Summary
       if (std?.id) {
         try {
-          const { data: feeStructures } = await supabase
-            .from("fee_structures")
-            .select("tuition_amount, registration_fee, exams_fee, facilities_fee")
-            .eq("class_id", std.class_id)
-            .limit(1)
-            .maybeSingle();
-
-          const totalFees =
-            Number(feeStructures?.tuition_amount || 0) +
-            Number(feeStructures?.registration_fee || 0) +
-            Number(feeStructures?.exams_fee || 0) +
-            Number(feeStructures?.facilities_fee || 0);
-
-          const { data: payments } = await supabase
-            .from("fee_payments")
-            .select("amount, status")
-            .eq("student_id", std.id);
-
-          const totalPaid = (payments || [])
-            .filter((p: any) => ["success", "successful"].includes(String(p.status).toLowerCase()))
-            .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
-
-          const balance = Math.max(0, totalFees - totalPaid);
-          const feeStatus =
-            balance <= 0 && totalFees > 0
-              ? "FULLY PAID"
-              : totalPaid > 0 && balance > 0
-              ? "PARTIALLY PAID"
-              : "UNPAID";
-
-          setFeeSummary({
-            outstandingBalance: balance,
-            status: feeStatus,
-          });
+          const fin = PAYMENTS_ENABLED ? await getStudentCurrentInvoice(std.id) : null;
+          if (fin) {
+            setFeeSummary({
+              outstandingBalance: fin.outstandingBalance,
+              status: formatPaymentStatus(fin.status) as any,
+            });
+          }
         } catch (e) {
           console.warn("Fee fetch error:", e);
         }
@@ -122,22 +97,25 @@ export default function StudentDashboardPage() {
         try {
           const { data: exams } = await supabase
             .from("cbt_exams")
-            .select("id, title, duration_minutes, start_time, end_time, total_marks, subjects(name)")
+            .select("id, title, duration_minutes, pass_mark, subjects(name)")
             .eq("class_id", std.class_id)
-            .eq("status", "ACTIVE")
-            .order("start_time", { ascending: true })
+            .eq("is_published", true)
+            .order("created_at", { ascending: false })
             .limit(5);
 
           setUpcomingCbt(exams || []);
 
           const { data: attempts } = await supabase
-            .from("cbt_attempts")
-            .select("id, score, max_score, created_at, cbt_exams(title, subjects(name))")
+            .from("cbt_submissions")
+            .select("id, total_score, submitted_at, cbt_exams(title, subjects(name))")
             .eq("student_id", std.id)
-            .order("created_at", { ascending: false })
+            .in("status", ["submitted", "graded"])
+            .order("submitted_at", { ascending: false })
             .limit(5);
 
-          setRecentCbtAttempts(attempts || []);
+          setRecentCbtAttempts(
+            (attempts || []).map((a: any) => ({ ...a, score: a.total_score, created_at: a.submitted_at }))
+          );
         } catch (e) {
           console.warn("CBT fetch error:", e);
         }
@@ -226,6 +204,18 @@ export default function StudentDashboardPage() {
             </div>
           </div>
 
+          {!PAYMENTS_ENABLED ? (
+            <div className="bg-slate-900 text-white p-6 rounded-xl border border-slate-800 shadow-sm flex flex-col justify-between opacity-90">
+              <div>
+                <span className="text-xs font-semibold uppercase text-yellow-400">School Fees</span>
+                <div className="text-lg font-extrabold text-white mt-2">Not available</div>
+                <span className="text-[11px] text-slate-400 block mt-0.5">Online fee payment is not available at the moment.</span>
+              </div>
+              <span className="mt-4 inline-flex text-xs font-bold text-slate-500 cursor-not-allowed" aria-disabled="true">
+                Pay School Fees (not available)
+              </span>
+            </div>
+          ) : (
           <div className="bg-slate-900 text-white p-6 rounded-xl border border-slate-800 shadow-sm flex flex-col justify-between">
             <div>
               <div className="flex justify-between items-center mb-1">
@@ -255,6 +245,7 @@ export default function StudentDashboardPage() {
               <span>→</span>
             </Link>
           </div>
+          )}
         </div>
 
         {/* Results */}
@@ -342,7 +333,7 @@ export default function StudentDashboardPage() {
                     <div>
                       <div className="font-bold text-slate-900">{exam.title}</div>
                       <div className="text-[11px] text-slate-500">
-                        {exam.subjects?.name} • {exam.duration_minutes} mins • Max {exam.total_marks} pts
+                        {exam.subjects?.name} • {exam.duration_minutes} mins • Pass mark {exam.pass_mark}
                       </div>
                     </div>
                     <Link
@@ -383,7 +374,7 @@ export default function StudentDashboardPage() {
                     </div>
                     <div className="text-right">
                       <div className="font-bold text-emerald-600">
-                        {att.score} / {att.max_score}
+                        {att.score ?? "—"}
                       </div>
                       <div className="text-[10px] text-slate-400">Score</div>
                     </div>

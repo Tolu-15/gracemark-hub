@@ -390,3 +390,84 @@ export async function sendTeacherWelcomeEmail(params: {
   });
 }
 
+
+export interface AssignmentChange {
+  kind: "added" | "removed";
+  role: "Class Teacher" | "Subject Teacher";
+  className: string;
+  subjectName?: string;
+}
+
+/** Tells a teacher which class / subject assignments were added or removed since the last notice. */
+export async function sendAssignmentUpdateEmail(params: {
+  toEmail: string;
+  name: string;
+  session: string;
+  changes: AssignmentChange[];
+}): Promise<void> {
+  const loginUrl = "https://www.gracemarkportal.com.ng/";
+  const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const row = (c: AssignmentChange) => {
+    const colour = c.kind === "added" ? "#047857" : "#b91c1c";
+    const bg = c.kind === "added" ? "#ecfdf5" : "#fef2f2";
+    const label = c.kind === "added" ? "Assigned" : "Removed";
+    const what = c.subjectName
+      ? `${esc(c.subjectName)} &mdash; ${esc(c.className)}`
+      : `Class Teacher &mdash; ${esc(c.className)}`;
+    return `<tr>
+      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#0f172a;">${what}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;text-align:right;">
+        <span style="background:${bg};color:${colour};font-size:11px;font-weight:800;padding:3px 9px;border-radius:6px;">${label}</span>
+      </td>
+    </tr>`;
+  };
+
+  await sendEmail({
+    sender: { name: SENDER_NAME, email: SENDER_EMAIL },
+    to: [{ email: params.toEmail, name: params.name }],
+    subject: "GraceMark Academy — Your Class & Subject Assignments Were Updated",
+    htmlContent: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+      <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:36px 16px;">
+          <tr><td align="center">
+            <table width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;">
+              <tr><td style="height:4px;background:#c9a84c;font-size:0;line-height:0;">&nbsp;</td></tr>
+              <tr>
+                <td style="padding:28px 36px;background:#0f172a;">
+                  <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#c9a84c;letter-spacing:2px;text-transform:uppercase;">GraceMark Academy</p>
+                  <h1 style="margin:0;font-size:21px;font-weight:800;color:#ffffff;">Assignment Update</h1>
+                  <p style="margin:6px 0 0;font-size:13px;color:#94a3b8;">Session ${esc(params.session)}</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:30px 36px;">
+                  <p style="margin:0 0 14px;font-size:15px;color:#0f172a;">Dear <strong>${esc(params.name)}</strong>,</p>
+                  <p style="margin:0 0 18px;font-size:14px;color:#475569;line-height:1.6;">
+                    Your class and subject assignments on the GraceMark portal have changed. Here is what is new:
+                  </p>
+                  <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+                    ${params.changes.map(row).join("")}
+                  </table>
+                  <div style="text-align:center;margin:24px 0 4px;">
+                    <a href="${loginUrl}" target="_blank" style="display:inline-block;background:#0f172a;color:#ffffff;padding:12px 28px;border-radius:10px;font-weight:700;font-size:13px;text-decoration:none;">Open Portal &rarr;</a>
+                  </div>
+                  <p style="margin:18px 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">If anything looks wrong, please contact the school administrator.</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:20px 36px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
+                  <p style="margin:0;font-size:11px;color:#64748b;">GraceMark Academic Portal &bull; <a href="${loginUrl}" style="color:#2563eb;text-decoration:none;">www.gracemarkportal.com.ng</a></p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  });
+}

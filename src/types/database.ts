@@ -44,7 +44,7 @@ export interface StudentRecord {
   dob?: string | null;
   guardian_name?: string | null;
   guardian_phone?: string | null;
-  portal_access_status?: "ACTIVE" | "LOCKED" | null;
+  portal_access_status?: "active" | "locked" | null;
   portal_lock_reason?: string | null;
   created_at?: string;
   users?: any;

@@ -33,13 +33,12 @@ export default function AdminFinanceFeesPage() {
   const [filterSession, setFilterSession] = useState("");
   const [filterTerm, setFilterTerm] = useState("");
   const [filterClass, setFilterClass] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
   const [search, setSearch] = useState("");
 
   // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingFee, setEditingFee] = useState<FeeStructure | null>(null);
-  const [schoolId, setSchoolId] = useState<string | null>(null);
+  const [sessionIds, setSessionIds] = useState<Record<string, string>>({});
 
   const [formData, setFormData] = useState({
     academic_session: "",
@@ -58,28 +57,35 @@ export default function AdminFinanceFeesPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: schoolData }, settings, { data: classesData }, { data: feesData, error: fErr }, dbSessions] =
-        await Promise.all([
-          supabase.from("schools").select("id").limit(1).maybeSingle(),
-          getAppSettings(),
-          supabase.from("classes").select("id, name").order("name"),
-          supabase
-            .from("fee_structures")
-            .select("*, classes(id, name)")
-            .order("created_at", { ascending: false }),
-          getAcademicSessions(),
-        ]);
+      const [settings, { data: classesData }, { data: feesData, error: fErr }, dbSessions] = await Promise.all([
+        getAppSettings(),
+        supabase.from("classes").select("id, name").order("display_order"),
+        supabase.from("fee_structures").select("*, classes(id, name), academic_sessions(id, name)").order("created_at", { ascending: false }),
+        getAcademicSessions(),
+      ]);
 
       const names = dbSessions.map((s) => s.name);
       setSessionsList(names);
+      setSessionIds(Object.fromEntries(dbSessions.map((s) => [s.name, s.id])));
 
-      if (schoolData?.id) setSchoolId(schoolData.id);
       const activeSession = settings?.current_session || (names.length > 0 ? names[0] : "");
       setFormData((prev) => ({ ...prev, academic_session: activeSession }));
 
       setClasses(classesData || []);
       if (fErr) throw fErr;
-      setFees((feesData as any[]) || []);
+      setFees(
+        ((feesData as any[]) || []).map((f) => {
+          const sess = Array.isArray(f.academic_sessions) ? f.academic_sessions[0] : f.academic_sessions;
+          return {
+            ...f,
+            academic_session: sess?.name || "",
+            registration_fee: 0,
+            exam_fee: Number(f.exam_levy || 0),
+            facilities_fee: Number(f.development_levy || 0),
+            status: "ACTIVE" as const,
+          };
+        })
+      );
     } catch (err) {
       console.error("Failed to load fee structures:", err);
     } finally {
@@ -128,36 +134,37 @@ export default function AdminFinanceFeesPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      const tuition = Number(formData.tuition_amount || 0);
-      const reg = Number(formData.registration_fee || 0);
-      const exam = Number(formData.exam_fee || 0);
-      const facilities = Number(formData.facilities_fee || 0);
-      const total = tuition + reg + exam + facilities;
+      const sessionId = sessionIds[formData.academic_session];
+      if (!sessionId) throw new Error("Choose an academic session.");
+      if (!formData.class_id) throw new Error("Choose the class this fee applies to.");
 
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: me } = await supabase.from("users").select("id").eq("auth_id", user?.id || "").maybeSingle();
+      if (!me?.id) throw new Error("Could not identify your admin profile.");
+
+      const cls = classes.find((c) => c.id === formData.class_id);
+      const termLabel = formData.term === "term1" ? "First Term" : formData.term === "term2" ? "Second Term" : "Third Term";
       const payload: any = {
-        school_id: schoolId,
-        academic_session: formData.academic_session,
+        academic_session_id: sessionId,
         term: formData.term,
-        class_id: formData.class_id || null,
-        tuition_amount: tuition,
-        registration_fee: reg,
-        exam_fee: exam,
-        facilities_fee: facilities,
-        total_amount: total,
+        class_id: formData.class_id,
+        title: `${cls?.name || "Class"} ${termLabel} Fees`,
+        tuition_amount: Number(formData.tuition_amount || 0),
+        development_levy: Number(formData.facilities_fee || 0),
+        exam_levy: Number(formData.exam_fee || 0),
         due_date: formData.due_date || null,
-        status: formData.status,
-        description: formData.description,
       };
 
       if (editingFee) {
-        const { error } = await supabase
-          .from("fee_structures")
-          .update(payload)
-          .eq("id", editingFee.id);
+        const { error } = await supabase.from("fee_structures").update(payload).eq("id", editingFee.id);
         if (error) throw error;
       } else {
+        payload.created_by = me.id;
         const { error } = await supabase.from("fee_structures").insert([payload]);
-        if (error) throw error;
+        if (error) {
+          if ((error as any).code === "23505") throw new Error("A fee structure already exists for this class, session and term. Edit it instead.");
+          throw error;
+        }
       }
 
       setIsModalOpen(false);
@@ -184,7 +191,6 @@ export default function AdminFinanceFeesPage() {
     if (filterSession && f.academic_session !== filterSession) return false;
     if (filterTerm && f.term !== filterTerm) return false;
     if (filterClass && f.class_id !== filterClass) return false;
-    if (filterStatus && f.status !== filterStatus) return false;
     if (search) {
       const q = search.toLowerCase();
       const cName = f.classes?.name?.toLowerCase() || "all";
@@ -260,15 +266,6 @@ export default function AdminFinanceFeesPage() {
           ))}
         </select>
 
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 focus:outline-none"
-        >
-          <option value="">All Statuses</option>
-          <option value="ACTIVE">ACTIVE</option>
-          <option value="INACTIVE">INACTIVE</option>
-        </select>
       </div>
 
       {/* Table */}
@@ -280,11 +277,10 @@ export default function AdminFinanceFeesPage() {
                 <th className="py-3 px-4">Class</th>
                 <th className="py-3 px-4">Session / Term</th>
                 <th className="py-3 px-4">Tuition</th>
-                <th className="py-3 px-4">Reg + Exam</th>
-                <th className="py-3 px-4">Facilities</th>
+                <th className="py-3 px-4">Exam Levy</th>
+                <th className="py-3 px-4">Dev. Levy</th>
                 <th className="py-3 px-4 font-bold text-slate-700">Total</th>
                 <th className="py-3 px-4">Due Date</th>
-                <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -312,7 +308,7 @@ export default function AdminFinanceFeesPage() {
                     </td>
                     <td className="py-3.5 px-4">₦{Number(fee.tuition_amount || 0).toLocaleString()}</td>
                     <td className="py-3.5 px-4">
-                      ₦{(Number(fee.registration_fee || 0) + Number(fee.exam_fee || 0)).toLocaleString()}
+                      ₦{Number(fee.exam_fee || 0).toLocaleString()}
                     </td>
                     <td className="py-3.5 px-4">₦{Number(fee.facilities_fee || 0).toLocaleString()}</td>
                     <td className="py-3.5 px-4 font-bold text-emerald-600">
@@ -320,17 +316,6 @@ export default function AdminFinanceFeesPage() {
                     </td>
                     <td className="py-3.5 px-4 text-slate-500">
                       {fee.due_date ? new Date(fee.due_date).toLocaleDateString() : "—"}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          fee.status === "ACTIVE"
-                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                            : "bg-slate-100 text-slate-600 border border-slate-200"
-                        }`}
-                      >
-                        {fee.status}
-                      </span>
                     </td>
                     <td className="py-3.5 px-4 text-right space-x-2">
                       <button
@@ -414,7 +399,7 @@ export default function AdminFinanceFeesPage() {
                   onChange={(e) => setFormData({ ...formData, class_id: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none"
                 >
-                  <option value="">Apply to All Classes</option>
+                  <option value="">Select a class</option>
                   {classes.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -434,21 +419,11 @@ export default function AdminFinanceFeesPage() {
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none"
                   />
                 </div>
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Registration (₦)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={formData.registration_fee}
-                    onChange={(e) => setFormData({ ...formData, registration_fee: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none"
-                  />
-                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Exam Fee (₦)</label>
+                  <label className="block text-slate-500 font-semibold mb-1">Exam Levy (₦)</label>
                   <input
                     type="number"
                     min="0"
@@ -458,7 +433,7 @@ export default function AdminFinanceFeesPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Facilities (₦)</label>
+                  <label className="block text-slate-500 font-semibold mb-1">Development Levy (₦)</label>
                   <input
                     type="number"
                     min="0"
@@ -475,7 +450,6 @@ export default function AdminFinanceFeesPage() {
                   ₦
                   {(
                     Number(formData.tuition_amount || 0) +
-                    Number(formData.registration_fee || 0) +
                     Number(formData.exam_fee || 0) +
                     Number(formData.facilities_fee || 0)
                   ).toLocaleString()}
@@ -491,17 +465,6 @@ export default function AdminFinanceFeesPage() {
                     onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none"
                   />
-                </div>
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Status</label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none"
-                  >
-                    <option value="ACTIVE">ACTIVE</option>
-                    <option value="INACTIVE">INACTIVE</option>
-                  </select>
                 </div>
               </div>
 

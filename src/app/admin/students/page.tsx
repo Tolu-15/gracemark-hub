@@ -696,12 +696,12 @@ export default function AdminStudentsPage() {
                     <td className="px-4 py-3.5">
                       <span
                         className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${
-                          s.portal_access_status === "LOCKED"
+                          s.portal_access_status === "locked"
                             ? "bg-rose-50 text-rose-700 border-rose-200"
                             : "bg-emerald-50 text-emerald-700 border-emerald-200"
                         }`}
                       >
-                        {s.portal_access_status === "LOCKED" ? "Locked" : "Active"}
+                        {s.portal_access_status === "locked" ? "Locked" : "Active"}
                       </span>
                     </td>
                     <td className="px-6 py-3.5 text-right space-x-2">

@@ -79,12 +79,12 @@ export default function StudentProfilePage() {
                 </span>
                 <span
                   className={`px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase ${
-                    student?.portal_access_status === "LOCKED"
+                    student?.portal_access_status === "locked"
                       ? "bg-rose-100 text-rose-800"
                       : "bg-emerald-100 text-emerald-800"
                   }`}
                 >
-                  Portal: {student?.portal_access_status || "ACTIVE"}
+                  Portal: {String(student?.portal_access_status || "active").toUpperCase()}
                 </span>
               </div>
             </div>

@@ -1,4 +1,4 @@
-import { getSupabaseBrowserClient } from "./supabase/client";
+import { getAuthHeaders } from "./supabase/client";
 import { getAppSettings } from "./appSettings";
 
 export function formatCurrency(amount: number | string | null | undefined): string {
@@ -53,269 +53,60 @@ export async function getCurrentAcademicSessionAndTerm() {
 }
 
 export async function getPaystackPublicKey(): Promise<string> {
-  try {
-    const res = await fetch("/api/paystack-config");
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.public_key && !data.public_key.includes("your_paystack")) return data.public_key;
-    }
-  } catch (e) {
-    console.warn("Paystack config API fetch:", e);
+  const res = await fetch("/api/paystack-config");
+  const data = res.ok ? await res.json().catch(() => null) : null;
+  const key: string = data?.public_key || "";
+  if (!key || key.includes("your_paystack") || key.includes("placeholder")) {
+    throw new Error("Online payment is not available right now. Please contact the school.");
   }
-
-  const supabase = getSupabaseBrowserClient();
-  try {
-    const { data: config } = await supabase
-      .from("payment_config")
-      .select("public_key")
-      .eq("enabled", true)
-      .maybeSingle();
-    if (config?.public_key) return config.public_key;
-  } catch (e) {}
-
-  return (
-    process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY ||
-    "pk_test_1b7ffdcc47fc414286a6637e7edcb0483659d2e7"
-  );
+  return key;
 }
 
-function feeTotal(feeStructure: any) {
-  if (!feeStructure) return 0;
-  return (
-    Number(feeStructure.tuition_amount || 0) +
-    Number(feeStructure.registration_fee || 0) +
-    Number(feeStructure.exams_fee || 0) +
-    Number(feeStructure.facilities_fee || 0)
-  );
-}
-
+/**
+ * Current invoice, fee structure and paid totals for a student. Built on the server
+ * (which also creates/syncs the invoice); the browser never writes finance data.
+ */
 export async function getStudentCurrentInvoice(studentId: string) {
   if (!studentId) return null;
-  const supabase = getSupabaseBrowserClient();
-
-  const { data: sData } = await supabase
-    .from("students")
-    .select("id, name, admission_no, class_id, portal_access_status, portal_lock_reason, classes:class_id(name)")
-    .eq("id", studentId)
-    .maybeSingle();
-
-  const student = sData || {
-    id: studentId,
-    name: "Student",
-    admission_no: "STD-001",
-    class_id: null,
-    portal_access_status: "ACTIVE",
-    classes: null,
-  };
-
-  let className = (student.classes as any)?.name || "Unassigned";
-  if (!(student.classes as any)?.name && student.class_id) {
-    const { data: cData } = await supabase
-      .from("classes")
-      .select("name")
-      .eq("id", student.class_id)
-      .maybeSingle();
-    if (cData?.name) className = cData.name;
+  try {
+    const res = await fetch(`/api/student/finance?student_id=${encodeURIComponent(studentId)}`, {
+      headers: await getAuthHeaders(),
+      cache: "no-store",
+    });
+    const json = await res.json();
+    return json.ok ? json.finance : null;
+  } catch (err) {
+    console.error("Finance load error:", err);
+    return null;
   }
-
-  const { session, termCode, termName } = await getCurrentAcademicSessionAndTerm();
-  const classId = student.class_id;
-
-  let feeStructure: any = null;
-  if (classId) {
-    const { data: exactFee } = await supabase
-      .from("fee_structures")
-      .select("*")
-      .eq("class_id", classId)
-      .eq("status", "active")
-      .eq("academic_session", session)
-      .or(`term.eq.${termCode},term.eq.${termName}`)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    feeStructure = exactFee;
-
-    if (!feeStructure) {
-      const { data: fallbackFee } = await supabase
-        .from("fee_structures")
-        .select("*")
-        .eq("class_id", classId)
-        .eq("status", "active")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      feeStructure = fallbackFee;
-    }
-  }
-
-  const expectedFee = feeTotal(feeStructure);
-
-  const { data: allInvoices } = await supabase
-    .from("payment_invoices")
-    .select("*")
-    .eq("student_id", studentId)
-    .order("created_at", { ascending: false });
-
-  let invoice: any = null;
-  if (allInvoices?.length) {
-    invoice =
-      allInvoices.find(
-        (inv: any) =>
-          inv.academic_session === session && (inv.term === termCode || inv.term === termName)
-      ) || allInvoices[0];
-  }
-
-  if (invoice && expectedFee > 0 && Number(invoice.total_amount || 0) < expectedFee) {
-    const { data: correctedInvoice, error: correctErr } = await supabase
-      .from("payment_invoices")
-      .update({
-        total_amount: expectedFee,
-        fee_structure_id: feeStructure?.id || invoice.fee_structure_id || null,
-        class_id: classId || invoice.class_id || null,
-        academic_session: invoice.academic_session || feeStructure?.academic_session || session,
-        term: invoice.term || feeStructure?.term || termCode,
-      })
-      .eq("id", invoice.id)
-      .select()
-      .maybeSingle();
-
-    if (!correctErr && correctedInvoice) invoice = correctedInvoice;
-  }
-
-  if (!invoice && expectedFee > 0) {
-    const invSession = feeStructure?.academic_session || session;
-    const invTerm = feeStructure?.term || termCode;
-    const invoiceNumber = `INV-${invSession.replace(/\//g, "")}-${String(invTerm).toUpperCase()}-${Math.floor(
-      1000 + Math.random() * 9000
-    )}`;
-
-    const { data: newInv, error: invErr } = await supabase
-      .from("payment_invoices")
-      .insert([
-        {
-          student_id: studentId,
-          fee_structure_id: feeStructure?.id || null,
-          class_id: classId,
-          academic_session: invSession,
-          term: invTerm,
-          total_amount: expectedFee,
-          amount_paid: 0,
-          status: "issued",
-          invoice_number: invoiceNumber,
-        },
-      ])
-      .select()
-      .maybeSingle();
-
-    if (!invErr && newInv) {
-      invoice = newInv;
-    } else if (invErr) {
-      const { data: existingInv } = await supabase
-        .from("payment_invoices")
-        .select("*")
-        .eq("student_id", studentId)
-        .eq("academic_session", invSession)
-        .or(`term.eq.${invTerm},term.eq.${termName}`)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (existingInv) invoice = existingInv;
-    }
-  }
-
-  let verifiedPaid = 0;
-  let paymentRecords: any[] = [];
-  if (invoice?.id) {
-    const { data: pRecords } = await supabase
-      .from("payment_records")
-      .select("*")
-      .eq("invoice_id", invoice.id)
-      .in("status", ["successful", "success"])
-      .order("payment_date", { ascending: false });
-
-    paymentRecords = pRecords || [];
-    verifiedPaid = paymentRecords.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
-  }
-
-  const totalAmount = invoice ? Number(invoice.total_amount || 0) : expectedFee;
-  const balance = Math.max(0, totalAmount - verifiedPaid);
-  const status = calculatePaymentStatus(totalAmount, verifiedPaid);
-
-  if (invoice && (Number(invoice.amount_paid || 0) !== verifiedPaid || invoice.status !== status)) {
-    await supabase
-      .from("payment_invoices")
-      .update({ amount_paid: verifiedPaid, status })
-      .eq("id", invoice.id);
-  }
-
-  return {
-    student,
-    session,
-    termCode,
-    termName,
-    className,
-    feeStructure,
-    invoice,
-    totalAmount,
-    amountPaid: verifiedPaid,
-    outstandingBalance: balance,
-    status,
-    paymentRecords,
-  };
 }
 
+/** Applies the school's fee-lock policy on the server and reports whether the portal is locked. */
 export async function evaluateStudentPortalAccess(studentId: string) {
-  const supabase = getSupabaseBrowserClient();
   try {
-    const { data: policy } = await supabase
-      .from("portal_access_settings")
-      .select("*")
-      .limit(1)
-      .maybeSingle();
-
-    if (!policy || !policy.restrict_outstanding_fees) {
-      return { isLocked: false, reason: "Restriction policy disabled" };
-    }
-
-    const financeData = await getStudentCurrentInvoice(studentId);
-    if (!financeData) return { isLocked: false };
-
-    const { outstandingBalance, status, student } = financeData;
-
-    if (outstandingBalance <= 0) {
-      if (policy.auto_unlock_on_full_payment && student.portal_access_status === "LOCKED") {
-        await supabase
-          .from("students")
-          .update({
-            portal_access_status: "ACTIVE",
-            portal_lock_reason: null,
-          })
-          .eq("id", studentId);
-      }
-      return { isLocked: false };
-    }
-
-    if (student.portal_access_status !== "LOCKED") {
-      const lockReason = `Automatic lock: Outstanding balance of ${formatCurrency(
-        outstandingBalance
-      )} (${status})`;
-      await supabase
-        .from("students")
-        .update({
-          portal_access_status: "LOCKED",
-          portal_lock_reason: lockReason,
-          portal_locked_at: new Date().toISOString(),
-        })
-        .eq("id", studentId);
-
-      return { isLocked: true, reason: lockReason };
-    }
-
-    return { isLocked: true, reason: (student as any).portal_lock_reason || null };
+    const res = await fetch(`/api/student/finance?student_id=${encodeURIComponent(studentId)}&evaluate=1`, {
+      headers: await getAuthHeaders(),
+      cache: "no-store",
+    });
+    const json = await res.json();
+    return json.ok ? { isLocked: Boolean(json.isLocked), reason: json.reason ?? null } : { isLocked: false };
   } catch (err) {
     console.error("Portal access evaluation error:", err);
     return { isLocked: false };
+  }
+}
+
+/** All invoices and successful payments for the signed-in student (server-built). */
+export async function getStudentHistory(studentId: string): Promise<{ invoices: any[]; payments: any[] }> {
+  try {
+    const res = await fetch(`/api/student/finance?student_id=${encodeURIComponent(studentId)}&history=1`, {
+      headers: await getAuthHeaders(),
+      cache: "no-store",
+    });
+    const json = await res.json();
+    return json.ok ? { invoices: json.invoices || [], payments: json.payments || [] } : { invoices: [], payments: [] };
+  } catch (err) {
+    console.error("Payment history load error:", err);
+    return { invoices: [], payments: [] };
   }
 }

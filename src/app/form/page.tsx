@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Script from "next/script";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
@@ -33,7 +33,6 @@ interface CustomFormRecord {
 
 function FormContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const formId = searchParams.get("id");
 
   const [loading, setLoading] = useState(true);
@@ -44,7 +43,6 @@ function FormContent() {
   // Form Fields
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [selectedClassId, setSelectedClassId] = useState("");
   const [gender, setGender] = useState("");
   const [dob, setDob] = useState("");
@@ -59,6 +57,11 @@ function FormContent() {
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  // Submission saved on the server but not yet paid; lets the applicant retry payment without a duplicate.
+  const [pendingSub, setPendingSub] = useState<null | {
+    submission_id: string; reference: string | null; amount: number; email: string; public_key: string;
+  }>(null);
 
   useEffect(() => {
     if (!formId) {
@@ -107,19 +110,15 @@ function FormContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    if (submitting) return;
 
-    if (!name.trim() || !email.trim() || !password) {
-      setFormError("Please fill in your name, email, and password.");
+    if (!name.trim() || !email.trim()) {
+      setFormError("Please fill in your name and email.");
       return;
     }
 
     if (!selectedClassId) {
       setFormError("Please select a target admission class.");
-      return;
-    }
-
-    if (password.length < 6) {
-      setFormError("Password must be at least 6 characters.");
       return;
     }
 
@@ -133,151 +132,90 @@ function FormContent() {
       }
     }
 
-    const feeAmount = Number(currentForm?.fee_amount || 0);
     setSubmitting(true);
 
-    const customData = {
-      gender,
-      dob,
-      guardian_name: guardianName,
-      guardian_phone: guardianPhone,
-      guardian_occupation: guardianOccupation,
-      state_of_origin: stateOfOrigin,
-      home_address: homeAddress,
-      ...customAnswers,
-    };
-
-    const processRegistration = async (paymentStatus: string, paymentRef: string | null) => {
-      try {
-        let authUserId: string | null = null;
-
-        // Try backend registration API
-        try {
-          const regRes = await fetch("/api/register-student", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password, display_name: name }),
-          });
-          const regData = await regRes.json();
-          if (regRes.ok && regData?.user?.id) {
-            authUserId = regData.user.id;
-          }
-        } catch (apiErr) {
-          console.warn("Backend register fallback:", apiErr);
-        }
-
-        // Fallback to client signUp
-        if (!authUserId) {
-          const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+    try {
+      // 1. Save the submission on the server. The fee is read from the form record there; no account is created.
+      let sub = pendingSub;
+      if (!sub) {
+        const res = await fetch("/api/forms/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            form_id: formId,
+            name,
             email,
-            password,
-            options: { data: { display_name: name, role: "student" } },
-          });
-
-          if (signUpErr && !signUpData?.user) {
-            const { data: loginData } = await supabase.auth.signInWithPassword({ email, password });
-            if (loginData?.user) authUserId = loginData.user.id;
-            else throw signUpErr;
-          } else {
-            authUserId = signUpData.user?.id || null;
-          }
-        }
-
-        let studentId: string | null = null;
-        if (authUserId) {
-          const admissionNo = "GMA" + Math.floor(100000 + Math.random() * 900000);
-
-          await supabase.from("users").upsert([
-            {
-              auth_id: authUserId,
-              email,
-              display_name: name,
-              role: "student",
+            form_data: {
+              class_id: selectedClassId,
+              gender,
+              dob,
+              guardian_name: guardianName,
+              guardian_phone: guardianPhone,
+              guardian_occupation: guardianOccupation,
+              state_of_origin: stateOfOrigin,
+              home_address: homeAddress,
+              ...customAnswers,
             },
-          ]);
-
-          const { data: stdData } = await supabase
-            .from("students")
-            .upsert(
-              [
-                {
-                  user_id: authUserId,
-                  class_id: selectedClassId,
-                  admission_no: admissionNo,
-                  name,
-                },
-              ],
-              { onConflict: "user_id" }
-            )
-            .select("id")
-            .maybeSingle();
-
-          studentId = stdData?.id || null;
-        }
-
-        // Insert form submission
-        await supabase.from("form_submissions").insert([
-          {
-            form_id: currentForm?.id,
-            student_id: studentId,
-            applicant_name: name,
-            applicant_email: email,
-            payment_status: paymentStatus,
-            payment_ref: paymentRef,
-            form_data: customData,
-          },
-        ]);
-
-        // Sign in & redirect to dashboard
-        await supabase.auth.signInWithPassword({ email, password });
-        router.push("/student/dashboard?registered=true");
-      } catch (err: any) {
-        console.error("Registration error:", err);
-        setFormError(err.message || "An error occurred while creating your account.");
-        setSubmitting(false);
-      }
-    };
-
-    if (feeAmount > 0) {
-      let paystackKey = "";
-      try {
-        const res = await fetch("/api/paystack-config");
+          }),
+        });
         const data = await res.json();
-        paystackKey = data.public_key || "";
-      } catch (_) {}
-
-      if (typeof PaystackPop !== "undefined" && paystackKey && !paystackKey.includes("placeholder")) {
-        try {
-          const handler = PaystackPop.setup({
-            key: paystackKey,
-            email,
-            amount: Math.round(feeAmount * 100),
-            currency: "NGN",
-            ref: "GM-ADM-" + Math.floor(Math.random() * 1000000000 + 1),
-            metadata: {
-              custom_fields: [
-                { display_name: "Applicant Name", variable_name: "applicant_name", value: name },
-                { display_name: "Form ID", variable_name: "form_id", value: formId },
-              ],
-            },
-            callback: (response: any) => {
-              processRegistration("paid", response.reference || `PAY-${Date.now()}`);
-            },
-            onClose: () => {
-              setSubmitting(false);
-              setFormError("Payment was cancelled. You must complete payment to register.");
-            },
-          });
-          handler.openIframe();
-        } catch (pErr) {
-          console.warn("Paystack popup error:", pErr);
-          await processRegistration("paid", `TEST-PAY-${Date.now()}`);
-        }
-      } else {
-        await processRegistration("paid", `TEST-PAY-${Date.now()}`);
+        if (!res.ok) throw new Error(data.error || "Could not save your submission.");
+        sub = data;
+        setPendingSub(data);
       }
-    } else {
-      await processRegistration("free", null);
+
+      const current = sub!;
+      if (!current.reference) {
+        // Free form: nothing to pay.
+        setDone("free");
+        setSubmitting(false);
+        return;
+      }
+
+      if (!current.public_key || typeof PaystackPop === "undefined") {
+        setFormError("Online payment is unavailable right now. Please try again shortly or contact the school.");
+        setSubmitting(false);
+        return;
+      }
+
+      // 2. Take payment. Only the server confirming with Paystack marks it paid.
+      const handler = PaystackPop.setup({
+        key: current.public_key,
+        email: current.email,
+        amount: Math.round(current.amount * 100),
+        currency: "NGN",
+        ref: current.reference,
+        metadata: { submission_id: current.submission_id, form_id: formId },
+        callback: (response: any) => {
+          (async () => {
+            try {
+              const res = await fetch("/api/forms/verify", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reference: response.reference }),
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || "Payment could not be confirmed.");
+              setPendingSub(null);
+              setDone(response.reference);
+            } catch (err: any) {
+              setFormError(
+                `We received your payment but could not confirm it yet (${err.message}). Keep your payment reference ${response.reference} and contact the school.`
+              );
+            } finally {
+              setSubmitting(false);
+            }
+          })();
+        },
+        onClose: () => {
+          setSubmitting(false);
+          setFormError("Payment was not completed. Press Submit again to retry.");
+        },
+      });
+      handler.openIframe();
+    } catch (err: any) {
+      setFormError(err.message || "An error occurred while submitting the form.");
+      setSubmitting(false);
     }
   };
 
@@ -305,6 +243,26 @@ function FormContent() {
           className="inline-block mt-5 px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition"
         >
           Back to Main Login
+        </Link>
+      </div>
+    );
+  }
+
+  if (done) {
+    return (
+      <div className="text-center py-12">
+        <div className="w-12 h-12 bg-emerald-950/60 border border-emerald-700 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-3 text-xl font-bold">
+          ✓
+        </div>
+        <h3 className="text-lg font-bold text-emerald-300">Submission Received</h3>
+        <p className="text-xs text-slate-400 mt-1">
+          {done === "free" ? "Thank you. The school will be in touch." : `Payment confirmed. Reference: ${done}`}
+        </p>
+        <Link
+          href="/"
+          className="inline-block mt-5 px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition"
+        >
+          Back to Home
         </Link>
       </div>
     );
@@ -388,21 +346,6 @@ function FormContent() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value.toLowerCase())}
                   placeholder="e.g. samuel@example.com"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-slate-100 outline-none focus:border-amber-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                  Account Password *
-                </label>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 6 characters"
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-slate-100 outline-none focus:border-amber-400"
                 />
               </div>

@@ -11,6 +11,8 @@ export interface NavItem {
   href: string;
   icon?: React.ReactNode;
   badge?: string;
+  /** Greyed out and not clickable; shows "Not available". */
+  disabled?: boolean;
   category?: string;
 }
 
@@ -64,6 +66,9 @@ export default function PortalLayout({
   }, []);
 
   async function handleSignOut() {
+    try {
+      sessionStorage.removeItem("gm_tdev_intro_seen");
+    } catch {}
     try {
       await signOut();
       router.replace("/");
@@ -167,6 +172,25 @@ export default function PortalLayout({
               )}
               {cat.items.map((item) => {
                 const isActive = item.href === activeHref;
+
+                if (item.disabled) {
+                  return (
+                    <div
+                      key={item.href}
+                      role="link"
+                      aria-disabled="true"
+                      title="Not available"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-not-allowed select-none"
+                      style={{ color: "#a8c4e0", opacity: 0.4, borderLeft: "3px solid transparent" }}
+                    >
+                      <span style={{ opacity: 0.75 }}>{item.icon}</span>
+                      <span className="truncate">{item.label}</span>
+                      <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ backgroundColor: "rgba(255,255,255,0.1)" }}>
+                        Not available
+                      </span>
+                    </div>
+                  );
+                }
 
                 return (
                   <Link

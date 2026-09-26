@@ -34,7 +34,15 @@ export const supabase = getSupabaseBrowserClient();
 /** Returns fetch headers carrying the current session's bearer token, for calling protected API routes. */
 export async function getAuthHeaders(): Promise<Record<string, string>> {
   const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  let session = data.session;
+
+  // A cached token that is about to expire (or already has) is rejected by the API
+  // as "Invalid or expired session", so renew it first.
+  if (session?.expires_at && session.expires_at * 1000 - Date.now() < 60_000) {
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    session = refreshed.session ?? session;
+  }
+
+  const token = session?.access_token;
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
-

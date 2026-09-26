@@ -57,8 +57,22 @@ export default function AdminAdmissionsApplicantsPage() {
         supabase.from("admissions").select("*").order("created_at", { ascending: false }),
       ]);
 
-      setClasses(classRes.data || []);
-      setApplicants((appRes.data as any) || []);
+      const classList = (classRes.data as any[]) || [];
+      const className = new Map(classList.map((c) => [c.id, c.name]));
+      setClasses(classList);
+      // Map the stored columns onto the names this page displays.
+      setApplicants(
+        ((appRes.data as any[]) || []).map((a) => ({
+          ...a,
+          admission_number: a.application_number,
+          desired_class: className.get(a.desired_class_id) || "",
+          parent_guardian_name: a.parent_name,
+          parent_guardian_email: a.parent_email,
+          parent_guardian_phone: a.parent_phone,
+          parent_guardian_occupation: a.parent_occupation,
+          application_status: a.status,
+        }))
+      );
     } catch (err: any) {
       console.error("Error loading applicants:", err);
       alert("Failed to load applicants: " + err.message);
@@ -97,7 +111,7 @@ export default function AdminAdmissionsApplicantsPage() {
       const { error } = await supabase
         .from("admissions")
         .update({
-          application_status: modalStatus,
+          status: modalStatus,
           reviewed_at: new Date().toISOString(),
         })
         .eq("id", selectedApplicant.id);
@@ -169,6 +183,7 @@ export default function AdminAdmissionsApplicantsPage() {
                 className="px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none"
               >
                 <option value="">All Application Statuses</option>
+                <option value="draft">Awaiting Payment</option>
                 <option value="submitted">Submitted</option>
                 <option value="under_review">Under Review</option>
                 <option value="approved">Approved</option>

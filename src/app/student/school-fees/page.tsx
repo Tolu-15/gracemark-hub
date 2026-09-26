@@ -62,13 +62,21 @@ export default function StudentSchoolFeesPage() {
       alert("Please enter a valid amount (minimum ₦100).");
       return;
     }
+    if (!financeData?.invoice?.id) {
+      alert("No invoice is available to pay against yet. Please contact the school.");
+      return;
+    }
+    if (amount > Number(financeData.outstandingBalance || 0)) {
+      alert("The amount cannot be more than your outstanding balance.");
+      return;
+    }
 
     setPaying(true);
     setPaymentMsg("Initiating secure payment gateway...");
 
     try {
       const publicKey = await getPaystackPublicKey();
-      const reference = `GM-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const reference = `GMF-${Date.now()}-${crypto.randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`;
 
       if (typeof window === "undefined" || !(window as any).PaystackPop) {
         throw new Error("Paystack payment gateway is still loading. Please try again in 5 seconds.");
@@ -112,11 +120,11 @@ export default function StudentSchoolFeesPage() {
               setPaymentMsg("Payment recorded! Outstanding balance updated.");
               setTimeout(() => setPaymentMsg(""), 5000);
             } else {
-              setPaymentMsg(`Verification note: ${verifyData.message || "Payment logged."}`);
+              setPaymentMsg(`We could not confirm this payment yet: ${verifyData.error || "please contact the school with reference " + response.reference}.`);
             }
           } catch (verErr: any) {
             console.error("Verification error:", verErr);
-            setPaymentMsg("Payment recorded. Confirmation will reflect shortly.");
+            setPaymentMsg(`Payment received but not yet confirmed. If your balance does not update shortly, contact the school with reference ${response.reference}.`);
           } finally {
             setPaying(false);
           }
@@ -228,21 +236,15 @@ export default function StudentSchoolFeesPage() {
                     </td>
                   </tr>
                   <tr>
-                    <td className="px-5 py-3 font-medium text-slate-800">Registration / Enrollment</td>
+                    <td className="px-5 py-3 font-medium text-slate-800">Development Levy</td>
                     <td className="px-5 py-3 text-right font-mono font-semibold">
-                      {formatCurrency(fee.registration_fee || 0)}
+                      {formatCurrency(fee.development_levy || 0)}
                     </td>
                   </tr>
                   <tr>
-                    <td className="px-5 py-3 font-medium text-slate-800">Examinations &amp; Continuous Assessment</td>
+                    <td className="px-5 py-3 font-medium text-slate-800">Examination Levy</td>
                     <td className="px-5 py-3 text-right font-mono font-semibold">
-                      {formatCurrency(fee.exams_fee || 0)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="px-5 py-3 font-medium text-slate-800">Facilities, Library &amp; ICT</td>
-                    <td className="px-5 py-3 text-right font-mono font-semibold">
-                      {formatCurrency(fee.facilities_fee || 0)}
+                      {formatCurrency(fee.exam_levy || 0)}
                     </td>
                   </tr>
                 </tbody>
