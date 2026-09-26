@@ -17,7 +17,8 @@ export interface ApiActor {
  */
 export async function requireApiActor(
   req: NextRequest,
-  allowedRoles: ApiRole[]
+  allowedRoles: ApiRole[],
+  options: { allowLockedStudent?: boolean } = {}
 ): Promise<{ actor: ApiActor } | { response: NextResponse }> {
   const service = getServiceClient();
   if (!service) {
@@ -46,6 +47,25 @@ export async function requireApiActor(
 
   if (profileError || !role || !allowedRoles.includes(role)) {
     return { response: NextResponse.json({ error: "You are not allowed to perform this action." }, { status: 403 }) };
+  }
+
+  // Server-side enforcement of the fee lock: a locked student may only reach routes
+  // that opt in with allowLockedStudent (payments, password change, app settings).
+  if (role === "student" && !options.allowLockedStudent) {
+    const ids = [userData.user.id, profile?.id].filter(Boolean) as string[];
+    const { data: student } = await service
+      .from("students")
+      .select("portal_access_status")
+      .in("user_id", ids)
+      .maybeSingle();
+    if (String(student?.portal_access_status || "").toLowerCase() === "locked") {
+      return {
+        response: NextResponse.json(
+          { error: "Your portal access is locked. Please contact the school administrator.", locked: true },
+          { status: 403 }
+        ),
+      };
+    }
   }
 
   return { actor: { authId: userData.user.id, dbUserId: profile?.id, role, service } };

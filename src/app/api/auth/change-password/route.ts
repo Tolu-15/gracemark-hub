@@ -4,7 +4,7 @@ import { isDefaultPassword } from "@/lib/defaultPasswords";
 
 export async function POST(req: NextRequest) {
   try {
-    const authorization = await requireApiActor(req, ["admin", "teacher", "student"]);
+    const authorization = await requireApiActor(req, ["admin", "teacher", "student"], { allowLockedStudent: true });
     if ("response" in authorization) return authorization.response;
     const { actor } = authorization;
 

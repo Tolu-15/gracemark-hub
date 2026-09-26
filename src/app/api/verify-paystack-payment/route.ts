@@ -6,7 +6,7 @@ import { applySchoolFeePayment, findStudentForActor, verifyPaystackReference } f
 /** Student confirms a school-fee payment; Paystack (not the browser) decides whether it counts. */
 export async function POST(req: NextRequest) {
   if (!PAYMENTS_ENABLED) return NextResponse.json({ error: "Not available." }, { status: 503 });
-  const authorization = await requireApiActor(req, ["student"]);
+  const authorization = await requireApiActor(req, ["student"], { allowLockedStudent: true });
   if ("response" in authorization) return authorization.response;
   const { service, authId, dbUserId } = authorization.actor;
 

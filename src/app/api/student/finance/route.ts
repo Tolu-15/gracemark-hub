@@ -8,7 +8,7 @@ import { buildStudentFinance, evaluatePortalAccess, findStudentForActor, getStud
  * evaluate=1, applies the fee-lock policy. Students can only ask about themselves.
  */
 export async function GET(req: NextRequest) {
-  const authorization = await requireApiActor(req, ["student", "admin"]);
+  const authorization = await requireApiActor(req, ["student", "admin"], { allowLockedStudent: true });
   if ("response" in authorization) return authorization.response;
   const { service, role, authId, dbUserId } = authorization.actor;
 

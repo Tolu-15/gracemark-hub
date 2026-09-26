@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { usePathname } from "next/navigation";
 import AuthGuard from "@/components/shared/AuthGuard";
 import PortalLayout, { NavItem } from "@/components/shared/PortalLayout";
 import { PAYMENTS_ENABLED } from "@/lib/features";
@@ -94,11 +95,18 @@ const studentNavItems: NavItem[] = [
 ];
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  // A locked student gets the standalone lock screen: no sidebar, no dashboard shell.
+  const standalone = pathname?.startsWith("/student/locked");
   return (
     <AuthGuard requiredRole="student">
-      <PortalLayout role="student" navItems={studentNavItems}>
-        {children}
-      </PortalLayout>
+      {standalone ? (
+        children
+      ) : (
+        <PortalLayout role="student" navItems={studentNavItems}>
+          {children}
+        </PortalLayout>
+      )}
     </AuthGuard>
   );
 }

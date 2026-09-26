@@ -2,9 +2,9 @@
   flex-shrink: 0;
   width: 100%;
   text-align: center;
-  padding: 0.75rem 1rem;
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
+  padding: 1.1rem 1rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
   color: #94a3b8;
   background: #f8fafc;
   border-top: 1px solid #e2e8f0;
@@ -12,6 +12,23 @@
 
 .tdev-site-footer p {
   margin: 0;
+  animation: tdev-footer-in 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.tdev-site-footer a.tdev-link {
+  display: inline-block;
+  font-size: 1.15em;
+  letter-spacing: 0.08em;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), color 0.25s ease;
+}
+
+.tdev-site-footer a.tdev-link:hover {
+  transform: translateY(-1px) scale(1.06);
+}
+
+@keyframes tdev-footer-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
 }
 
 .tdev-site-footer strong {
@@ -80,7 +97,7 @@ body.bg-slate-950 .tdev-site-footer a.tdev-link:focus-visible {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: tdev-footer-shimmer 5s ease-in-out infinite;
+  animation: tdev-footer-shimmer 4s ease-in-out infinite;
 }
 
 .tdev-site-footer a.tdev-link:hover,
@@ -94,7 +111,7 @@ body.bg-slate-950 .tdev-site-footer a.tdev-link {
 }
 
 @keyframes tdev-footer-shimmer {
-  0%, 60% { background-position: 100% 0; }
+  0%, 50% { background-position: 100% 0; }
   100% { background-position: 0% 0; }
 }
 
@@ -111,7 +128,7 @@ body.bg-slate-950 .tdev-site-footer a.tdev-link {
   background-image: linear-gradient(100deg, #c9a84c 0%, #c9a84c 40%, #fff1c2 50%, #c9a84c 60%, #c9a84c 100%);
 }
 
-/* Loading / intro screen */
+/* Loading / intro screen — white, GPU-friendly (transform + opacity only) */
 .tdev-loader {
   position: fixed;
   inset: 0;
@@ -119,10 +136,10 @@ body.bg-slate-950 .tdev-site-footer a.tdev-link {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(ellipse at 50% 40%, #0d2142 0%, #071120 55%, #03070f 100%);
-  overflow: hidden;
+  background: #ffffff;
   opacity: 1;
-  transition: opacity 0.4s ease;
+  transition: opacity 0.45s ease;
+  will-change: opacity;
 }
 
 .tdev-loader--out {
@@ -130,64 +147,29 @@ body.bg-slate-950 .tdev-site-footer a.tdev-link {
   pointer-events: none;
 }
 
-.tdev-loader__grid {
-  position: absolute;
-  inset: -50%;
-  background-image:
-    linear-gradient(rgba(201, 168, 76, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(201, 168, 76, 0.08) 1px, transparent 1px);
-  background-size: 48px 48px;
-  transform: perspective(600px) rotateX(58deg) translateY(0);
-  mask-image: radial-gradient(circle at 50% 50%, #000 0%, transparent 60%);
-  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 0%, transparent 60%);
-  animation: tdev-grid-move 3s linear infinite;
-}
-
-.tdev-loader__aurora {
-  position: absolute;
-  width: 55vmax;
-  height: 55vmax;
-  border-radius: 50%;
-  filter: blur(80px);
-  opacity: 0.35;
-  animation: tdev-drift 7s ease-in-out infinite alternate;
-}
-.tdev-loader__aurora--a { background: #c9a84c; top: -25vmax; left: -15vmax; opacity: 0.18; }
-.tdev-loader__aurora--b { background: #2563eb; bottom: -28vmax; right: -18vmax; opacity: 0.22; animation-delay: -3s; }
-
-.tdev-loader__scan {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 120px;
-  background: linear-gradient(180deg, transparent, rgba(201, 168, 76, 0.07), transparent);
-  animation: tdev-scan 2.6s ease-in-out infinite;
-}
-
 .tdev-loader__stage {
   position: relative;
-  width: min(360px, 82vw);
+  width: min(300px, 78vw);
   aspect-ratio: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+  animation: tdev-fade 0.5s ease both;
 }
 
 .tdev-loader__ring {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 1px solid rgba(201, 168, 76, 0.25);
+  border: 2px solid #eef1f6;
   border-top-color: #c9a84c;
-  border-right-color: rgba(201, 168, 76, 0.6);
-  box-shadow: 0 0 40px rgba(201, 168, 76, 0.12), inset 0 0 40px rgba(201, 168, 76, 0.06);
-  animation: tdev-spin 3.2s linear infinite;
+  will-change: transform;
+  animation: tdev-spin 1.6s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
 }
 .tdev-loader__ring--inner {
-  inset: 12%;
-  border-color: rgba(123, 163, 216, 0.2);
-  border-bottom-color: #7ba3d8;
-  box-shadow: none;
+  inset: 14%;
+  border-color: #f3f5f9;
+  border-bottom-color: #93a4bf;
   animation-duration: 2.2s;
   animation-direction: reverse;
 }
@@ -197,41 +179,38 @@ body.bg-slate-950 .tdev-site-footer a.tdev-link {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.55rem;
 }
 
 .tdev-loader__label {
   font-size: 0.68rem;
-  letter-spacing: 0.42em;
+  letter-spacing: 0.4em;
   text-transform: uppercase;
-  color: #7ba3d8;
-  animation: tdev-rise 0.7s 0.05s ease both;
+  color: #94a3b8;
+  animation: tdev-rise 0.6s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .tdev-loader__brand {
   display: inline-flex;
   font-family: var(--font-dm-sans, system-ui), sans-serif;
-  font-size: clamp(2.6rem, 11vw, 4.2rem);
+  font-size: clamp(2.4rem, 10vw, 3.6rem);
   font-weight: 700;
-  letter-spacing: 0.06em;
-  filter: drop-shadow(0 0 16px rgba(201, 168, 76, 0.5));
+  letter-spacing: 0.05em;
+  color: #0f172a;
 }
 
 .tdev-loader__letter {
   display: inline-block;
-  background: linear-gradient(100deg, #8a7434 0%, #c9a84c 35%, #fff6d6 50%, #c9a84c 65%, #8a7434 100%);
-  background-size: 300% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: tdev-letter 0.7s ease both, tdev-sweep 2.4s 0.6s ease-in-out infinite;
+  will-change: transform, opacity;
+  animation: tdev-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+.tdev-loader__letter:nth-child(2) { color: #c9a84c; }
 
 .tdev-loader__line {
   height: 2px;
   width: 0;
   background: linear-gradient(90deg, transparent, #c9a84c, transparent);
-  animation: tdev-line 1s 0.5s ease-out forwards;
+  animation: tdev-line 0.8s 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .tdev-loader__status {
@@ -247,9 +226,9 @@ body.bg-slate-950 .tdev-site-footer a.tdev-link {
 
 .tdev-loader__bar {
   position: relative;
-  width: min(180px, 50vw);
+  width: min(160px, 50vw);
   height: 2px;
-  background: rgba(255, 255, 255, 0.1);
+  background: #eef1f6;
   overflow: hidden;
   border-radius: 2px;
 }
@@ -259,41 +238,35 @@ body.bg-slate-950 .tdev-site-footer a.tdev-link {
   inset: 0;
   width: 40%;
   background: linear-gradient(90deg, transparent, #c9a84c, transparent);
-  animation: tdev-bar 1.3s ease-in-out infinite;
+  will-change: transform;
+  animation: tdev-bar 1.2s ease-in-out infinite;
 }
 
 .tdev-loader__hint {
   font-size: 0.62rem;
   letter-spacing: 0.3em;
   text-transform: uppercase;
-  color: #4b6a94;
+  color: #a3b1c6;
 }
 
 @keyframes tdev-spin { to { transform: rotate(360deg); } }
-@keyframes tdev-grid-move { to { background-position: 0 48px, 48px 0; } }
-@keyframes tdev-drift { to { transform: translate(6vmax, 4vmax) scale(1.15); } }
-@keyframes tdev-scan { 0% { top: -20%; } 100% { top: 105%; } }
+@keyframes tdev-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes tdev-rise {
-  from { opacity: 0; transform: translateY(8px); filter: blur(6px); }
-  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-@keyframes tdev-letter {
-  from { opacity: 0; transform: translateY(14px) scale(0.85); filter: blur(8px); }
-  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
-}
-@keyframes tdev-sweep { from { background-position: 100% 0; } to { background-position: 0% 0; } }
-@keyframes tdev-line { from { width: 0; } to { width: min(220px, 60vw); } }
+@keyframes tdev-line { from { width: 0; } to { width: min(200px, 56vw); } }
 @keyframes tdev-bar { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
 
 @media (prefers-reduced-motion: reduce) {
   .tdev-loader,
   .tdev-loader * ,
-  .tdev-site-footer a.tdev-link {
+  .tdev-site-footer a.tdev-link,
+  .tdev-site-footer p {
     animation: none !important;
     transition: none !important;
   }
   .tdev-loader__line { width: 160px; }
-  .tdev-loader__grid { transform: perspective(600px) rotateX(58deg); }
   .tdev-site-footer a.tdev-link { -webkit-text-fill-color: currentColor; background: none; color: #64748b; }
   .login-page > .tdev-site-footer a.tdev-link { color: #c9a84c; }
 }

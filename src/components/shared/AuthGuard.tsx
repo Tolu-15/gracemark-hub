@@ -7,7 +7,7 @@ import { UserRole } from "@/types/database";
 import TdevLoader from "./TdevLoader";
 
 const SEEN_KEY = "gm_tdev_intro_seen";
-const MIN_MS = 1800;
+const MIN_MS = 1300;
 const FADE_MS = 400;
 
 /** A guard nested inside another (already verified) guard renders straight through. */

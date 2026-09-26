@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
 
 export async function GET(req: NextRequest) {
-  const authorization = await requireApiActor(req, ["admin", "teacher", "student"]);
+  const authorization = await requireApiActor(req, ["admin", "teacher", "student"], { allowLockedStudent: true });
   if ("response" in authorization) return authorization.response;
   const { service } = authorization.actor;
 

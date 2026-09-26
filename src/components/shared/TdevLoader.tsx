@@ -15,11 +15,6 @@ export default function TdevLoader({ leaving = false }: { leaving?: boolean }) {
       aria-live="polite"
       aria-label="Loading Gracemark portal"
     >
-      <div className="tdev-loader__grid" />
-      <div className="tdev-loader__aurora tdev-loader__aurora--a" />
-      <div className="tdev-loader__aurora tdev-loader__aurora--b" />
-      <div className="tdev-loader__scan" />
-
       <div className="tdev-loader__stage">
         <div className="tdev-loader__ring" />
         <div className="tdev-loader__ring tdev-loader__ring--inner" />
@@ -27,7 +22,7 @@ export default function TdevLoader({ leaving = false }: { leaving?: boolean }) {
           <span className="tdev-loader__label">Powered by</span>
           <span className="tdev-loader__brand">
             {letters.map((ch, i) => (
-              <span key={i} className="tdev-loader__letter" style={{ animationDelay: `${0.15 + i * 0.09}s` }}>
+              <span key={i} className="tdev-loader__letter" style={{ animationDelay: `${0.2 + i * 0.07}s` }}>
                 {ch}
               </span>
             ))}

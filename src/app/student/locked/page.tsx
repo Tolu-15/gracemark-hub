@@ -73,7 +73,7 @@ export default function StudentLockedPage() {
   }
 
   return (
-    <div className="bg-slate-900 text-slate-100 flex items-center justify-center min-h-screen p-4">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900 text-slate-100 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-slate-800 border border-slate-700 rounded-3xl p-8 shadow-2xl text-center space-y-6">
         <div className="w-16 h-16 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-2xl flex items-center justify-center mx-auto text-3xl font-bold">
           Access locked
