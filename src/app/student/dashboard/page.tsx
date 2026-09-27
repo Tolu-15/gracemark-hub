@@ -11,6 +11,7 @@ import { PAYMENTS_ENABLED } from "@/lib/features";
 import { getAcademicSessions } from "@/lib/academicSessions";
 import { Skeleton, SkeletonValue } from "@/components/shared/Skeleton";
 import ResultDashboardApp from "@/components/student/ResultDashboardApp";
+import AnnouncementsPreview from "@/components/announcements/AnnouncementsPreview";
 
 interface StudentProfile {
   id: string;
@@ -180,6 +181,8 @@ export default function StudentDashboardPage() {
 
       {/* Main Content */}
       <div className={`p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full flex-1 ${showFullReport ? "print:hidden" : ""}`}>
+        <AnnouncementsPreview role="student" />
+
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-start gap-4">

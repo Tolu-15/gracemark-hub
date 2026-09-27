@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import AuthGuard from "@/components/shared/AuthGuard";
 import PortalLayout, { NavItem } from "@/components/shared/PortalLayout";
 import { PAYMENTS_ENABLED } from "@/lib/features";
+import { useAnnouncementBadge, badgeText } from "@/components/announcements/useAnnouncementBadge";
 
 const studentNavItems: NavItem[] = [
   {
@@ -64,6 +65,16 @@ const studentNavItems: NavItem[] = [
     ),
   },
   {
+    category: "School",
+    label: "Class Timetable",
+    href: "/student/timetable",
+  },
+  {
+    category: "School",
+    label: "Announcements",
+    href: "/student/announcements",
+  },
+  {
     category: "Fees & Financials",
     label: "School Fees",
     href: "/student/school-fees",
@@ -96,6 +107,8 @@ const studentNavItems: NavItem[] = [
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const unread = useAnnouncementBadge();
+  const navItems = studentNavItems.map((i) => (i.href === "/student/announcements" ? { ...i, badge: badgeText(unread) } : i));
   // A locked student gets the standalone lock screen: no sidebar, no dashboard shell.
   const standalone = pathname?.startsWith("/student/locked");
   return (
@@ -103,7 +116,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
       {standalone ? (
         children
       ) : (
-        <PortalLayout role="student" navItems={studentNavItems}>
+        <PortalLayout role="student" navItems={navItems}>
           {children}
         </PortalLayout>
       )}

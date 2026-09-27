@@ -21,6 +21,8 @@ const CATEGORIES = [
   { value: "results", label: "Publish / recall" },
   { value: "promotion", label: "Promotions" },
   { value: "student", label: "Students & access" },
+  { value: "announcement", label: "Announcements" },
+  { value: "timetable", label: "Timetable" },
 ];
 
 const TONE: Record<string, string> = {
@@ -28,6 +30,8 @@ const TONE: Record<string, string> = {
   results: "bg-emerald-50 text-emerald-700",
   promotion: "bg-indigo-50 text-indigo-700",
   student: "bg-amber-50 text-amber-800",
+  announcement: "bg-violet-50 text-violet-700",
+  timetable: "bg-teal-50 text-teal-700",
 };
 
 export default function AuditLogPage() {

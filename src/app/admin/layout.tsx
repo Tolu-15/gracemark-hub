@@ -3,6 +3,7 @@
 import React from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
 import PortalLayout, { NavItem } from "@/components/shared/PortalLayout";
+import { useAnnouncementBadge, badgeText } from "@/components/announcements/useAnnouncementBadge";
 
 const adminNavItems: NavItem[] = [
   {
@@ -53,6 +54,16 @@ const adminNavItems: NavItem[] = [
     category: "Academics & Staff",
     label: "Student Results & Broadsheets",
     href: "/admin/historical-results",
+  },
+  {
+    category: "Academics & Staff",
+    label: "Timetable",
+    href: "/admin/timetable",
+  },
+  {
+    category: "Academics & Staff",
+    label: "Announcements",
+    href: "/admin/announcements",
   },
   {
     category: "Academics & Staff",
@@ -127,9 +138,11 @@ const adminNavItems: NavItem[] = [
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const unread = useAnnouncementBadge();
+  const navItems = adminNavItems.map((i) => (i.href === "/admin/announcements" ? { ...i, badge: badgeText(unread) } : i));
   return (
     <AuthGuard requiredRole="admin">
-      <PortalLayout role="admin" navItems={adminNavItems}>
+      <PortalLayout role="admin" navItems={navItems}>
         {children}
       </PortalLayout>
     </AuthGuard>

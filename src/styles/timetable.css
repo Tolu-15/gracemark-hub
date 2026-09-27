@@ -1,0 +1,32 @@
+/* Timetable prints on one landscape A4 page. */
+@page timetable {
+  size: A4 landscape;
+  margin: 8mm;
+}
+@media print {
+  .timetable-page {
+    page: timetable;
+  }
+  .timetable-print {
+    border: 0 !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+  }
+  .timetable-print table {
+    min-width: 0 !important;
+    width: 100% !important;
+    font-size: 8pt !important;
+  }
+  .timetable-print th,
+  .timetable-print td {
+    padding: 2px 3px !important;
+  }
+  .timetable-print button {
+    min-height: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .timetable-print tr {
+    break-inside: avoid;
+  }
+}

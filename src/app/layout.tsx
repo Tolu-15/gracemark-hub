@@ -7,6 +7,7 @@ import "@/styles/score-entry.css";
 import "@/styles/powered-by.css";
 import "@/styles/pwa-install.css";
 import "@/styles/skeleton.css";
+import "@/styles/timetable.css";
 import SplashRemover from "@/components/shared/SplashRemover";
 
 const dmSans = DM_Sans({

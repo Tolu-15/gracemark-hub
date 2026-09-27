@@ -11,6 +11,7 @@ import {
   deleteAllAcademicSessions,
 } from "@/lib/academicSessions";
 import { SkeletonValue } from "@/components/shared/Skeleton";
+import AnnouncementsPreview from "@/components/announcements/AnnouncementsPreview";
 
 interface TermStatus {
   term: string;
@@ -302,6 +303,8 @@ export default function AdminDashboardPage() {
           Monitor academy metrics, academic cycles, and continuous assessment workflow.
         </p>
       </div>
+
+        <AnnouncementsPreview role="admin" />
 
       {/* Primary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">

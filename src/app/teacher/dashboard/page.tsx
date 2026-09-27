@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 import { SkeletonValue } from "@/components/shared/Skeleton";
+import AnnouncementsPreview from "@/components/announcements/AnnouncementsPreview";
 
 export default function TeacherDashboardPage() {
   const [teacherName, setTeacherName] = useState("Teacher");
@@ -178,6 +179,8 @@ export default function TeacherDashboardPage() {
           </ul>
         </div>
       )}
+
+        <AnnouncementsPreview role="teacher" />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

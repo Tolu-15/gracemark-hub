@@ -3,6 +3,7 @@
 import React from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
 import PortalLayout, { NavItem } from "@/components/shared/PortalLayout";
+import { useAnnouncementBadge, badgeText } from "@/components/announcements/useAnnouncementBadge";
 
 const teacherNavItems: NavItem[] = [
   {
@@ -90,6 +91,16 @@ const teacherNavItems: NavItem[] = [
     ),
   },
   {
+    category: "School",
+    label: "My Timetable",
+    href: "/teacher/timetable",
+  },
+  {
+    category: "School",
+    label: "Announcements",
+    href: "/teacher/announcements",
+  },
+  {
     category: "Account",
     label: "My Profile",
     href: "/teacher/profile",
@@ -102,9 +113,11 @@ const teacherNavItems: NavItem[] = [
 ];
 
 export default function TeacherLayout({ children }: { children: React.ReactNode }) {
+  const unread = useAnnouncementBadge();
+  const navItems = teacherNavItems.map((i) => (i.href === "/teacher/announcements" ? { ...i, badge: badgeText(unread) } : i));
   return (
     <AuthGuard requiredRole="teacher">
-      <PortalLayout role="teacher" navItems={teacherNavItems}>
+      <PortalLayout role="teacher" navItems={navItems}>
         {children}
       </PortalLayout>
     </AuthGuard>
