@@ -1,0 +1,272 @@
+.tdev-site-footer {
+  flex-shrink: 0;
+  width: 100%;
+  text-align: center;
+  padding: 1.1rem 1rem;
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.tdev-site-footer p {
+  margin: 0;
+  animation: tdev-footer-in 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.tdev-site-footer a.tdev-link {
+  display: inline-block;
+  font-size: 1.15em;
+  letter-spacing: 0.08em;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), color 0.25s ease;
+}
+
+.tdev-site-footer a.tdev-link:hover {
+  transform: translateY(-1px) scale(1.06);
+}
+
+@keyframes tdev-footer-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.tdev-site-footer strong {
+  color: #64748b;
+  font-weight: 700;
+}
+
+/* Sidebar portal pages — footer pinned to bottom of main column */
+main.tdev-main-with-footer {
+  min-height: 0;
+}
+
+main.tdev-main-with-footer > .tdev-site-footer {
+  margin-top: auto;
+}
+
+/* Login, redirect, and simple pages */
+body.tdev-body-footer {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+body.tdev-body-footer > .tdev-site-footer {
+  margin-top: auto;
+}
+
+/* Dark login pages */
+body.bg-slate-950 .tdev-site-footer {
+  background: #0f172a;
+  border-top-color: #1e293b;
+  color: #64748b;
+}
+
+body.bg-slate-950 .tdev-site-footer strong {
+  color: #c9a84c;
+}
+
+/* Footer link */
+.tdev-site-footer a.tdev-link {
+  color: #64748b;
+  font-weight: 700;
+  text-decoration: none;
+  transition: color 0.25s ease, text-shadow 0.25s ease;
+}
+
+.tdev-site-footer a.tdev-link:hover,
+.tdev-site-footer a.tdev-link:focus-visible {
+  color: #c9a84c;
+  text-shadow: 0 0 10px rgba(201, 168, 76, 0.55);
+}
+
+body.bg-slate-950 .tdev-site-footer a.tdev-link {
+  color: #c9a84c;
+}
+
+body.bg-slate-950 .tdev-site-footer a.tdev-link:hover,
+body.bg-slate-950 .tdev-site-footer a.tdev-link:focus-visible {
+  color: #e6c76e;
+}
+
+/* Footer: quiet shimmer on the T_dev link */
+.tdev-site-footer a.tdev-link {
+  background: linear-gradient(100deg, #64748b 0%, #64748b 40%, #c9a84c 50%, #64748b 60%, #64748b 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: tdev-footer-shimmer 4s ease-in-out infinite;
+}
+
+.tdev-site-footer a.tdev-link:hover,
+.tdev-site-footer a.tdev-link:focus-visible {
+  -webkit-text-fill-color: #c9a84c;
+  animation: none;
+}
+
+body.bg-slate-950 .tdev-site-footer a.tdev-link {
+  background-image: linear-gradient(100deg, #c9a84c 0%, #c9a84c 40%, #fff1c2 50%, #c9a84c 60%, #c9a84c 100%);
+}
+
+@keyframes tdev-footer-shimmer {
+  0%, 50% { background-position: 100% 0; }
+  100% { background-position: 0% 0; }
+}
+
+/* Login page: the dark overlay must never cover the footer */
+.login-page > .tdev-site-footer {
+  position: relative;
+  z-index: 10;
+  background: transparent;
+  border-top-color: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}
+
+.login-page > .tdev-site-footer a.tdev-link {
+  background-image: linear-gradient(100deg, #c9a84c 0%, #c9a84c 40%, #fff1c2 50%, #c9a84c 60%, #c9a84c 100%);
+}
+
+/* Loading / intro screen — white, GPU-friendly (transform + opacity only) */
+.tdev-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  opacity: 1;
+  transition: opacity 0.45s ease;
+  will-change: opacity;
+}
+
+.tdev-loader--out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tdev-loader__stage {
+  position: relative;
+  width: min(300px, 78vw);
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: tdev-fade 0.5s ease both;
+}
+
+.tdev-loader__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid #eef1f6;
+  border-top-color: #c9a84c;
+  will-change: transform;
+  animation: tdev-spin 1.6s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
+}
+.tdev-loader__ring--inner {
+  inset: 14%;
+  border-color: #f3f5f9;
+  border-bottom-color: #93a4bf;
+  animation-duration: 2.2s;
+  animation-direction: reverse;
+}
+
+.tdev-loader__content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.tdev-loader__label {
+  font-size: 0.68rem;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  animation: tdev-rise 0.6s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.tdev-loader__brand {
+  display: inline-flex;
+  font-family: var(--font-dm-sans, system-ui), sans-serif;
+  font-size: clamp(2.4rem, 10vw, 3.6rem);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #0f172a;
+}
+
+.tdev-loader__letter {
+  display: inline-block;
+  will-change: transform, opacity;
+  animation: tdev-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.tdev-loader__letter:nth-child(2) { color: #c9a84c; }
+
+.tdev-loader__line {
+  height: 2px;
+  width: 0;
+  background: linear-gradient(90deg, transparent, #c9a84c, transparent);
+  animation: tdev-line 0.8s 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.tdev-loader__status {
+  position: absolute;
+  bottom: max(2.2rem, env(safe-area-inset-bottom));
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.tdev-loader__bar {
+  position: relative;
+  width: min(160px, 50vw);
+  height: 2px;
+  background: #eef1f6;
+  overflow: hidden;
+  border-radius: 2px;
+}
+.tdev-loader__bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, #c9a84c, transparent);
+  will-change: transform;
+  animation: tdev-bar 1.2s ease-in-out infinite;
+}
+
+.tdev-loader__hint {
+  font-size: 0.62rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #a3b1c6;
+}
+
+@keyframes tdev-spin { to { transform: rotate(360deg); } }
+@keyframes tdev-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tdev-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes tdev-line { from { width: 0; } to { width: min(200px, 56vw); } }
+@keyframes tdev-bar { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .tdev-loader,
+  .tdev-loader * ,
+  .tdev-site-footer a.tdev-link,
+  .tdev-site-footer p {
+    animation: none !important;
+    transition: none !important;
+  }
+  .tdev-loader__line { width: 160px; }
+  .tdev-site-footer a.tdev-link { -webkit-text-fill-color: currentColor; background: none; color: #64748b; }
+  .login-page > .tdev-site-footer a.tdev-link { color: #c9a84c; }
+}

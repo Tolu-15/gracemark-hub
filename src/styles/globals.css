@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Navy blue portal palette */
+  --navy-900: #0a1628;
+  --navy-800: #0f2044;
+  --navy-700: #142a5c;
+  --navy-600: #1a3a6b;
+  --navy-500: #1e4494;
+  --navy-400: #2d5aa8;
+  --navy-300: #4a7cc7;
+  --navy-200: #7ba3d8;
+  --navy-100: #c5d8f0;
+  --navy-50:  #eef4fb;
+
+  --gold:    #c9a84c;
+  --gold-lt: #e8c97a;
+  --gold-dk: #a68735;
+
+  --ink:   #1e293b;
+  --muted: #64748b;
+  --cream: #ffffff;
+  --error: #dc2626;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-dm-sans), 'DM Sans', sans-serif;
+  color: var(--ink);
+  background-color: #f1f5f9;
+}
+
+@media print {
+  .portal-sidebar,
+  .portal-nav-backdrop,
+  #portalSidebar,
+  #portalMobileHamburgerBtn,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  .portal-app {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+    background: #ffffff !important;
+  }
+
+  .portal-main {
+    overflow: visible !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .printable-broadsheet-container {
+    border: 1px solid #94a3b8 !important;
+    box-shadow: none !important;
+  }
+}
+
