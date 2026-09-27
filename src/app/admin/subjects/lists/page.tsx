@@ -37,6 +37,10 @@ export default function ClassSubjectListsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [showNewList, setShowNewList] = useState(false);
+  const [newListName, setNewListName] = useState("");
+  const [newListLevel, setNewListLevel] = useState<"junior" | "senior" | "both">("junior");
+  const [creatingList, setCreatingList] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -137,6 +141,29 @@ export default function ClassSubjectListsPage() {
     setClasses((prev) => prev.map((c) => (c.id === classId ? { ...c, subject_group_code: groupCode } : c)));
   }
 
+  async function createList() {
+    if (!newListName.trim()) return;
+    setCreatingList(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/subject-groups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+        body: JSON.stringify({ action: "create-group", name: newListName.trim(), level: newListLevel }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || "Could not create list.");
+      setNewListName("");
+      setShowNewList(false);
+      await load();
+      setActive(json.code);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setCreatingList(false);
+    }
+  }
+
   if (loading) {
     return <div className="p-10 text-center text-sm text-slate-500">Loading subject lists…</div>;
   }
@@ -191,6 +218,59 @@ export default function ClassSubjectListsPage() {
               );
             })}
           </div>
+
+          {showNewList ? (
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs flex flex-wrap items-end gap-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] font-semibold text-slate-500">List name</label>
+                <input
+                  type="text"
+                  value={newListName}
+                  onChange={(e) => setNewListName(e.target.value)}
+                  placeholder="e.g. JSS 3"
+                  className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] font-semibold text-slate-500">Level</label>
+                <select
+                  value={newListLevel}
+                  onChange={(e) => setNewListLevel(e.target.value as "junior" | "senior" | "both")}
+                  className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold bg-white"
+                >
+                  <option value="junior">Junior</option>
+                  <option value="senior">Senior</option>
+                  <option value="both">Both</option>
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={createList}
+                disabled={creatingList || !newListName.trim()}
+                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold disabled:opacity-40 cursor-pointer"
+              >
+                {creatingList ? "Creating…" : "Create list"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNewList(false);
+                  setNewListName("");
+                }}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowNewList(true)}
+              className="text-xs font-semibold text-indigo-600 hover:underline cursor-pointer"
+            >
+              + New subject list
+            </button>
+          )}
 
           {/* Subjects in the active list */}
           <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">

@@ -41,6 +41,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
   }
 
+  if (body?.action === "create-group") {
+    const name = String(body.name || "").trim();
+    const level = ["junior", "senior", "both"].includes(body.level) ? body.level : "both";
+    if (!name) return NextResponse.json({ ok: false, error: "Name is required." }, { status: 400 });
+
+    const code = name
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    if (!code) return NextResponse.json({ ok: false, error: "Could not derive a code from that name." }, { status: 400 });
+
+    const { data: existing } = await service.from("subject_groups").select("code").eq("code", code).maybeSingle();
+    if (existing) return NextResponse.json({ ok: false, error: "A list with that name already exists." }, { status: 400 });
+
+    const { data: maxRow } = await service
+      .from("subject_groups")
+      .select("display_order")
+      .order("display_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const displayOrder = (maxRow?.display_order || 0) + 1;
+
+    const { error } = await service.from("subject_groups").insert({ code, name, level, display_order: displayOrder });
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, code });
+  }
+
   if (body?.action === "save-group") {
     const groupCode = String(body.group_code || "");
     const items: { subject_id: string; credit_unit: number; frequency?: string }[] = Array.isArray(body.items) ? body.items : [];
