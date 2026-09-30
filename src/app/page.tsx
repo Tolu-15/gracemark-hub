@@ -13,6 +13,7 @@ import {
 } from "@/lib/auth";
 import { supabase } from "@/lib/supabase/client";
 import PoweredBy from "@/components/shared/PoweredBy";
+import { markLoginPromptsPending } from "@/lib/loginPrompts";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -137,6 +138,7 @@ export default function LoginPage() {
         }
       }
 
+      markLoginPromptsPending();
       router.replace(destinationForRole(String(profile.role).trim()));
     } catch (err: any) {
       console.error("[Auth Error]", err?.code, err?.message);

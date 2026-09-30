@@ -3,6 +3,7 @@ import { isTermEditable } from "@/lib/termPermissions";
 import { requireApiActor, requireTeacherAssignment } from "@/lib/apiAuth";
 import { validateRawScores } from "@/lib/gradingEngine";
 import { logAudit } from "@/lib/audit";
+import { notifyAdmins } from "@/lib/notify";
 
 export async function POST(req: NextRequest) {
   const authorization = await requireApiActor(req, ["admin", "teacher"]);
@@ -209,6 +210,18 @@ export async function POST(req: NextRequest) {
         summary: `${submitted ? "Submitted" : "Edited"} ${cleanRecords.length} score record(s) — ${sub?.name || "subject"}, ${cls?.name || "class"} (${first.term}, ${first.session})${deletedResultIds.length ? `; removed ${deletedResultIds.length}` : ""}`,
         metadata: { class_id: first.class_id, subject_id: first.subject_id, term: first.term, session: first.session, records: cleanRecords.length, submitted, deleted: deletedResultIds.length },
       });
+
+      // A teacher submitting scores for approval is the one event worth pinging admins for —
+      // draft autosaves fire too often to notify on every keystroke.
+      if (submitted && actor.role === "teacher") {
+        await notifyAdmins(actor, {
+          type: "scores.submit",
+          title: "Scores submitted for approval",
+          body: `${sub?.name || "A subject"} — ${cls?.name || "class"} (${first.term}, ${first.session}): ${submitted} score(s) submitted.`,
+          link: "/admin/approvals",
+          metadata: { class_id: first.class_id, subject_id: first.subject_id, term: first.term, session: first.session },
+        });
+      }
     }
 
     return NextResponse.json({ ok: true, count: records.length });
