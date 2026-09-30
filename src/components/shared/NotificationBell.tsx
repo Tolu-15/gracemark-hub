@@ -25,6 +25,8 @@ export default function NotificationBell() {
   const [pushState, setPushState] = useState<PushState | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState("");
+  const [testBusy, setTestBusy] = useState(false);
+  const [testResult, setTestResult] = useState("");
   const boxRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -55,6 +57,20 @@ export default function NotificationBell() {
     if (next) {
       loadList();
       getPushState().then(setPushState);
+    }
+  }
+
+  async function handleTestPush() {
+    setTestBusy(true);
+    setTestResult("");
+    try {
+      const res = await fetch("/api/notifications/push", { headers: await getAuthHeaders() });
+      const json = await res.json();
+      setTestResult(json.diagnosis || json.error || "Could not run the test.");
+    } catch {
+      setTestResult("Could not reach the server to run the test.");
+    } finally {
+      setTestBusy(false);
     }
   }
 
@@ -175,6 +191,24 @@ export default function NotificationBell() {
                   {pushError && <p className="text-xs text-red-600 mt-1">{pushError}</p>}
                 </>
               )}
+            </div>
+          )}
+          {pushState === "subscribed" && (
+            <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between gap-2">
+              <span className="text-xs text-slate-500">Push alerts are on for this device.</span>
+              <button
+                type="button"
+                onClick={handleTestPush}
+                disabled={testBusy}
+                className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-lg text-slate-700 bg-white border border-slate-200 cursor-pointer"
+              >
+                {testBusy ? "Sending…" : "Send test"}
+              </button>
+            </div>
+          )}
+          {testResult && (
+            <div className="px-4 py-2 border-b border-slate-100">
+              <p className="text-[11px] text-slate-500">{testResult}</p>
             </div>
           )}
           <div className="overflow-y-auto" style={{ maxHeight: "calc(70vh - 44px)" }}>
