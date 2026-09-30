@@ -18,7 +18,7 @@ import {
   isSeniorClass,
 } from "@/lib/gradingEngine";
 import { RawScores } from "@/types/result";
-import { SkeletonRows } from "@/components/shared/Skeleton";
+import { PageLoader, InlineSpinner } from "@/components/shared/PageLoader";
 
 type ViewMode = "all" | "pr1" | "pr2" | "pr3" | "tr";
 
@@ -72,6 +72,9 @@ export default function TeacherScoreEntryPage() {
   // Serializes autosave/manual-save requests so a debounced autosave can't
   // race a manual save (or another autosave) with a stale deletedResultIds list.
   const savingInFlightRef = React.useRef(false);
+  // Tags each loadScores() call so a slower, older request can't overwrite the
+  // screen after a newer filter change has already resolved.
+  const loadSeqRef = React.useRef(0);
 
   const selectedClassName = classes.find((c) => c.id === selectedClass)?.name || "";
   const isSenior = isSeniorClass(selectedClassName);
@@ -273,6 +276,13 @@ export default function TeacherScoreEntryPage() {
   // Load scores for selected Class, Subject, and Term
   const loadScores = useCallback(async () => {
     if (!selectedClass || !selectedSubject) return;
+    // Each call to loadScores makes several sequential requests (students, optouts,
+    // results). If the teacher switches class/subject/term again before those finish,
+    // an earlier, slower call can resolve after the latest one and overwrite the screen
+    // with the previous filter's data. Tagging each call with a sequence number and
+    // discarding any that are no longer the latest fixes that "filter changed but the
+    // old data is still showing" bug.
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     setStatusMsg("");
 
@@ -302,8 +312,7 @@ export default function TeacherScoreEntryPage() {
       );
 
       if (!studentList.length) {
-        setRows([]);
-        setLoading(false);
+        if (loadSeqRef.current === seq) setRows([]);
         return;
       }
 
@@ -315,7 +324,6 @@ export default function TeacherScoreEntryPage() {
         { headers: await getAuthHeaders() }
       );
       const optJson = await optRes.json().catch(() => ({}));
-      setNotOffering(new Set(optRes.ok && optJson.ok ? optJson.studentIds : []));
 
       // 3. Fetch existing results
       let resultsQuery = supabase
@@ -328,6 +336,12 @@ export default function TeacherScoreEntryPage() {
       const { data: results, error: rErr } = await resultsQuery;
 
       if (rErr) throw rErr;
+
+      // A newer loadScores() call (from switching filters again) has already taken
+      // over — drop this one instead of clobbering the screen with stale data.
+      if (loadSeqRef.current !== seq) return;
+
+      setNotOffering(new Set(optRes.ok && optJson.ok ? optJson.studentIds : []));
 
       const resultMap = new Map<string, any>();
       (results || []).forEach((r) => resultMap.set(r.student_id, r));
@@ -353,15 +367,20 @@ export default function TeacherScoreEntryPage() {
       setAutoSaveStatus("idle");
     } catch (err: any) {
       console.error("Load scores error:", err);
-      setStatusMsg(`Error loading scores: ${err.message}`);
+      if (loadSeqRef.current === seq) setStatusMsg(`Error loading scores: ${err.message}`);
     } finally {
-      setLoading(false);
+      if (loadSeqRef.current === seq) setLoading(false);
     }
   }, [selectedClass, selectedSubject, selectedTerm, currentSession]);
 
   useEffect(() => {
     loadScores();
   }, [loadScores]);
+
+  // Nothing on screen yet vs. re-fetching after a filter change with rows already showing —
+  // the two get different loading treatments (see the table body below).
+  const isFirstLoad = (loading || metaLoading) && rows.length === 0;
+  const isRefetching = loading && !metaLoading && rows.length > 0;
 
   // Weeks in which the class was given classwork / homework (the Excel "AV RATE")
   const offeringRows = useMemo(() => rows.filter((r) => !notOffering.has(r.student_id)), [rows, notOffering]);
@@ -859,7 +878,15 @@ export default function TeacherScoreEntryPage() {
 
       {/* Spreadsheet Mark Sheet Grid */}
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
+        {isRefetching && (
+          <div className="px-4 py-2 border-b border-slate-100">
+            <InlineSpinner label="Updating grade sheet…" />
+          </div>
+        )}
+        {isFirstLoad ? (
+          <PageLoader label="Loading grade sheet…" />
+        ) : (
+        <div className={`overflow-x-auto ${isRefetching ? "gm-refetching" : ""}`}>
           <table className="w-full text-left border-collapse min-w-[1200px]">
             <thead>
               <tr className="bg-slate-100 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-600 text-center">
@@ -975,9 +1002,7 @@ export default function TeacherScoreEntryPage() {
             </thead>
 
             <tbody className="divide-y divide-slate-100 text-xs">
-              {loading || metaLoading ? (
-                <SkeletonRows rows={10} cols={12} />
-              ) : rows.length === 0 ? (
+              {rows.length === 0 ? (
                 <tr>
                   <td colSpan={30} className="px-6 py-12 text-center text-slate-400">
                     No students found in this class.
@@ -1201,6 +1226,7 @@ export default function TeacherScoreEntryPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );

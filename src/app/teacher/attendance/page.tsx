@@ -33,6 +33,9 @@ export default function TeacherAttendancePage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  // Tags each loadAttendance() call so a slower, older request (previous class/date)
+  // can't resolve after a newer one and overwrite the screen with stale data.
+  const loadSeqRef = React.useRef(0);
 
   // Fetch active term & session info
   useEffect(() => {
@@ -110,6 +113,7 @@ export default function TeacherAttendancePage() {
 
   const loadAttendance = useCallback(async () => {
     if (!selectedClass) return;
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     try {
       const q = `/api/teacher/attendance?class_id=${encodeURIComponent(selectedClass)}&term=${encodeURIComponent(currentTerm)}&session=${encodeURIComponent(currentSession)}&date=${encodeURIComponent(selectedDate)}`;
@@ -118,6 +122,8 @@ export default function TeacherAttendancePage() {
         throw new Error("Failed to load attendance from server.");
       }
       const data = await res.json();
+      // A newer loadAttendance() call (class/date changed again) already took over.
+      if (loadSeqRef.current !== seq) return;
       if (data.students && data.students.length > 0) {
         const serverOpened = Number(data.students[0]?.timesOpened) || 120;
         setDefaultTimesOpened(serverOpened);
@@ -137,12 +143,14 @@ export default function TeacherAttendancePage() {
       }
     } catch (err: any) {
       console.error("Load attendance error:", err);
-      setSaveStatus({
-        type: "error",
-        text: `Error loading attendance: ${err.message || "Unknown error"}`,
-      });
+      if (loadSeqRef.current === seq) {
+        setSaveStatus({
+          type: "error",
+          text: `Error loading attendance: ${err.message || "Unknown error"}`,
+        });
+      }
     } finally {
-      setLoading(false);
+      if (loadSeqRef.current === seq) setLoading(false);
     }
   }, [selectedClass, selectedDate, currentTerm, currentSession, defaultTimesOpened]);
 

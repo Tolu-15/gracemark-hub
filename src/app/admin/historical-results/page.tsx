@@ -42,6 +42,9 @@ export default function AdminHistoricalResultsPage() {
   const [loadingCareer, setLoadingCareer] = useState(false);
   const [reportView, setReportView] = useState<{ session: string; term: string } | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tags each runSearch() call so a slower, older keystroke's search can't resolve
+  // after a newer one and overwrite the results with a stale query's matches.
+  const searchSeqRef = useRef(0);
 
   // Broadsheet
   const [bsSession, setBsSession] = useState("");
@@ -71,6 +74,7 @@ export default function AdminHistoricalResultsPage() {
 
   // ---------------- Student lookup ----------------
   const runSearch = useCallback(async (q: string) => {
+    const seq = ++searchSeqRef.current;
     if (q.trim().length < 2) {
       setMatches([]);
       setSearchError("");
@@ -82,13 +86,16 @@ export default function AdminHistoricalResultsPage() {
       const res = await fetch(`/api/admin/historical-lookup?q=${encodeURIComponent(q.trim())}`, { headers: await getAuthHeaders() });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || "Search failed.");
+      if (searchSeqRef.current !== seq) return; // a newer keystroke's search already took over
       setMatches(json.matches || []);
       if (!json.matches?.length) setSearchError(`No student found for "${q.trim()}".`);
     } catch (e: any) {
-      setSearchError(e.message);
-      setMatches([]);
+      if (searchSeqRef.current === seq) {
+        setSearchError(e.message);
+        setMatches([]);
+      }
     } finally {
-      setSearching(false);
+      if (searchSeqRef.current === seq) setSearching(false);
     }
   }, []);
 
