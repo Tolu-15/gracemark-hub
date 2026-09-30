@@ -132,6 +132,17 @@ body.bg-slate-950 .tdev-site-footer a.tdev-link {
   background-image: linear-gradient(100deg, #c9a84c 0%, #c9a84c 40%, #fff1c2 50%, #c9a84c 60%, #c9a84c 100%);
 }
 
+/* Other dark, full-screen shells (e.g. the student portal-locked screen) */
+.tdev-dark-shell > .tdev-site-footer {
+  background: transparent;
+  border-top-color: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}
+
+.tdev-dark-shell > .tdev-site-footer a.tdev-link {
+  background-image: linear-gradient(100deg, #c9a84c 0%, #c9a84c 40%, #fff1c2 50%, #c9a84c 60%, #c9a84c 100%);
+}
+
 /* Loading / intro screen — white, GPU-friendly (transform + opacity only) */
 .tdev-loader {
   position: fixed;
