@@ -193,8 +193,32 @@ export default function TeacherGradebookPage() {
 
   const scores = results.map((r) => Number(r.total) || 0).filter((n) => n > 0);
   const avg = scores.length ? +(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : 0;
-  const high = scores.length ? Math.max(...scores) : 0;
-  const low = scores.length ? Math.min(...scores) : 0;
+
+  // Highest/lowest scorer per subject (not just the number) — grouped so a
+  // teacher viewing "All Subjects" sees each subject's own top/bottom student
+  // rather than one score mixed across every subject.
+  const subjectHighLow = useMemo(() => {
+    const bySubject = new Map<string, { name: string; rows: { name: string; total: number }[] }>();
+    results.forEach((r) => {
+      const total = Number(r.total) || 0;
+      if (total <= 0) return;
+      const key = r.subject_id || r.subjects?.name || "subject";
+      const entry = bySubject.get(key) || { name: r.subjects?.name || "Subject", rows: [] as { name: string; total: number }[] };
+      entry.rows.push({ name: r.students?.name || "Student", total });
+      bySubject.set(key, entry);
+    });
+    return Array.from(bySubject.values())
+      .map(({ name, rows }) => {
+        const max = Math.max(...rows.map((r) => r.total));
+        const min = Math.min(...rows.map((r) => r.total));
+        return {
+          name,
+          highest: { score: max, names: rows.filter((r) => r.total === max).map((r) => r.name) },
+          lowest: { score: min, names: rows.filter((r) => r.total === min).map((r) => r.name) },
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [results]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -287,26 +311,36 @@ export default function TeacherGradebookPage() {
       </div>
 
       {/* Benchmarks Header Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
-            Class Average
-          </span>
-          <span className="text-2xl font-black text-slate-900">{avg} / 100</span>
-        </div>
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
-          <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 block mb-1">
-            Highest Score
-          </span>
-          <span className="text-2xl font-black text-emerald-700">{high} / 100</span>
-        </div>
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
-          <span className="text-xs font-bold uppercase tracking-wider text-amber-600 block mb-1">
-            Lowest Score
-          </span>
-          <span className="text-2xl font-black text-amber-700">{low} / 100</span>
-        </div>
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs w-full sm:w-64">
+        <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+          Class Average
+        </span>
+        <span className="text-2xl font-black text-slate-900">{avg} / 100</span>
       </div>
+
+      {/* Highest / Lowest scorer, per subject */}
+      {subjectHighLow.length > 0 && (
+        <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Highest &amp; Lowest, per Subject</span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {subjectHighLow.map((s) => (
+              <div key={s.name} className="flex flex-col sm:flex-row sm:items-center gap-2 px-4 py-3">
+                <span className="text-sm font-semibold text-slate-700 w-full sm:w-40 shrink-0">{s.name}</span>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-semibold">
+                    Highest: {s.highest.names.join(", ")} — {s.highest.score}/100
+                  </span>
+                  <span className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 font-semibold">
+                    Lowest: {s.lowest.names.join(", ")} — {s.lowest.score}/100
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Scores Table */}
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
