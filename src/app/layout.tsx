@@ -158,7 +158,7 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        <div id="gm-splash" aria-hidden="true">
+        <div id="gm-splash" className="gm-launch-splash" aria-hidden="true">
           <div className="gm-splash__mark">
             <span className="gm-splash__ring" />
             {/* eslint-disable-next-line @next/next/no-img-element */}

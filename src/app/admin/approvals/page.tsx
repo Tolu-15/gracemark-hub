@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import ReportSheet from "@/components/results/ReportSheet";
+import { PageLoader, InlineSpinner } from "@/components/shared/PageLoader";
 
 type Milestone = "PR1" | "PR2" | "PR3" | "TR";
 type Tab = "review" | "publish" | "settings";
@@ -193,6 +194,46 @@ export default function AdminApprovalsPage() {
     setSubjectRows(((data as any[]) || []).sort((a, b) => (a.students?.name || "").localeCompare(b.students?.name || "")));
   }
 
+  async function bulkApprove() {
+    if (!overview) return;
+    const targets = overview.grid.filter((r) => (r.counts.submitted || 0) > 0);
+    if (!targets.length) return;
+    const totalScores = targets.reduce((sum, r) => sum + (r.counts.submitted || 0), 0);
+    if (
+      !window.confirm(
+        `Approve ${totalScores} submitted score(s) across ${targets.length} subject${targets.length === 1 ? "" : "s"} for ${className}?`
+      )
+    ) {
+      return;
+    }
+
+    setBusy("bulk-approve");
+    let approvedScores = 0;
+    const failed: string[] = [];
+    try {
+      for (const row of targets) {
+        try {
+          const { res, json } = await api("/api/admin/results/review", {
+            method: "POST",
+            body: JSON.stringify({ class_id: classId, subject_id: row.subjectId, term, action: "approve" }),
+          });
+          if (!res.ok || !json.ok) throw new Error(json.error || "Action failed.");
+          approvedScores += json.updated || 0;
+        } catch {
+          failed.push(row.name);
+        }
+      }
+      flash(
+        failed.length
+          ? `Approved ${approvedScores} score(s); ${failed.length} subject(s) failed: ${failed.join(", ")}.`
+          : `Approved ${approvedScores} score(s) across ${targets.length} subject${targets.length === 1 ? "" : "s"}.`
+      );
+      await loadOverview();
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function review(row: GridRow, action: "approve" | "return", reason?: string) {
     setBusy(`${action}:${row.subjectId}`);
     try {
@@ -289,6 +330,11 @@ export default function AdminApprovalsPage() {
   const confirmMs = confirm ? overview?.milestones.find((m) => m.milestone === confirm.milestone) : null;
   const className = classes.find((c) => c.id === classId)?.name || "";
   const termLabel = TERMS.find((t) => t.value === term)?.label || "";
+  // Nothing on screen yet vs. re-fetching after switching class/term with an
+  // overview already showing — the latter keeps it visible (dimmed) instead of
+  // wiping it back to "Loading…" every time.
+  const isFirstLoad = loading && !overview;
+  const isRefetching = loading && !!overview;
 
   return (
     <div className="space-y-5 max-w-6xl mx-auto">
@@ -357,14 +403,34 @@ export default function AdminApprovalsPage() {
         </div>
       )}
 
-      {loading && !overview ? (
-        <div className="p-10 text-center text-sm text-slate-500">Loading…</div>
-      ) : !overview ? null : tab === "review" ? (
+      {isRefetching && (
+        <div className="px-1">
+          <InlineSpinner label="Updating…" />
+        </div>
+      )}
+
+      {isFirstLoad ? (
+        <PageLoader label="Loading approvals…" />
+      ) : !overview ? null : (
+      <div className={isRefetching ? "gm-refetching" : ""}>
+      {tab === "review" ? (
         /* ---------------- REVIEW ---------------- */
         <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-100 text-xs text-slate-500">
-            {className} · {termLabel} · {overview.classSize} students. Numbers show how many students&rsquo; scores are in each state. Only{" "}
-            <strong>submitted</strong> scores can be approved or returned; if a teacher edits approved scores they go back to draft.
+          <div className="px-4 py-3 border-b border-slate-100 text-xs text-slate-500 flex flex-wrap items-center justify-between gap-3">
+            <span>
+              {className} · {termLabel} · {overview.classSize} students. Numbers show how many students&rsquo; scores are in each state. Only{" "}
+              <strong>submitted</strong> scores can be approved or returned; if a teacher edits approved scores they go back to draft.
+            </span>
+            {overview.grid.some((r) => (r.counts.submitted || 0) > 0) && (
+              <button
+                type="button"
+                disabled={!!busy}
+                onClick={bulkApprove}
+                className="shrink-0 px-3 py-1.5 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg disabled:opacity-40 cursor-pointer whitespace-nowrap"
+              >
+                {busy === "bulk-approve" ? "Approving all…" : "Approve all submitted"}
+              </button>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -585,6 +651,8 @@ export default function AdminApprovalsPage() {
             <p className="text-[11px] text-slate-500 mt-2">Already-published results keep the date they were published with. Republish to update them.</p>
           </div>
         </div>
+      )}
+      </div>
       )}
 
       {/* Return modal */}

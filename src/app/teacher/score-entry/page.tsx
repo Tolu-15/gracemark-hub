@@ -19,6 +19,8 @@ import {
 } from "@/lib/gradingEngine";
 import { RawScores } from "@/types/result";
 import { PageLoader, InlineSpinner } from "@/components/shared/PageLoader";
+import { enqueue, isNetworkFailure } from "@/lib/offlineQueue";
+import OfflineQueueBanner from "@/components/shared/OfflineQueueBanner";
 
 type ViewMode = "all" | "pr1" | "pr2" | "pr3" | "tr";
 
@@ -506,25 +508,37 @@ export default function TeacherScoreEntryPage() {
 
         if (recordsToSave.length > 0 || deletedResultIds.length > 0) {
           const notifyEditStart = !editNotifiedRef.current;
-          const { data: sessionData } = await supabase.auth.getSession();
-          const res = await fetch("/api/results/save", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
-            body: JSON.stringify({ records: recordsToSave, deletedResultIds, notifyEditStart }),
-          });
-          if (res.ok) {
-            isDirtyRef.current = false;
-            editNotifiedRef.current = true;
-            setAutoSaveStatus("saved");
-            // Deleted rows may still be re-evaluated on the next autosave pass
-            // (e.g. the student's scores stay empty); clear their stale resultId
-            // now so we don't try to delete the same already-gone row again.
-            if (deletedResultIds.length) {
-              const deletedSet = new Set(deletedResultIds);
-              setRows((prev) => prev.map((r) => (r.resultId && deletedSet.has(r.resultId) ? { ...r, resultId: undefined } : r)));
+          const body = JSON.stringify({ records: recordsToSave, deletedResultIds, notifyEditStart });
+          try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const res = await fetch("/api/results/save", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
+              body,
+            });
+            if (res.ok) {
+              isDirtyRef.current = false;
+              editNotifiedRef.current = true;
+              setAutoSaveStatus("saved");
+              // Deleted rows may still be re-evaluated on the next autosave pass
+              // (e.g. the student's scores stay empty); clear their stale resultId
+              // now so we don't try to delete the same already-gone row again.
+              if (deletedResultIds.length) {
+                const deletedSet = new Set(deletedResultIds);
+                setRows((prev) => prev.map((r) => (r.resultId && deletedSet.has(r.resultId) ? { ...r, resultId: undefined } : r)));
+              }
+            } else {
+              setAutoSaveStatus("unsaved");
             }
-          } else {
-            setAutoSaveStatus("unsaved");
+          } catch (fetchErr) {
+            if (isNetworkFailure(fetchErr)) {
+              enqueue({ url: "/api/results/save", method: "POST", body, label: `Grade sheet — ${selectedTerm}` });
+              isDirtyRef.current = false;
+              editNotifiedRef.current = true;
+              setAutoSaveStatus("saved");
+            } else {
+              throw fetchErr;
+            }
           }
         } else {
           setAutoSaveStatus("idle");
@@ -647,27 +661,45 @@ export default function TeacherScoreEntryPage() {
       }
 
       const notifyEditStart = !editNotifiedRef.current;
-      const { data: sessionData } = await supabase.auth.getSession();
-      const res = await fetch("/api/results/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
-        body: JSON.stringify({ records: recordsToSave, deletedResultIds, notifyEditStart }),
-      });
+      const body = JSON.stringify({ records: recordsToSave, deletedResultIds, notifyEditStart });
 
-      const resJson = await res.json();
-      if (!res.ok) {
-        throw new Error(resJson.error || "Failed to save results.");
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const res = await fetch("/api/results/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
+          body,
+        });
+
+        const resJson = await res.json();
+        if (!res.ok) {
+          throw new Error(resJson.error || "Failed to save results.");
+        }
+
+        isDirtyRef.current = false;
+        editNotifiedRef.current = true;
+        setAutoSaveStatus(submit ? "idle" : "saved");
+        setStatusMsg(
+          submit
+            ? "Scores submitted to administration for review and approval!"
+            : "✓ Draft scores saved successfully! (Scores remain in draft and are NOT submitted to admin)"
+        );
+        loadScores();
+      } catch (fetchErr: any) {
+        if (isNetworkFailure(fetchErr)) {
+          enqueue({ url: "/api/results/save", method: "POST", body, label: `Grade sheet — ${selectedTerm}` });
+          isDirtyRef.current = false;
+          editNotifiedRef.current = true;
+          setAutoSaveStatus("saved");
+          setStatusMsg(
+            submit
+              ? "You're offline — this submission was saved and will go to administration automatically once you're back online."
+              : "You're offline — this draft was saved and will sync automatically once you're back online."
+          );
+        } else {
+          throw fetchErr;
+        }
       }
-
-      isDirtyRef.current = false;
-      editNotifiedRef.current = true;
-      setAutoSaveStatus(submit ? "idle" : "saved");
-      setStatusMsg(
-        submit
-          ? "Scores submitted to administration for review and approval!"
-          : "✓ Draft scores saved successfully! (Scores remain in draft and are NOT submitted to admin)"
-      );
-      loadScores();
     } catch (err: any) {
       console.error("Save scores exception:", err);
       setStatusMsg(`Save failed: ${err.message}`);
@@ -680,6 +712,7 @@ export default function TeacherScoreEntryPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      <OfflineQueueBanner />
       {/* Top action header */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
