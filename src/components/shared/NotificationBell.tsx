@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAuthHeaders } from "@/lib/supabase/client";
 import { useNotificationBadge, badgeText, PortalNotification } from "./useNotificationBadge";
+import { enablePushNotifications, getPushState, PushState } from "@/lib/push";
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -21,6 +22,9 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<PortalNotification[]>([]);
+  const [pushState, setPushState] = useState<PushState | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState("");
   const boxRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -48,7 +52,26 @@ export default function NotificationBell() {
   function toggle() {
     const next = !open;
     setOpen(next);
-    if (next) loadList();
+    if (next) {
+      loadList();
+      getPushState().then(setPushState);
+    }
+  }
+
+  async function handleEnablePush() {
+    setPushBusy(true);
+    setPushError("");
+    try {
+      const result = await enablePushNotifications();
+      if (result.ok) {
+        setPushState("subscribed");
+      } else {
+        setPushError(result.error || "Could not enable notifications.");
+        setPushState(await getPushState());
+      }
+    } finally {
+      setPushBusy(false);
+    }
   }
 
   async function markAllRead() {
@@ -125,6 +148,35 @@ export default function NotificationBell() {
               </button>
             )}
           </div>
+          {(pushState === "needs-permission" || pushState === "needs-subscription" || pushState === "denied") && (
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+              {pushState === "denied" ? (
+                <p className="text-xs text-slate-500">
+                  Push notifications are blocked for this site. Allow them in your browser's site settings to get alerts here.
+                </p>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-slate-600">
+                      {pushState === "needs-subscription"
+                        ? "Notifications were interrupted — turn them back on."
+                        : "Get a push alert the moment there's an update."}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleEnablePush}
+                      disabled={pushBusy}
+                      className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-lg text-white cursor-pointer"
+                      style={{ backgroundColor: "#2563eb" }}
+                    >
+                      {pushBusy ? "Enabling…" : "Turn on"}
+                    </button>
+                  </div>
+                  {pushError && <p className="text-xs text-red-600 mt-1">{pushError}</p>}
+                </>
+              )}
+            </div>
+          )}
           <div className="overflow-y-auto" style={{ maxHeight: "calc(70vh - 44px)" }}>
             {loading && <div className="px-4 py-6 text-sm text-slate-400 text-center">Loading…</div>}
             {!loading && items.length === 0 && (
