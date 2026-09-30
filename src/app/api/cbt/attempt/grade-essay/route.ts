@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
 import { canManageExam } from "@/lib/cbtAuth";
-import { resolveExamSession, syncCbtScoreToGradebook } from "@/lib/cbtGradebookSync";
+import { resolveExamSession, syncCbtScoreToGradebook, CbtGradingComponent } from "@/lib/cbtGradebookSync";
 
 /** POST { submissionId, scores: { [questionId]: number } } — teacher/admin manual score for essay questions. */
 export async function POST(req: NextRequest) {
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
       academicSessionId: exam.academic_session_id,
       rawScore: totalScore,
       maxRawScore: maxScore,
-      component: "exam",
+      component: (exam.grading_component as CbtGradingComponent) || "exam",
     });
   }
 

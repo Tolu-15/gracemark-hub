@@ -3,6 +3,7 @@ import { requireApiActor } from "@/lib/apiAuth";
 import { canManageExam } from "@/lib/cbtAuth";
 
 const QUESTION_TYPES = ["multiple_choice", "true_false", "fill_in_the_blank", "short_answer", "essay"];
+const GRADING_COMPONENTS = ["test1", "test2", "test3", "exam"];
 
 function validateQuestion(q: any, i: number): string | null {
   if (!String(q?.question_text || "").trim()) return `Question ${i + 1}: text is required.`;
@@ -80,6 +81,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ex
   if (body.attempts_allowed !== undefined) update.attempts_allowed = Math.max(1, Math.min(10, Number(body.attempts_allowed) || 1));
   if (body.due_date !== undefined) update.due_date = body.due_date || null;
   if (body.is_published !== undefined) update.is_published = Boolean(body.is_published);
+  if (body.grading_component !== undefined) {
+    if (!GRADING_COMPONENTS.includes(body.grading_component)) {
+      return NextResponse.json({ ok: false, error: "Invalid grading component." }, { status: 400 });
+    }
+    update.grading_component = body.grading_component;
+  }
 
   if (Array.isArray(body.questions)) {
     if (!body.questions.length) return NextResponse.json({ ok: false, error: "At least one question is required." }, { status: 400 });

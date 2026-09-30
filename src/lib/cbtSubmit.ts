@@ -1,12 +1,12 @@
 import { scoreObjectiveAnswers } from "@/lib/cbtScoring";
-import { resolveExamSession, syncCbtScoreToGradebook } from "@/lib/cbtGradebookSync";
+import { resolveExamSession, syncCbtScoreToGradebook, CbtGradingComponent } from "@/lib/cbtGradebookSync";
 import { ensureEnrollments } from "@/lib/reportBuilder";
 
 type Service = any;
 
 interface FinalizeArgs {
   service: Service;
-  exam: { id: string; class_id: string; subject_id: string; term: string; academic_session_id: string | null; pass_mark: number };
+  exam: { id: string; class_id: string; subject_id: string; term: string; academic_session_id: string | null; pass_mark: number; grading_component?: string };
   session: { id: string; started_at: string };
   studentId: string;
   answers: Record<string, string>;
@@ -92,7 +92,7 @@ export async function finalizeSubmission({ service, exam, session, studentId, an
       academicSessionId: exam.academic_session_id,
       rawScore: autoScore,
       maxRawScore: maxScore,
-      component: "exam",
+      component: (exam.grading_component as CbtGradingComponent) || "exam",
     });
   }
 

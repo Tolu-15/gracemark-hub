@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 
 type QuestionType = "multiple_choice" | "true_false" | "fill_in_the_blank" | "short_answer" | "essay";
+type GradingComponent = "test1" | "test2" | "test3" | "exam";
 
 const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   multiple_choice: "Multiple choice",
@@ -12,6 +13,13 @@ const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   fill_in_the_blank: "Fill in the blank",
   short_answer: "Short answer",
   essay: "Essay (graded manually)",
+};
+
+const GRADING_COMPONENT_LABELS: Record<GradingComponent, string> = {
+  test1: "Test 1 (15 pts)",
+  test2: "Test 2 (15 pts)",
+  test3: "Test 3 (30 pts)",
+  exam: "Term Exam (70 pts)",
 };
 
 interface QuestionDraft {
@@ -35,6 +43,7 @@ interface ExamListItem {
   pass_mark: number;
   attempts_allowed: number;
   due_date: string | null;
+  grading_component: GradingComponent;
   question_count: number;
   submission_count: number;
   classes?: { name: string };
@@ -88,6 +97,7 @@ export default function ExamManager({ role }: { role: "admin" | "teacher" }) {
     pass_mark: 50,
     attempts_allowed: 1,
     due_date: "",
+    grading_component: "exam" as GradingComponent,
     is_published: false,
   });
   const [questions, setQuestions] = useState<QuestionDraft[]>([newQuestion()]);
@@ -178,6 +188,7 @@ export default function ExamManager({ role }: { role: "admin" | "teacher" }) {
       pass_mark: 50,
       attempts_allowed: 1,
       due_date: "",
+      grading_component: "exam" as GradingComponent,
       is_published: false,
     });
     setQuestions([newQuestion()]);
@@ -202,6 +213,7 @@ export default function ExamManager({ role }: { role: "admin" | "teacher" }) {
       pass_mark: exam.pass_mark,
       attempts_allowed: exam.attempts_allowed,
       due_date: exam.due_date ? String(exam.due_date).slice(0, 16) : "",
+      grading_component: (exam.grading_component as GradingComponent) || "exam",
       is_published: exam.is_published,
     });
     setQuestions(
@@ -266,6 +278,7 @@ export default function ExamManager({ role }: { role: "admin" | "teacher" }) {
         pass_mark: form.pass_mark,
         attempts_allowed: form.attempts_allowed,
         due_date: form.due_date ? new Date(form.due_date).toISOString() : null,
+        grading_component: form.grading_component,
         is_published: publish,
       };
       if (!locked) {
@@ -449,6 +462,7 @@ export default function ExamManager({ role }: { role: "admin" | "teacher" }) {
                 <tr className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                   <th className="px-4 py-2.5">Title</th>
                   <th className="px-2 py-2.5">Class / Subject</th>
+                  <th className="px-2 py-2.5">Counts toward</th>
                   <th className="px-2 py-2.5 text-center">Questions</th>
                   <th className="px-2 py-2.5 text-center">Submissions</th>
                   <th className="px-2 py-2.5 text-center">Status</th>
@@ -458,13 +472,13 @@ export default function ExamManager({ role }: { role: "admin" | "teacher" }) {
               <tbody className="divide-y divide-slate-100">
                 {loadingExams ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
+                    <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
                       Loading…
                     </td>
                   </tr>
                 ) : exams.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-slate-400">
+                    <td colSpan={7} className="px-6 py-10 text-center text-slate-400">
                       No exams yet. Click &ldquo;+ New Exam&rdquo; to create one.
                     </td>
                   </tr>
@@ -475,6 +489,7 @@ export default function ExamManager({ role }: { role: "admin" | "teacher" }) {
                       <td className="px-2 py-2.5 text-slate-600">
                         {exam.classes?.name || "—"} · {exam.subjects?.name || "—"}
                       </td>
+                      <td className="px-2 py-2.5 text-slate-600">{GRADING_COMPONENT_LABELS[exam.grading_component] || "Term Exam (70 pts)"}</td>
                       <td className="px-2 py-2.5 text-center">{exam.question_count}</td>
                       <td className="px-2 py-2.5 text-center">
                         <button type="button" onClick={() => openSubmissions(exam.id)} className="text-blue-600 hover:underline cursor-pointer font-semibold">
@@ -615,6 +630,24 @@ export default function ExamManager({ role }: { role: "admin" | "teacher" }) {
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Counts toward</label>
+              <select
+                value={form.grading_component}
+                onChange={(e) => setForm((f) => ({ ...f, grading_component: e.target.value as GradingComponent }))}
+                className="w-full sm:w-64 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold"
+              >
+                {(Object.keys(GRADING_COMPONENT_LABELS) as GradingComponent[]).map((c) => (
+                  <option key={c} value={c}>
+                    {GRADING_COMPONENT_LABELS[c]}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Once every submission is graded, the score is scaled into this slot on the student&apos;s report card for {form.subject_id ? "this subject" : "the selected subject"}.
+              </p>
             </div>
           </div>
 

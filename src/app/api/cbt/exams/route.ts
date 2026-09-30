@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor, requireTeacherAssignment } from "@/lib/apiAuth";
 
 const QUESTION_TYPES = ["multiple_choice", "true_false", "fill_in_the_blank", "short_answer", "essay"];
+const GRADING_COMPONENTS = ["test1", "test2", "test3", "exam"];
 
 function validateQuestion(q: any, i: number): string | null {
   if (!String(q?.question_text || "").trim()) return `Question ${i + 1}: text is required.`;
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
 
   let query = service
     .from("cbt_exams")
-    .select("id, title, description, class_id, subject_id, term, academic_session_id, duration_minutes, pass_mark, attempts_allowed, due_date, is_published, created_by, created_at, classes(name), subjects(name)")
+    .select("id, title, description, class_id, subject_id, term, academic_session_id, duration_minutes, pass_mark, attempts_allowed, due_date, grading_component, is_published, created_by, created_at, classes(name), subjects(name)")
     .order("created_at", { ascending: false });
   if (classId) query = query.eq("class_id", classId);
   if (subjectId) query = query.eq("subject_id", subjectId);
@@ -79,6 +80,10 @@ export async function POST(req: NextRequest) {
   if (!class_id || !subject_id || !term || !String(title || "").trim()) {
     return NextResponse.json({ ok: false, error: "class_id, subject_id, term and title are required." }, { status: 400 });
   }
+  const gradingComponent = body.grading_component || "exam";
+  if (!GRADING_COMPONENTS.includes(gradingComponent)) {
+    return NextResponse.json({ ok: false, error: "Invalid grading component." }, { status: 400 });
+  }
   if (actor.role === "teacher" && !(await requireTeacherAssignment(actor, class_id, subject_id, body.academic_session_id))) {
     return NextResponse.json({ ok: false, error: "You are not assigned to this class and subject." }, { status: 403 });
   }
@@ -115,6 +120,7 @@ export async function POST(req: NextRequest) {
       pass_mark: Math.max(0, Math.min(100, Number(body.pass_mark) || 50)),
       attempts_allowed: Math.max(1, Math.min(10, Number(body.attempts_allowed) || 1)),
       due_date: body.due_date || null,
+      grading_component: gradingComponent,
       is_published: false,
     })
     .select("id")
