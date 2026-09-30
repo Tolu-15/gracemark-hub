@@ -213,25 +213,14 @@ export default function TeacherScoreEntryPage() {
 
       setTeacherAssignments(parsedAssignments);
 
-      // Extract unique classes
+      // Extract unique classes. The grade sheet is purely subject-based entry, so a
+      // class only belongs here if the teacher actually teaches a subject in it —
+      // being that class's class teacher (a separate, homeroom-only role) does not
+      // by itself give them anything to grade there.
       const classMap = new Map<string, { id: string; name: string }>();
       parsedAssignments.forEach((a) => {
         if (a.class_id && a.class_name) classMap.set(a.class_id, { id: a.class_id, name: a.class_name });
       });
-
-      // Also include classes where the teacher is class teacher
-      try {
-        const { data: cta } = await supabase
-          .from("class_teacher_assignments")
-          .select("class_id, classes(id, name)")
-          .in("teacher_user_id", idList)
-          .eq("status", "active");
-        (cta || []).forEach((c: any) => {
-          if (c.classes?.id && c.classes?.name) classMap.set(c.classes.id, c.classes);
-        });
-      } catch (ctaErr) {
-        console.warn("Could not query class_teacher_assignments:", ctaErr);
-      }
 
       let cList = Array.from(classMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 
