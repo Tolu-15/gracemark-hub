@@ -15,16 +15,19 @@ export async function GET(req: NextRequest) {
     let query = service
       .from("student_enrollments")
       .select(`
-        id, student_id, academic_session_id, session, class_id, section_id,
-        status, enrolled_at, created_at,
+        id, student_id, academic_session_id, class_id, section_id,
+        status, enrolled_at,
         classes(id, name),
         sections(id, name),
         students(id, admission_no, name, user_id, portal_access_status)
       `)
-      .order("created_at", { ascending: true });
+      .order("enrolled_at", { ascending: true });
 
     if (studentId) query = query.eq("student_id", studentId);
-    if (session) query = query.eq("session", session);
+    if (session) {
+      const { data: sessionRow } = await service.from("academic_sessions").select("id").eq("name", session).maybeSingle();
+      query = query.eq("academic_session_id", sessionRow?.id || "00000000-0000-0000-0000-000000000000");
+    }
     if (classId) query = query.eq("class_id", classId);
 
     const { data, error } = await query;
@@ -80,7 +83,6 @@ export async function POST(req: NextRequest) {
         {
           student_id: studentId,
           academic_session_id: effectiveSessionId,
-          session,
           class_id: classId,
           section_id: sectionId || null,
           status,
