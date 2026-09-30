@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor, ApiActor } from "@/lib/apiAuth";
 import { logAudit } from "@/lib/audit";
-import { getCurrentContext, isTermCode, resolveSession, studentClassId, teacherClassIds } from "@/lib/serverContext";
+import { notifyRole, notifyUsers } from "@/lib/notify";
+import { getCurrentContext, isTermCode, resolveSession, studentClassId, teacherClassIds, usersByAnyId } from "@/lib/serverContext";
 
 const OPTS = { allowLockedStudent: true };
 
@@ -156,5 +157,29 @@ export async function POST(req: NextRequest) {
     summary: `Posted announcement "${title}" (${classId ? "class" : audience}) — ${ctx.sessionName}, ${ctx.term}`,
     metadata: { audience, class_id: classId, pinned },
   });
+
+  const notifyEntry = {
+    type: "announcement.post",
+    title: `New announcement: ${title}`,
+    body: text.length > 140 ? `${text.slice(0, 140)}…` : text,
+    link: actor.role === "student" ? "/student/announcements" : "/teacher/announcements",
+  };
+  if (classId) {
+    const { data: classStudents } = await actor.service.from("students").select("user_id").eq("class_id", classId);
+    const rawIds = (classStudents || []).map((s: any) => s.user_id).filter(Boolean);
+    if (rawIds.length) {
+      const userMap = await usersByAnyId(actor.service, rawIds);
+      const recipientIds = Array.from(new Set(Array.from(userMap.values()).map((u) => u.id)));
+      await notifyUsers(actor, recipientIds, { ...notifyEntry, link: "/student/announcements" });
+    }
+  } else if (audience === "teachers") {
+    await notifyRole(actor, "teacher", { ...notifyEntry, link: "/teacher/announcements" });
+  } else if (audience === "students") {
+    await notifyRole(actor, "student", { ...notifyEntry, link: "/student/announcements" });
+  } else {
+    await notifyRole(actor, "teacher", { ...notifyEntry, link: "/teacher/announcements" });
+    await notifyRole(actor, "student", { ...notifyEntry, link: "/student/announcements" });
+  }
+
   return NextResponse.json({ ok: true, id: data.id });
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
 import { logAudit } from "@/lib/audit";
+import { notifyUsers } from "@/lib/notify";
 import { isTermCode, resolveSession, teacherLabel, usersByAnyId } from "@/lib/serverContext";
 import { assignmentOptions, recomputeClashFlags } from "@/lib/timetableServer";
 
@@ -101,6 +102,42 @@ export async function POST(req: NextRequest) {
   }
 
   await recomputeClashFlags(service, session.id, b.term);
+
+  const [{ data: cls }, { data: sub }] = await Promise.all([
+    service.from("classes").select("name").eq("id", classId).maybeSingle(),
+    service.from("subjects").select("name").eq("id", subjectId).maybeSingle(),
+  ]);
+  await logAudit(actor, {
+    action: "timetable.set_slot",
+    entityType: "timetable_slot",
+    entityId: row.id,
+    summary: `Set timetable slot — ${sub?.name || "subject"}, ${cls?.name || "class"} (${session.name}, ${b.term}, day ${day})`,
+    metadata: { class_id: classId, subject_id: subjectId, teacher_user_id: teacherId, day, period_id: periodId },
+  });
+
+  const timetableBody = `${sub?.name || "A subject"} was scheduled for ${cls?.name || "a class"} (${session.name}, ${b.term}).`;
+  await notifyUsers(actor, [teacherId], {
+    type: "timetable.update",
+    title: "Timetable updated",
+    body: timetableBody,
+    link: "/teacher/timetable",
+    metadata: { class_id: classId, subject_id: subjectId, day, period_id: periodId },
+  });
+
+  const { data: classStudents } = await service.from("students").select("user_id").eq("class_id", classId);
+  const rawStudentIds = (classStudents || []).map((s: any) => s.user_id).filter(Boolean);
+  if (rawStudentIds.length) {
+    const studentUserMap = await usersByAnyId(service, rawStudentIds);
+    const studentRecipientIds = Array.from(new Set(Array.from(studentUserMap.values()).map((u) => u.id)));
+    await notifyUsers(actor, studentRecipientIds, {
+      type: "timetable.update",
+      title: "Timetable updated",
+      body: timetableBody,
+      link: "/student/timetable",
+      metadata: { class_id: classId, subject_id: subjectId, day, period_id: periodId },
+    });
+  }
+
   return NextResponse.json({ ok: true, id: row.id, clash: !!clashWarning, warning: clashWarning });
 }
 
