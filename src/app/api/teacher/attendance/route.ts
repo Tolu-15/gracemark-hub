@@ -26,24 +26,66 @@ async function resolveSession(service: Service, name?: string | null) {
   return active?.id ? { id: active.id as string, name: active.name as string } : null;
 }
 
-/** Active enrollments (one per student) for a class in a session. */
-async function loadEnrollments(service: Service, classId: string, sessionId: string) {
-  const { data, error } = await service
-    .from("student_enrollments")
-    .select("id, student_id, students(*)")
-    .eq("class_id", classId)
-    .eq("academic_session_id", sessionId)
-    .eq("status", "active");
-  if (error) throw error;
+/**
+ * Active enrollments (one per student) for a class in a session.
+ *
+ * The class roster itself comes from students.class_id — the same source every
+ * other page (score entry, gradebook, etc.) uses — rather than from
+ * student_enrollments alone. Admin > Students (both "Add Student" and bulk
+ * import) only ever writes students.class_id and never creates a
+ * student_enrollments row, so a class teacher's own class could otherwise show
+ * zero students here even though every other page saw the full roster. Any
+ * student on the roster with no enrollment row yet for this session gets one
+ * created on the fly; a student with an existing but non-active row (withdrawn,
+ * transferred) is left alone and excluded, same as before.
+ */
+async function loadEnrollments(service: Service, classId: string, sessionId: string, sessionName: string) {
+  const { data: classStudents, error: csErr } = await service
+    .from("students")
+    .select("id, full_name, name, admission_no")
+    .eq("class_id", classId);
+  if (csErr) throw csErr;
+  if (!classStudents?.length) return [];
 
-  return (data || [])
-    .map((e: any) => {
-      const s = Array.isArray(e.students) ? e.students[0] : e.students;
+  const studentIds = classStudents.map((s: any) => s.id);
+  const { data: existingEnrollments, error: eErr } = await service
+    .from("student_enrollments")
+    .select("id, student_id, status")
+    .eq("academic_session_id", sessionId)
+    .in("student_id", studentIds);
+  if (eErr) throw eErr;
+
+  const byStudent = new Map<string, { id: string; status: string }>(
+    (existingEnrollments || []).map((e: any) => [e.student_id, { id: e.id, status: e.status }])
+  );
+
+  const toCreate = classStudents.filter((s: any) => !byStudent.has(s.id));
+  if (toCreate.length) {
+    const { data: created, error: insErr } = await service
+      .from("student_enrollments")
+      .insert(
+        toCreate.map((s: any) => ({
+          student_id: s.id,
+          academic_session_id: sessionId,
+          session: sessionName,
+          class_id: classId,
+          status: "active",
+        }))
+      )
+      .select("id, student_id");
+    if (insErr) console.warn("Could not back-fill missing student_enrollments:", insErr);
+    (created || []).forEach((c: any) => byStudent.set(c.student_id, { id: c.id, status: "active" }));
+  }
+
+  return classStudents
+    .filter((s: any) => byStudent.get(s.id)?.status === "active")
+    .map((s: any) => {
+      const e = byStudent.get(s.id)!;
       return {
-        enrollmentId: e.id as string,
-        studentId: e.student_id as string,
-        name: (s?.full_name || s?.name || "") as string,
-        admissionNo: (s?.admission_no || "") as string,
+        enrollmentId: e.id,
+        studentId: s.id as string,
+        name: (s.full_name || s.name || "") as string,
+        admissionNo: (s.admission_no || "") as string,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -69,7 +111,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, students: [] });
     }
 
-    const roster = await loadEnrollments(service, classId, session.id);
+    const roster = await loadEnrollments(service, classId, session.id, session.name);
     if (!roster.length) {
       return NextResponse.json({ ok: true, students: [] });
     }
@@ -178,7 +220,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No academic session found." }, { status: 400 });
     }
 
-    const roster = await loadEnrollments(service, classId, sess.id);
+    const roster = await loadEnrollments(service, classId, sess.id, sess.name);
     const enrollmentByStudent = new Map(roster.map((r) => [r.studentId, r.enrollmentId]));
 
     const rows = records
