@@ -65,6 +65,13 @@ export default function TeacherScoreEntryPage() {
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "unsaved" | "saving" | "saved">("idle");
   const isDirtyRef = React.useRef(false);
   const isInitialLoadRef = React.useRef(true);
+  // Tracks whether admins have already been pinged that this teacher started
+  // editing this class/subject/term, so we notify once per editing session
+  // rather than on every autosave. Reset whenever loadScores re-runs.
+  const editNotifiedRef = React.useRef(false);
+  // Serializes autosave/manual-save requests so a debounced autosave can't
+  // race a manual save (or another autosave) with a stale deletedResultIds list.
+  const savingInFlightRef = React.useRef(false);
 
   const selectedClassName = classes.find((c) => c.id === selectedClass)?.name || "";
   const isSenior = isSeniorClass(selectedClassName);
@@ -342,6 +349,7 @@ export default function TeacherScoreEntryPage() {
       setRows(newRows);
       isDirtyRef.current = false;
       isInitialLoadRef.current = true;
+      editNotifiedRef.current = false;
       setAutoSaveStatus("idle");
     } catch (err: any) {
       console.error("Load scores error:", err);
@@ -462,7 +470,8 @@ export default function TeacherScoreEntryPage() {
     }
 
     const timer = setTimeout(async () => {
-      if (!isDirtyRef.current) return;
+      if (!isDirtyRef.current || savingInFlightRef.current) return;
+      savingInFlightRef.current = true;
       setAutoSaveStatus("saving");
       try {
         // Guard: check if any student has an invalid score exceeding max before auto-saving
@@ -477,15 +486,24 @@ export default function TeacherScoreEntryPage() {
         const { recordsToSave, deletedResultIds } = buildRecords(false);
 
         if (recordsToSave.length > 0 || deletedResultIds.length > 0) {
+          const notifyEditStart = !editNotifiedRef.current;
           const { data: sessionData } = await supabase.auth.getSession();
           const res = await fetch("/api/results/save", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
-            body: JSON.stringify({ records: recordsToSave, deletedResultIds }),
+            body: JSON.stringify({ records: recordsToSave, deletedResultIds, notifyEditStart }),
           });
           if (res.ok) {
             isDirtyRef.current = false;
+            editNotifiedRef.current = true;
             setAutoSaveStatus("saved");
+            // Deleted rows may still be re-evaluated on the next autosave pass
+            // (e.g. the student's scores stay empty); clear their stale resultId
+            // now so we don't try to delete the same already-gone row again.
+            if (deletedResultIds.length) {
+              const deletedSet = new Set(deletedResultIds);
+              setRows((prev) => prev.map((r) => (r.resultId && deletedSet.has(r.resultId) ? { ...r, resultId: undefined } : r)));
+            }
           } else {
             setAutoSaveStatus("unsaved");
           }
@@ -495,6 +513,8 @@ export default function TeacherScoreEntryPage() {
       } catch (e) {
         console.warn("Auto-save draft error:", e);
         setAutoSaveStatus("unsaved");
+      } finally {
+        savingInFlightRef.current = false;
       }
     }, 1800);
 
@@ -581,7 +601,8 @@ export default function TeacherScoreEntryPage() {
 
   // Save draft or submit to admin
   async function handleSave(submit = false) {
-    if (!rows.length) return;
+    if (!rows.length || savingInFlightRef.current) return;
+    savingInFlightRef.current = true;
     setSavingAction(submit ? "submit" : "draft");
     setStatusMsg("");
 
@@ -606,11 +627,12 @@ export default function TeacherScoreEntryPage() {
         return;
       }
 
+      const notifyEditStart = !editNotifiedRef.current;
       const { data: sessionData } = await supabase.auth.getSession();
       const res = await fetch("/api/results/save", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
-        body: JSON.stringify({ records: recordsToSave, deletedResultIds }),
+        body: JSON.stringify({ records: recordsToSave, deletedResultIds, notifyEditStart }),
       });
 
       const resJson = await res.json();
@@ -619,6 +641,7 @@ export default function TeacherScoreEntryPage() {
       }
 
       isDirtyRef.current = false;
+      editNotifiedRef.current = true;
       setAutoSaveStatus(submit ? "idle" : "saved");
       setStatusMsg(
         submit
@@ -630,6 +653,7 @@ export default function TeacherScoreEntryPage() {
       console.error("Save scores exception:", err);
       setStatusMsg(`Save failed: ${err.message}`);
     } finally {
+      savingInFlightRef.current = false;
       setSavingAction("none");
       setTimeout(() => setStatusMsg(""), 5000);
     }
