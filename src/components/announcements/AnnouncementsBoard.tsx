@@ -60,6 +60,9 @@ export default function AnnouncementsBoard({ role }: { role: Role }) {
   const [posting, setPosting] = useState(false);
   const [formError, setFormError] = useState("");
   const markedRef = useRef<Set<string>>(new Set());
+  // Tags each load() call so a slower, older request (previous session/term filter)
+  // can't resolve after a newer one and overwrite the screen with stale data.
+  const loadSeqRef = useRef(0);
 
   useEffect(() => {
     (async () => {
@@ -73,6 +76,7 @@ export default function AnnouncementsBoard({ role }: { role: Role }) {
 
   const load = useCallback(async () => {
     if (!session) return;
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     setError("");
     try {
@@ -81,12 +85,13 @@ export default function AnnouncementsBoard({ role }: { role: Role }) {
       const res = await fetch(`/api/announcements?${params.toString()}`, { headers: await getAuthHeaders() });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || "Could not load announcements.");
+      if (loadSeqRef.current !== seq) return; // a newer session/term selection already took over
       setItems(json.announcements);
       setClasses(json.postableClasses || []);
     } catch (e: any) {
-      setError(e.message);
+      if (loadSeqRef.current === seq) setError(e.message);
     } finally {
-      setLoading(false);
+      if (loadSeqRef.current === seq) setLoading(false);
     }
   }, [session, term]);
 

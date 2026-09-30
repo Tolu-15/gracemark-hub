@@ -12,6 +12,9 @@ export default function TeacherGradebookPage() {
   const [session, setSession] = useState("2026/2027");
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  // Tags each loadResults() call so a slower, older request (previous filter
+  // selection) can't resolve after a newer one and overwrite the screen.
+  const loadSeqRef = React.useRef(0);
 
   // 1. Initial Load: App term settings & teacher assigned classes
   useEffect(() => {
@@ -121,6 +124,7 @@ export default function TeacherGradebookPage() {
   // 3. Load gradebook results via resilient server API
   const loadResults = useCallback(async () => {
     if (!selectedClass) return;
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     try {
       const url = new URL("/api/teacher/gradebook", window.location.origin);
@@ -134,12 +138,13 @@ export default function TeacherGradebookPage() {
         throw new Error("Failed to fetch gradebook from server.");
       }
       const data = await res.json();
+      if (loadSeqRef.current !== seq) return; // a newer filter selection already took over
       setResults(data.results || []);
     } catch (err) {
       console.error("Load gradebook results error:", err);
-      setResults([]);
+      if (loadSeqRef.current === seq) setResults([]);
     } finally {
-      setLoading(false);
+      if (loadSeqRef.current === seq) setLoading(false);
     }
   }, [selectedClass, selectedSubject, term, session]);
 

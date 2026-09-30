@@ -101,6 +101,9 @@ export default function AdminApprovalsPage() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // Tags each loadOverview() call so a slower, older request (previous class/term)
+  // can't resolve after a newer one and overwrite the screen with stale data.
+  const overviewSeqRef = useRef(0);
 
   // Review
   const [openSubject, setOpenSubject] = useState<string | null>(null);
@@ -135,18 +138,22 @@ export default function AdminApprovalsPage() {
 
   const loadOverview = useCallback(async () => {
     if (!classId) return;
+    const seq = ++overviewSeqRef.current;
     setLoading(true);
     setError(null);
     try {
       const { res, json } = await api(`/api/admin/results/overview?class_id=${classId}${term ? `&term=${term}` : ""}`);
       if (!res.ok || !json.ok) throw new Error(json.error || "Could not load results.");
+      if (overviewSeqRef.current !== seq) return; // a newer class/term selection already took over
       setOverview(json);
       if (!term) setTerm(json.term);
     } catch (e: any) {
-      setError(e.message);
-      setOverview(null);
+      if (overviewSeqRef.current === seq) {
+        setError(e.message);
+        setOverview(null);
+      }
     } finally {
-      setLoading(false);
+      if (overviewSeqRef.current === seq) setLoading(false);
     }
   }, [classId, term]);
 

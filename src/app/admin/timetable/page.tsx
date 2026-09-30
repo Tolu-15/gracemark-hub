@@ -39,6 +39,9 @@ export default function AdminTimetablePage() {
   const [showCopy, setShowCopy] = useState(false);
   const [view, setView] = useState<"class" | "school">("class");
   const [sideLoading, setSideLoading] = useState(false);
+  // Tags each loadSide() call so a slower, older request (previous class/term)
+  // can't resolve after a newer one and overwrite the screen with stale data.
+  const loadSideSeqRef = React.useRef(0);
 
   useEffect(() => {
     (async () => {
@@ -60,6 +63,7 @@ export default function AdminTimetablePage() {
 
   const loadSide = useCallback(async () => {
     if (!session || !classId) return;
+    const seq = ++loadSideSeqRef.current;
     setSideLoading(true);
     try {
       const headers = await getAuthHeaders();
@@ -67,10 +71,11 @@ export default function AdminTimetablePage() {
         fetch(`/api/timetable/options?session=${encodeURIComponent(session)}&term=${term}&class_id=${classId}`, { headers }).then((r) => r.json()),
         fetch(`/api/timetable?session=${encodeURIComponent(session)}&term=${term}&all=1`, { headers }).then((r) => r.json()),
       ]);
+      if (loadSideSeqRef.current !== seq) return; // a newer selection already took over
       setOptions(o.ok ? o.options : []);
       setAllSlots(a.ok ? a.slots : []);
     } finally {
-      setSideLoading(false);
+      if (loadSideSeqRef.current === seq) setSideLoading(false);
     }
   }, [session, term, classId]);
 
