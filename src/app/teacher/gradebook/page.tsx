@@ -1,7 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
+
+interface ClassPermission {
+  isClassTeacher: boolean;
+  subjectIds: Set<string>;
+}
 
 export default function TeacherGradebookPage() {
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
@@ -12,6 +17,10 @@ export default function TeacherGradebookPage() {
   const [session, setSession] = useState("2026/2027");
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  // What this teacher may actually see per class: the full cross-subject master
+  // view if they're the class teacher, otherwise only the subject(s) they teach
+  // there. Mirrors the access rule enforced server-side in /api/teacher/gradebook.
+  const [classPermissions, setClassPermissions] = useState<Map<string, ClassPermission>>(new Map());
   // Tags each loadResults() call so a slower, older request (previous filter
   // selection) can't resolve after a newer one and overwrite the screen.
   const loadSeqRef = React.useRef(0);
@@ -41,6 +50,17 @@ export default function TeacherGradebookPage() {
         const teacherUid = profile?.id || user.id;
         const idList = Array.from(new Set([user.id, teacherUid].filter(Boolean)));
         const classMap = new Map<string, { id: string; name: string }>();
+        // Mirrors the server's access rule: class-teacher status unlocks every
+        // subject for that class; a subject assignment unlocks only that subject.
+        const permissions = new Map<string, ClassPermission>();
+        const getPerm = (id: string) => {
+          let p = permissions.get(id);
+          if (!p) {
+            p = { isClassTeacher: false, subjectIds: new Set() };
+            permissions.set(id, p);
+          }
+          return p;
+        };
 
         // 1. Check class_teacher_assignments
         try {
@@ -50,7 +70,10 @@ export default function TeacherGradebookPage() {
             .in("teacher_user_id", idList)
             .eq("status", "active");
           (cta || []).forEach((a: any) => {
-            if (a.classes?.id && a.classes?.name) classMap.set(a.classes.id, a.classes);
+            if (a.classes?.id && a.classes?.name) {
+              classMap.set(a.classes.id, a.classes);
+              getPerm(a.classes.id).isClassTeacher = true;
+            }
           });
         } catch (e) {
           console.warn("CTA lookup failed in gradebook:", e);
@@ -63,7 +86,10 @@ export default function TeacherGradebookPage() {
             .select("id, name")
             .in("class_teacher_id", idList);
           (ctClasses || []).forEach((c: any) => {
-            if (c?.id && c?.name) classMap.set(c.id, c);
+            if (c?.id && c?.name) {
+              classMap.set(c.id, c);
+              getPerm(c.id).isClassTeacher = true;
+            }
           });
         } catch (e) {
           console.warn("classes lookup failed in gradebook:", e);
@@ -73,24 +99,22 @@ export default function TeacherGradebookPage() {
         try {
           const { data: sta } = await supabase
             .from("subject_teacher_assignments")
-            .select("class_id, classes(id, name)")
+            .select("class_id, subject_id, classes(id, name)")
             .in("teacher_user_id", idList)
             .eq("status", "active");
           (sta || []).forEach((a: any) => {
-            if (a.classes?.id && a.classes?.name) classMap.set(a.classes.id, a.classes);
+            if (a.classes?.id && a.classes?.name) {
+              classMap.set(a.classes.id, a.classes);
+              if (a.subject_id) getPerm(a.classes.id).subjectIds.add(a.subject_id);
+            }
           });
         } catch (e) {
           console.warn("STA lookup failed in gradebook:", e);
         }
 
-        // 4. Fallback: if no class teacher assignment found, query classes for selection
-        if (!classMap.size) {
-          const { data: allClasses } = await supabase.from("classes").select("id, name").order("name");
-          (allClasses || []).forEach((c) => classMap.set(c.id, c));
-        }
-
         const classList = Array.from(classMap.values()).sort((a, b) => a.name.localeCompare(b.name));
         setClasses(classList);
+        setClassPermissions(permissions);
         if (classList.length > 0) {
           setSelectedClass(classList[0].id);
         }
@@ -120,6 +144,21 @@ export default function TeacherGradebookPage() {
 
     loadSubjects();
   }, []);
+
+  // Subjects this teacher may pick for the selected class — every subject if
+  // they're the class teacher, otherwise only the one(s) they're assigned to teach.
+  const availableSubjects = useMemo(() => {
+    const perm = classPermissions.get(selectedClass);
+    if (!perm || perm.isClassTeacher) return subjects;
+    return subjects.filter((s) => perm.subjectIds.has(s.id));
+  }, [subjects, selectedClass, classPermissions]);
+
+  // Drop a subject selection that's no longer valid after switching classes.
+  useEffect(() => {
+    if (selectedSubject && !availableSubjects.some((s) => s.id === selectedSubject)) {
+      setSelectedSubject("");
+    }
+  }, [availableSubjects, selectedSubject]);
 
   // 3. Load gradebook results via resilient server API
   const loadResults = useCallback(async () => {
@@ -209,7 +248,7 @@ export default function TeacherGradebookPage() {
             className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
           >
             <option value="">All Subjects</option>
-            {subjects.map((s) => (
+            {availableSubjects.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
               </option>
