@@ -1,21 +1,10 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { getAuthHeaders } from "@/lib/supabase/client";
 import { consumeLoginPromptsPending } from "@/lib/loginPrompts";
-
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
+import { enablePushNotifications, pushSupported } from "@/lib/push";
 
 type PromptKind = "install" | "notify";
-
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = atob(base64);
-  const output = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; i++) output[i] = rawData.charCodeAt(i);
-  return output;
-}
 
 function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
@@ -25,10 +14,6 @@ function isStandalone(): boolean {
 function isIos(): boolean {
   if (typeof window === "undefined") return false;
   return /iphone|ipad|ipod/i.test(window.navigator.userAgent) && !(window as any).MSStream;
-}
-
-function pushSupported(): boolean {
-  return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
 
 /**
@@ -98,22 +83,8 @@ export default function PwaAndPushPrompt() {
   async function handleEnableNotifications() {
     setBusy(true);
     try {
-      const permission = await Notification.requestPermission();
-      if (permission === "granted" && VAPID_PUBLIC_KEY) {
-        const registration = await navigator.serviceWorker.ready;
-        const subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
-        });
-        const json = subscription.toJSON();
-        await fetch("/api/notifications/push", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
-          body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
-        });
-      }
-    } catch (err) {
-      console.warn("Enable notifications failed:", err);
+      const result = await enablePushNotifications();
+      if (!result.ok && result.error) console.warn("Enable notifications failed:", result.error);
     } finally {
       setBusy(false);
       dismiss();
