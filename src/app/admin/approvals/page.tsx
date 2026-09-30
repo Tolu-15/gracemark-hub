@@ -194,6 +194,46 @@ export default function AdminApprovalsPage() {
     setSubjectRows(((data as any[]) || []).sort((a, b) => (a.students?.name || "").localeCompare(b.students?.name || "")));
   }
 
+  async function bulkApprove() {
+    if (!overview) return;
+    const targets = overview.grid.filter((r) => (r.counts.submitted || 0) > 0);
+    if (!targets.length) return;
+    const totalScores = targets.reduce((sum, r) => sum + (r.counts.submitted || 0), 0);
+    if (
+      !window.confirm(
+        `Approve ${totalScores} submitted score(s) across ${targets.length} subject${targets.length === 1 ? "" : "s"} for ${className}?`
+      )
+    ) {
+      return;
+    }
+
+    setBusy("bulk-approve");
+    let approvedScores = 0;
+    const failed: string[] = [];
+    try {
+      for (const row of targets) {
+        try {
+          const { res, json } = await api("/api/admin/results/review", {
+            method: "POST",
+            body: JSON.stringify({ class_id: classId, subject_id: row.subjectId, term, action: "approve" }),
+          });
+          if (!res.ok || !json.ok) throw new Error(json.error || "Action failed.");
+          approvedScores += json.updated || 0;
+        } catch {
+          failed.push(row.name);
+        }
+      }
+      flash(
+        failed.length
+          ? `Approved ${approvedScores} score(s); ${failed.length} subject(s) failed: ${failed.join(", ")}.`
+          : `Approved ${approvedScores} score(s) across ${targets.length} subject${targets.length === 1 ? "" : "s"}.`
+      );
+      await loadOverview();
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function review(row: GridRow, action: "approve" | "return", reason?: string) {
     setBusy(`${action}:${row.subjectId}`);
     try {
@@ -376,9 +416,21 @@ export default function AdminApprovalsPage() {
       {tab === "review" ? (
         /* ---------------- REVIEW ---------------- */
         <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-100 text-xs text-slate-500">
-            {className} · {termLabel} · {overview.classSize} students. Numbers show how many students&rsquo; scores are in each state. Only{" "}
-            <strong>submitted</strong> scores can be approved or returned; if a teacher edits approved scores they go back to draft.
+          <div className="px-4 py-3 border-b border-slate-100 text-xs text-slate-500 flex flex-wrap items-center justify-between gap-3">
+            <span>
+              {className} · {termLabel} · {overview.classSize} students. Numbers show how many students&rsquo; scores are in each state. Only{" "}
+              <strong>submitted</strong> scores can be approved or returned; if a teacher edits approved scores they go back to draft.
+            </span>
+            {overview.grid.some((r) => (r.counts.submitted || 0) > 0) && (
+              <button
+                type="button"
+                disabled={!!busy}
+                onClick={bulkApprove}
+                className="shrink-0 px-3 py-1.5 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg disabled:opacity-40 cursor-pointer whitespace-nowrap"
+              >
+                {busy === "bulk-approve" ? "Approving all…" : "Approve all submitted"}
+              </button>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">

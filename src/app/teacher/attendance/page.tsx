@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
+import { enqueue, isNetworkFailure } from "@/lib/offlineQueue";
+import OfflineQueueBanner from "@/components/shared/OfflineQueueBanner";
 
 interface StudentAttendance {
   student_id: string;
@@ -201,11 +203,11 @@ export default function TeacherAttendancePage() {
     setSaving(true);
     setSaveStatus(null);
 
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const userId = sessionData?.session?.user?.id;
-
-      const recordsToUpsert = students.map((s) => ({
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData?.session?.user?.id;
+    const body = JSON.stringify({
+      action: "save_daily",
+      records: students.map((s) => ({
         student_id: s.student_id,
         class_id: selectedClass,
         term: currentTerm,
@@ -214,18 +216,17 @@ export default function TeacherAttendancePage() {
         am_present: !!s.am,
         pm_present: !!s.pm,
         recorded_by: userId || null,
-      }));
+      })),
+      term: currentTerm,
+      session: currentSession,
+      class_id: selectedClass,
+    });
 
+    try {
       const res = await fetch("/api/teacher/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
-        body: JSON.stringify({
-          action: "save_daily",
-          records: recordsToUpsert,
-          term: currentTerm,
-          session: currentSession,
-          class_id: selectedClass,
-        }),
+        body,
       });
 
       const resJson = await res.json();
@@ -241,10 +242,19 @@ export default function TeacherAttendancePage() {
       loadAttendance();
     } catch (err: any) {
       console.error("Save daily attendance error:", err);
-      setSaveStatus({
-        type: "error",
-        text: `Error saving daily register: ${err.message || "Unknown error"}`,
-      });
+      if (isNetworkFailure(err)) {
+        enqueue({ url: "/api/teacher/attendance", method: "POST", body, label: `Daily attendance — ${selectedDate}` });
+        setSaveStatus({
+          type: "success",
+          text: `You're offline — the daily register for ${selectedDate} was saved and will sync automatically once you're back online.`,
+        });
+        setTimeout(() => setSaveStatus(null), 6000);
+      } else {
+        setSaveStatus({
+          type: "error",
+          text: `Error saving daily register: ${err.message || "Unknown error"}`,
+        });
+      }
     } finally {
       setSaving(false);
     }
@@ -256,36 +266,36 @@ export default function TeacherAttendancePage() {
     setSaving(true);
     setSaveStatus(null);
 
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData?.session?.user?.id;
+    const payload = students.map((s) => {
+      const opened = Math.max(0, s.timesOpened || defaultTimesOpened);
+      const present = Math.min(opened, Math.max(0, s.timesPresent || 0));
+      const absent = Math.max(0, opened - present);
+      return {
+        student_id: s.student_id,
+        class_id: selectedClass,
+        term: currentTerm,
+        session: currentSession,
+        times_opened: opened,
+        times_present: present,
+        times_absent: absent,
+        recorded_by: userId || null,
+      };
+    });
+    const body = JSON.stringify({
+      action: "save_summary",
+      records: payload,
+      term: currentTerm,
+      session: currentSession,
+      class_id: selectedClass,
+    });
+
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const userId = sessionData?.session?.user?.id;
-
-      const payload = students.map((s) => {
-        const opened = Math.max(0, s.timesOpened || defaultTimesOpened);
-        const present = Math.min(opened, Math.max(0, s.timesPresent || 0));
-        const absent = Math.max(0, opened - present);
-        return {
-          student_id: s.student_id,
-          class_id: selectedClass,
-          term: currentTerm,
-          session: currentSession,
-          times_opened: opened,
-          times_present: present,
-          times_absent: absent,
-          recorded_by: userId || null,
-        };
-      });
-
       const res = await fetch("/api/teacher/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
-        body: JSON.stringify({
-          action: "save_summary",
-          records: payload,
-          term: currentTerm,
-          session: currentSession,
-          class_id: selectedClass,
-        }),
+        body,
       });
 
       const resJson = await res.json();
@@ -301,10 +311,19 @@ export default function TeacherAttendancePage() {
       loadAttendance();
     } catch (err: any) {
       console.error("Save summary attendance error:", err);
-      setSaveStatus({
-        type: "error",
-        text: `Error saving summary: ${err.message || "Unknown error"}`,
-      });
+      if (isNetworkFailure(err)) {
+        enqueue({ url: "/api/teacher/attendance", method: "POST", body, label: `Term attendance summary — ${currentTerm}` });
+        setSaveStatus({
+          type: "success",
+          text: `You're offline — the term attendance summary was saved and will sync automatically once you're back online.`,
+        });
+        setTimeout(() => setSaveStatus(null), 6000);
+      } else {
+        setSaveStatus({
+          type: "error",
+          text: `Error saving summary: ${err.message || "Unknown error"}`,
+        });
+      }
     } finally {
       setSaving(false);
     }
@@ -312,6 +331,7 @@ export default function TeacherAttendancePage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      <OfflineQueueBanner />
       {/* Header */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
