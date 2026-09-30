@@ -97,7 +97,7 @@ body.bg-slate-950 .tdev-site-footer a.tdev-link:focus-visible {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: tdev-footer-shimmer 4s ease-in-out infinite;
+  animation: tdev-footer-shimmer 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 .tdev-site-footer a.tdev-link:hover,
@@ -110,8 +110,12 @@ body.bg-slate-950 .tdev-site-footer a.tdev-link {
   background-image: linear-gradient(100deg, #c9a84c 0%, #c9a84c 40%, #fff1c2 50%, #c9a84c 60%, #c9a84c 100%);
 }
 
+/* A quick, clear flash of shine followed by a long pause reads as deliberate;
+   the old 4s ease-in-out crawl (half the cycle just easing through the middle)
+   looked more like stutter than a shimmer. */
 @keyframes tdev-footer-shimmer {
-  0%, 50% { background-position: 100% 0; }
+  0% { background-position: 180% 0; }
+  22% { background-position: 0% 0; }
   100% { background-position: 0% 0; }
 }
 
