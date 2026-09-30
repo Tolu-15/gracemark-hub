@@ -475,6 +475,33 @@ export default function AdminHistoricalResultsPage() {
                 </div>
               )}
 
+              {sheet.subjects.length > 0 && (
+                <div className="border-b border-slate-200 print:hidden">
+                  <div className="px-4 py-2 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Highest &amp; Lowest, per Subject
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {sheet.subjects.map((s: any) => {
+                      const st = sheet.subjectStats[s.id] || {};
+                      if (!st.highestNames?.length) return null;
+                      return (
+                        <div key={s.id} className="flex flex-col sm:flex-row sm:items-center gap-2 px-4 py-2">
+                          <span className="text-xs font-semibold text-slate-700 w-full sm:w-40 shrink-0">{s.name}</span>
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-semibold">
+                              Highest: {st.highestNames.join(", ")} — {fmt(st.highest)}%
+                            </span>
+                            <span className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 font-semibold">
+                              Lowest: {st.lowestNames.join(", ")} — {fmt(st.lowest)}%
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {sheet.rows.length === 0 ? (
                 <p className="p-10 text-center text-sm text-slate-400">No scores entered for this class and period.</p>
               ) : (

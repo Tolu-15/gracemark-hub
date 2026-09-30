@@ -25,6 +25,19 @@ function stats(values: number[]) {
   };
 }
 
+/** Same as stats(), but also names who scored the highest/lowest (ties: all of them). */
+function statsWithNames(pairs: { name: string; value: number }[]) {
+  const base = stats(pairs.map((p) => p.value));
+  if (!pairs.length) return { ...base, highestNames: [] as string[], lowestNames: [] as string[] };
+  const max = Math.max(...pairs.map((p) => p.value));
+  const min = Math.min(...pairs.map((p) => p.value));
+  return {
+    ...base,
+    highestNames: pairs.filter((p) => p.value === max).map((p) => p.name),
+    lowestNames: pairs.filter((p) => p.value === min).map((p) => p.name),
+  };
+}
+
 /**
  * GET ?classId=&session=&term=term1|term2|term3|annual&milestone=PR1|PR2|PR3|TR
  * Class master broadsheet built with the same engine as the report cards
@@ -56,12 +69,16 @@ export async function GET(req: NextRequest) {
 
       const subjectStats: Record<string, any> = {};
       subjects.forEach((sub) => {
-        const lines = reports.map((r) => r.subjects.find((l) => l.subjectId === sub.id)).filter(Boolean) as StudentReport["subjects"];
-        const values = lines.map((l) => (isTR ? l.total : l.percentage || 0));
+        const pairs = reports
+          .map((r) => {
+            const line = r.subjects.find((l) => l.subjectId === sub.id);
+            return line ? { name: r.student.name, value: isTR ? line.total : line.percentage || 0, grade: line.grade } : null;
+          })
+          .filter((p): p is { name: string; value: number; grade: string } => p !== null);
         subjectStats[sub.id] = {
-          ...stats(values),
-          grades: gradeCounts(lines.map((l) => l.grade)),
-          passes: lines.filter((l) => l.grade !== "F").length,
+          ...statsWithNames(pairs),
+          grades: gradeCounts(pairs.map((p) => p.grade)),
+          passes: pairs.filter((p) => p.grade !== "F").length,
         };
       });
 
@@ -171,11 +188,11 @@ export async function GET(req: NextRequest) {
 
     const subjectStats: Record<string, any> = {};
     subjects.forEach((sub) => {
-      const vals = rows.map((r) => r.perSubject[sub.id]).filter(Boolean);
+      const vals = rows.map((r) => (r.perSubject[sub.id] ? { ...r.perSubject[sub.id], name: r.name } : null)).filter(Boolean) as any[];
       subjectStats[sub.id] = {
-        ...stats(vals.map((v: any) => v.annual)),
-        grades: gradeCounts(vals.map((v: any) => v.grade)),
-        passes: vals.filter((v: any) => v.grade !== "F").length,
+        ...statsWithNames(vals.map((v) => ({ name: v.name, value: v.annual }))),
+        grades: gradeCounts(vals.map((v) => v.grade)),
+        passes: vals.filter((v) => v.grade !== "F").length,
       };
     });
 
