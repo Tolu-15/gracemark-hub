@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import ReportSheet from "@/components/results/ReportSheet";
+import { PageLoader, InlineSpinner } from "@/components/shared/PageLoader";
 
 type Milestone = "PR1" | "PR2" | "PR3" | "TR";
 type Tab = "review" | "publish" | "settings";
@@ -289,6 +290,11 @@ export default function AdminApprovalsPage() {
   const confirmMs = confirm ? overview?.milestones.find((m) => m.milestone === confirm.milestone) : null;
   const className = classes.find((c) => c.id === classId)?.name || "";
   const termLabel = TERMS.find((t) => t.value === term)?.label || "";
+  // Nothing on screen yet vs. re-fetching after switching class/term with an
+  // overview already showing — the latter keeps it visible (dimmed) instead of
+  // wiping it back to "Loading…" every time.
+  const isFirstLoad = loading && !overview;
+  const isRefetching = loading && !!overview;
 
   return (
     <div className="space-y-5 max-w-6xl mx-auto">
@@ -357,9 +363,17 @@ export default function AdminApprovalsPage() {
         </div>
       )}
 
-      {loading && !overview ? (
-        <div className="p-10 text-center text-sm text-slate-500">Loading…</div>
-      ) : !overview ? null : tab === "review" ? (
+      {isRefetching && (
+        <div className="px-1">
+          <InlineSpinner label="Updating…" />
+        </div>
+      )}
+
+      {isFirstLoad ? (
+        <PageLoader label="Loading approvals…" />
+      ) : !overview ? null : (
+      <div className={isRefetching ? "gm-refetching" : ""}>
+      {tab === "review" ? (
         /* ---------------- REVIEW ---------------- */
         <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100 text-xs text-slate-500">
@@ -585,6 +599,8 @@ export default function AdminApprovalsPage() {
             <p className="text-[11px] text-slate-500 mt-2">Already-published results keep the date they were published with. Republish to update them.</p>
           </div>
         </div>
+      )}
+      </div>
       )}
 
       {/* Return modal */}
