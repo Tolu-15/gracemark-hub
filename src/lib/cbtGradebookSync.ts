@@ -12,10 +12,13 @@ export async function resolveExamSession(service: Service, academicSessionId: st
   return { sessionId: (active?.id as string) || null, sessionName: (active?.name as string) || "" };
 }
 
+const GRADING_COMPONENT_MAX = { test1: 15, test2: 15, test3: 30, exam: 70 } as const;
+export type CbtGradingComponent = keyof typeof GRADING_COMPONENT_MAX;
+
 /**
  * Pushes one student's CBT total into their results row for that subject/term —
- * as the "exam" component (max 70) or a test slot (max 30), scaled from the raw
- * CBT total. Idempotent: re-running just overwrites the same component's value.
+ * scaled into whichever CA slot the exam is configured to feed (a test slot or
+ * the Term Exam). Idempotent: re-running just overwrites the same slot's value.
  */
 export async function syncCbtScoreToGradebook(
   service: Service,
@@ -28,11 +31,11 @@ export async function syncCbtScoreToGradebook(
     academicSessionId?: string | null;
     rawScore: number;
     maxRawScore: number;
-    component: "exam" | "test";
+    component: CbtGradingComponent;
   }
 ): Promise<void> {
   const { studentId, classId, subjectId, term, sessionName, academicSessionId, rawScore, maxRawScore, component } = opts;
-  const maxScore = component === "exam" ? 70 : 30;
+  const maxScore = GRADING_COMPONENT_MAX[component];
   const scaledScore = maxRawScore > 0 ? Math.min(maxScore, Math.round((rawScore / maxRawScore) * maxScore)) : 0;
 
   const { data: existingResult } = await service
@@ -47,6 +50,10 @@ export async function syncCbtScoreToGradebook(
   const rawBreakdown = existingResult ? normalizeBreakdown(existingResult) : emptyRawScores();
   if (component === "exam") {
     rawBreakdown.exam = String(scaledScore);
+  } else if (component === "test1") {
+    rawBreakdown.tests[0] = String(scaledScore);
+  } else if (component === "test2") {
+    rawBreakdown.tests[1] = String(scaledScore);
   } else {
     rawBreakdown.tests[2] = String(scaledScore);
   }
