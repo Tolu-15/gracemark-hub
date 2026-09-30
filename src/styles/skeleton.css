@@ -32,51 +32,39 @@
   to { opacity: 1; transform: none; }
 }
 
-/* Shared launch-splash look, used by both:
-   - #gm-splash, the installed-app splash painted from server HTML before any JS
-     runs (hidden outside standalone display mode, below), and
-   - TdevLoader, the React-controlled overlay that stays up while the session/role
-     check runs.
-   Sharing one visual means the handoff between the two (which happens only in
-   standalone/installed mode, right as React hydrates) is imperceptible instead
-   of a jarring switch between two different-looking loading screens. */
-.gm-launch-splash {
+/* Installed-app launch splash: painted from server HTML before any JS runs. */
+#gm-splash {
+  display: none;
   position: fixed;
   inset: 0;
   z-index: 10000;
   background: #ffffff;
-  display: flex;
   align-items: center;
   justify-content: center;
   flex-direction: column;
   gap: 1.4rem;
-  opacity: 1;
   transition: opacity 0.35s ease;
 }
-.gm-launch-splash.gm-splash--out { opacity: 0; pointer-events: none; }
-.gm-launch-splash .gm-splash__mark { position: relative; width: 112px; height: 112px; display: grid; place-items: center; }
-.gm-launch-splash .gm-splash__ring {
+@media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
+  #gm-splash { display: flex; }
+}
+#gm-splash.gm-splash--out { opacity: 0; pointer-events: none; }
+#gm-splash .gm-splash__mark { position: relative; width: 112px; height: 112px; display: grid; place-items: center; }
+#gm-splash .gm-splash__ring {
   position: absolute; inset: 0; border-radius: 50%;
   border: 2px solid #eef1f6; border-top-color: #c9a84c;
   animation: gm-splash-spin 1.4s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
 }
-.gm-launch-splash img { width: 64px; height: 64px; border-radius: 16px; object-fit: cover; animation: gm-reveal 0.6s ease both; }
-.gm-launch-splash .gm-splash__name { font-weight: 700; font-size: 1.05rem; color: #0f172a; letter-spacing: -0.01em; }
-.gm-launch-splash .gm-splash__bar { position: relative; width: 140px; height: 2px; border-radius: 2px; background: #eef1f6; overflow: hidden; }
-.gm-launch-splash .gm-splash__bar::after {
+#gm-splash img { width: 64px; height: 64px; border-radius: 16px; object-fit: cover; animation: gm-reveal 0.6s ease both; }
+#gm-splash .gm-splash__name { font-weight: 700; font-size: 1.05rem; color: #0f172a; letter-spacing: -0.01em; }
+#gm-splash .gm-splash__bar { position: relative; width: 140px; height: 2px; border-radius: 2px; background: #eef1f6; overflow: hidden; }
+#gm-splash .gm-splash__bar::after {
   content: ""; position: absolute; inset: 0; width: 40%;
   background: linear-gradient(90deg, transparent, #c9a84c, transparent);
   animation: gm-splash-bar 1.2s ease-in-out infinite;
 }
 @keyframes gm-splash-spin { to { transform: rotate(360deg); } }
 @keyframes gm-splash-bar { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
-
-/* #gm-splash only needs to exist in installed/standalone mode — in a regular
-   browser tab, TdevLoader (same .gm-launch-splash look) is the only one that shows. */
-#gm-splash { display: none; }
-@media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
-  #gm-splash { display: flex; }
-}
 
 /* Compact first-load branded loader — sits inside a page's content area, not full-screen. */
 .gm-pageloader {
@@ -134,6 +122,6 @@
 @keyframes gm-spin { to { transform: rotate(360deg); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .gm-skel::after, .gm-reveal, .gm-launch-splash *, .gm-launch-splash { animation: none !important; transition: none !important; }
+  .gm-skel::after, .gm-reveal, #gm-splash *, #gm-splash { animation: none !important; transition: none !important; }
   .gm-pageloader__ring, .gm-inline-spin__ring { animation: none !important; }
 }
