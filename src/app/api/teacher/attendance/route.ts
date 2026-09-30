@@ -39,7 +39,7 @@ async function resolveSession(service: Service, name?: string | null) {
  * created on the fly; a student with an existing but non-active row (withdrawn,
  * transferred) is left alone and excluded, same as before.
  */
-async function loadEnrollments(service: Service, classId: string, sessionId: string, sessionName: string) {
+async function loadEnrollments(service: Service, classId: string, sessionId: string) {
   const { data: classStudents, error: csErr } = await service
     .from("students")
     .select("id, full_name, name, admission_no")
@@ -67,7 +67,6 @@ async function loadEnrollments(service: Service, classId: string, sessionId: str
         toCreate.map((s: any) => ({
           student_id: s.id,
           academic_session_id: sessionId,
-          session: sessionName,
           class_id: classId,
           status: "active",
         }))
@@ -111,7 +110,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, students: [] });
     }
 
-    const roster = await loadEnrollments(service, classId, session.id, session.name);
+    const roster = await loadEnrollments(service, classId, session.id);
     if (!roster.length) {
       return NextResponse.json({ ok: true, students: [] });
     }
@@ -220,7 +219,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No academic session found." }, { status: 400 });
     }
 
-    const roster = await loadEnrollments(service, classId, sess.id, sess.name);
+    const roster = await loadEnrollments(service, classId, sess.id);
     const enrollmentByStudent = new Map(roster.map((r) => [r.studentId, r.enrollmentId]));
 
     const rows = records
