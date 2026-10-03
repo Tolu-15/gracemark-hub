@@ -45,7 +45,8 @@ export async function POST(req: NextRequest) {
     .from("cbt_submissions")
     .update({
       manual_score: manualScore,
-      total_score: totalScore,
+      // total_score is a generated column (auto_score + manual_score) —
+      // never written directly, the database recomputes it from manual_score.
       passed,
       status: "graded",
       graded_by: actor.dbUserId,

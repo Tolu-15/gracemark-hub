@@ -67,7 +67,9 @@ export async function finalizeSubmission({ service, exam, session, studentId, an
       enrollment_id: enrollmentId,
       auto_score: autoScore,
       manual_score: 0,
-      total_score: totalScore,
+      // total_score is a generated column (auto_score + manual_score) — the
+      // database computes it; a value must never be written here, or every
+      // insert is rejected with "cannot insert a non-DEFAULT value".
       passed,
       status,
       answers,

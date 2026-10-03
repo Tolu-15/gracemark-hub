@@ -806,7 +806,7 @@ export default function ExamManager({ role }: { role: "admin" | "teacher" }) {
                       <tr key={s.id} className="hover:bg-slate-50/60">
                         <td className="px-4 py-2.5 font-semibold text-slate-900">{s.students?.name || "Student"}</td>
                         <td className="px-2 py-2.5 text-center font-bold">
-                          {s.total_score !== null ? `${s.total_score}/${subMaxScore}` : "Pending"}
+                          {s.status === "graded" ? `${s.total_score}/${subMaxScore}` : "Pending"}
                         </td>
                         <td className="px-2 py-2.5 text-center">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${s.status === "graded" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{s.status}</span>
