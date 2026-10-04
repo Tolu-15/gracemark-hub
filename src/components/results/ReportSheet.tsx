@@ -251,7 +251,7 @@ export default function ReportSheet({ report }: { report: Report }) {
           <div className="text-[10px] font-bold uppercase text-slate-500">Class</div>
           <div className="font-semibold">
             {report.className}
-            {isTR && <span className="text-slate-500 font-normal"> · {report.classSize} in class</span>}
+            {isTR && <span className="text-slate-500 font-normal"> · {report.summary.rankedCount ?? report.classSize} in class</span>}
           </div>
         </div>
       </section>
