@@ -4,6 +4,7 @@ import { logAudit } from "@/lib/audit";
 import { notifyUsers } from "@/lib/notify";
 import { applyLevelWidePositions, buildClassReports, ensureEnrollments, Milestone, MILESTONES, STATUS_COLUMN } from "@/lib/reportBuilder";
 import { usersByAnyId } from "@/lib/serverContext";
+import { awardPositionBadges } from "@/lib/badges";
 
 /**
  * POST { class_id, term, milestone, force? }
@@ -82,6 +83,10 @@ export async function POST(req: NextRequest) {
     const stale = Array.from(build.enrollmentByStudent.values()).filter((id) => !keep.has(id));
     if (stale.length) {
       await service.from("result_snapshots").delete().eq("term", term).eq("report_type", milestone).in("enrollment_id", stale);
+    }
+
+    if (milestone === "TR") {
+      await awardPositionBadges(service, build.reports, term, session);
     }
 
     // Mark exactly the included result rows as published for this milestone
