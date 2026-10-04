@@ -4,6 +4,7 @@ import React from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
 import PortalLayout, { NavItem } from "@/components/shared/PortalLayout";
 import { useAnnouncementBadge, badgeText } from "@/components/announcements/useAnnouncementBadge";
+import { usePendingActions } from "@/components/shared/usePendingActions";
 
 const adminNavItems: NavItem[] = [
   {
@@ -139,7 +140,12 @@ const adminNavItems: NavItem[] = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const unread = useAnnouncementBadge();
-  const navItems = adminNavItems.map((i) => (i.href === "/admin/announcements" ? { ...i, badge: badgeText(unread) } : i));
+  const { count: pendingApprovals } = usePendingActions();
+  const navItems = adminNavItems.map((i) => {
+    if (i.href === "/admin/announcements") return { ...i, badge: badgeText(unread) };
+    if (i.href === "/admin/approvals") return { ...i, badge: badgeText(pendingApprovals) };
+    return i;
+  });
   return (
     <AuthGuard requiredRole="admin">
       <PortalLayout role="admin" navItems={navItems}>

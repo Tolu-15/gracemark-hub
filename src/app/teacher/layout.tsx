@@ -4,6 +4,7 @@ import React from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
 import PortalLayout, { NavItem } from "@/components/shared/PortalLayout";
 import { useAnnouncementBadge, badgeText } from "@/components/announcements/useAnnouncementBadge";
+import { usePendingActions } from "@/components/shared/usePendingActions";
 
 const teacherNavItems: NavItem[] = [
   {
@@ -114,7 +115,12 @@ const teacherNavItems: NavItem[] = [
 
 export default function TeacherLayout({ children }: { children: React.ReactNode }) {
   const unread = useAnnouncementBadge();
-  const navItems = teacherNavItems.map((i) => (i.href === "/teacher/announcements" ? { ...i, badge: badgeText(unread) } : i));
+  const { count: pendingActions } = usePendingActions();
+  const navItems = teacherNavItems.map((i) => {
+    if (i.href === "/teacher/announcements") return { ...i, badge: badgeText(unread) };
+    if (i.href === "/teacher/score-entry") return { ...i, badge: badgeText(pendingActions) };
+    return i;
+  });
   return (
     <AuthGuard requiredRole="teacher">
       <PortalLayout role="teacher" navItems={navItems}>
