@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
 import { logAudit } from "@/lib/audit";
 import { notifyUsers } from "@/lib/notify";
-import { buildClassReports, ensureEnrollments, Milestone, MILESTONES, STATUS_COLUMN } from "@/lib/reportBuilder";
+import { applyLevelWidePositions, buildClassReports, ensureEnrollments, Milestone, MILESTONES, STATUS_COLUMN } from "@/lib/reportBuilder";
 import { usersByAnyId } from "@/lib/serverContext";
 
 /**
@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
       await ensureEnrollments(service, class_id, build.sessionId, missing);
       build = await buildClassReports(service, { classId: class_id, term, session, milestone });
     }
+    await applyLevelWidePositions(service, build);
 
     const publishedAt = new Date().toISOString();
     const snapshots = build.reports.map((report) => ({

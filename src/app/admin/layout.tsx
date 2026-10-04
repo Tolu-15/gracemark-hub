@@ -58,6 +58,11 @@ const adminNavItems: NavItem[] = [
   },
   {
     category: "Academics & Staff",
+    label: "Leaderboard",
+    href: "/admin/leaderboard",
+  },
+  {
+    category: "Academics & Staff",
     label: "Timetable",
     href: "/admin/timetable",
   },
