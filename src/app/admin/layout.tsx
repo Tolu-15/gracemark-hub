@@ -63,6 +63,11 @@ const adminNavItems: NavItem[] = [
   },
   {
     category: "Academics & Staff",
+    label: "Badges",
+    href: "/admin/badges",
+  },
+  {
+    category: "Academics & Staff",
     label: "Timetable",
     href: "/admin/timetable",
   },
