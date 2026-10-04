@@ -33,6 +33,13 @@ const TERMS = [
 
 const MEDAL = ["🥇", "🥈", "🥉"];
 
+interface BestOfClass {
+  level: string;
+  classNames: string[];
+  best: LeaderboardRow | null;
+  studentCount: number;
+}
+
 function gradeTone(g?: string) {
   return g === "A" ? "text-emerald-700 bg-emerald-50" : g === "B" ? "text-sky-700 bg-sky-50" : g === "D" ? "text-amber-700 bg-amber-50" : g === "F" ? "text-rose-700 bg-rose-50" : "text-slate-700 bg-slate-100";
 }
@@ -48,7 +55,10 @@ export default function AdminLeaderboardPage() {
   const [loadingLevels, setLoadingLevels] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [bests, setBests] = useState<BestOfClass[]>([]);
+  const [loadingBests, setLoadingBests] = useState(false);
   const loadSeqRef = useRef(0);
+  const bestsSeqRef = useRef(0);
 
   useEffect(() => {
     (async () => {
@@ -105,6 +115,31 @@ export default function AdminLeaderboardPage() {
     loadLeaderboard();
   }, [loadLeaderboard]);
 
+  const loadBests = useCallback(async () => {
+    if (!session) return;
+    const seq = ++bestsSeqRef.current;
+    setLoadingBests(true);
+    try {
+      const url = new URL("/api/admin/leaderboard", window.location.origin);
+      url.searchParams.set("top", "1");
+      url.searchParams.set("term", term);
+      url.searchParams.set("session", session);
+      url.searchParams.set("milestone", "TR");
+      const res = await fetch(url.toString(), { headers: await getAuthHeaders() });
+      const json = await res.json();
+      if (bestsSeqRef.current !== seq) return;
+      if (res.ok && json.ok) setBests(json.bests || []);
+    } catch {
+      /* the "best of class" strip is a convenience; ignore failures */
+    } finally {
+      if (bestsSeqRef.current === seq) setLoadingBests(false);
+    }
+  }, [term, session]);
+
+  useEffect(() => {
+    loadBests();
+  }, [loadBests]);
+
   const showsArms = new Set(rows.map((r) => r.className)).size > 1;
 
   return (
@@ -156,6 +191,39 @@ export default function AdminLeaderboardPage() {
               </div>
 
               {error && <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">{error}</div>}
+
+              <div>
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Best of Each Class</h2>
+                {loadingBests ? (
+                  <div className="py-8 text-center text-slate-400 text-xs">Loading…</div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {bests.map((b) => (
+                      <button
+                        key={b.level}
+                        type="button"
+                        onClick={() => setLevel(b.level)}
+                        className={`text-left bg-white border rounded-2xl p-3 shadow-xs hover:border-slate-300 transition-colors cursor-pointer ${
+                          level === b.level ? "border-slate-900 ring-1 ring-slate-900" : "border-slate-200/80"
+                        }`}
+                      >
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{b.level}</div>
+                        {b.best ? (
+                          <>
+                            <div className="text-sm font-bold text-slate-900 truncate mt-1">🏆 {b.best.name}</div>
+                            <div className="text-[11px] text-slate-500">
+                              {b.classNames.length > 1 ? b.best.className : b.best.admissionNo} ·{" "}
+                              {b.best.gpa !== null ? `GPA ${b.best.gpa.toFixed(2)}` : `${b.best.percentage}%`}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-xs text-slate-400 mt-1">No results yet</div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
                 {loading ? (
