@@ -21,31 +21,34 @@ export async function POST(req: NextRequest) {
     const boolAllow = Boolean(allow_edit);
     setTermEditOverride(session, term, boolAllow);
 
-    if (service) {
-      try {
-        await service.from("terms").upsert(
-          {
-            session,
-            term,
-            allow_teacher_edit: boolAllow,
-            status: boolAllow ? "open" : "closed",
-          },
-          { onConflict: "session,term" }
-        );
-      } catch {
-        try {
-          await service.from("terms").upsert(
-            {
-              session,
-              term,
-              status: boolAllow ? "open" : "closed",
-            },
-            { onConflict: "session,term" }
-          );
-        } catch {
-          // Ignore fallback upsert failures
-        }
-      }
+    if (!service) {
+      return NextResponse.json({ error: "Server service role not configured." }, { status: 503 });
+    }
+
+    let { error: upsertError } = await service.from("terms").upsert(
+      {
+        session,
+        term,
+        allow_teacher_edit: boolAllow,
+        status: boolAllow ? "open" : "closed",
+      },
+      { onConflict: "session,term" }
+    );
+
+    if (upsertError && upsertError.code === "42703") {
+      // allow_teacher_edit column doesn't exist in this environment — fall back to status only.
+      ({ error: upsertError } = await service.from("terms").upsert(
+        {
+          session,
+          term,
+          status: boolAllow ? "open" : "closed",
+        },
+        { onConflict: "session,term" }
+      ));
+    }
+
+    if (upsertError) {
+      return NextResponse.json({ error: upsertError.message }, { status: 500 });
     }
 
     return NextResponse.json({

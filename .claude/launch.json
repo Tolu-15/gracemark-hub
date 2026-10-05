@@ -4,7 +4,7 @@
     {
       "name": "gracemark-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "-p", "$PORT"],
+      "runtimeArgs": ["run", "dev"],
       "port": 3000,
       "autoPort": true
     }

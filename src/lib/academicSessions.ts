@@ -92,32 +92,23 @@ export async function createAcademicSession(
  * Delete a specific academic session by name or id.
  */
 export async function deleteAcademicSession(identifier: string): Promise<boolean> {
-  const settings = await getAppSettings();
-  const currentSession = settings?.current_session || "";
-
-  // The identifier may be the session id or its name (e.g. "2025/2026")
+  // The identifier may be the session id or its name (e.g. "2025/2026"). The
+  // API route resolves it by name, so look up the name first if an id was passed.
   const isId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
-  const { error } = await supabase
-    .from("academic_sessions")
-    .delete()
-    .eq(isId ? "id" : "name", identifier);
-
-  if (error) {
-    if (error.code === "23503") {
-      throw new Error(
-        `"${identifier}" still has students, teacher assignments or results linked to it, so it cannot be deleted. ` +
-          "Only an empty session (for example one created by mistake) can be deleted."
-      );
-    }
-    throw new Error(error.message);
+  let name = identifier;
+  if (isId) {
+    const { data } = await supabase.from("academic_sessions").select("name").eq("id", identifier).maybeSingle();
+    name = data?.name || identifier;
   }
 
-  // If deleted session was the current session in app_settings, clear it
-  if (currentSession === identifier) {
-    await setAppSettings({
-      current_term: settings?.current_term || "term1",
-      current_session: "",
-    });
+  const res = await fetch("/api/admin/sessions", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+    body: JSON.stringify({ name }),
+  });
+  const json = await res.json().catch(() => ({ ok: false, error: "Unexpected server response" }));
+  if (!res.ok || !json.ok) {
+    throw new Error(json.error || "Failed to delete session");
   }
 
   return true;
@@ -127,20 +118,15 @@ export async function deleteAcademicSession(identifier: string): Promise<boolean
  * Delete all academic sessions and reset current_session in app_settings.
  */
 export async function deleteAllAcademicSessions(): Promise<boolean> {
-  const { error } = await supabase
-    .from("academic_sessions")
-    .delete()
-    .neq("name", "__non_existent_key__");
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const settings = await getAppSettings();
-  await setAppSettings({
-    current_term: settings?.current_term || "term1",
-    current_session: "",
+  const res = await fetch("/api/admin/sessions", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+    body: JSON.stringify({ all: true }),
   });
+  const json = await res.json().catch(() => ({ ok: false, error: "Unexpected server response" }));
+  if (!res.ok || !json.ok) {
+    throw new Error(json.error || "Failed to delete all sessions");
+  }
 
   return true;
 }

@@ -4,7 +4,7 @@ import React from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
 import PortalLayout, { NavItem } from "@/components/shared/PortalLayout";
 import { useAnnouncementBadge, badgeText } from "@/components/announcements/useAnnouncementBadge";
-import { usePendingApprovalsBadge } from "@/components/admin/usePendingApprovalsBadge";
+import { usePendingActions } from "@/components/shared/usePendingActions";
 
 const adminNavItems: NavItem[] = [
   {
@@ -150,7 +150,7 @@ const adminNavItems: NavItem[] = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const unread = useAnnouncementBadge();
-  const pendingApprovals = usePendingApprovalsBadge();
+  const { count: pendingApprovals } = usePendingActions();
   const navItems = adminNavItems.map((i) => {
     if (i.href === "/admin/announcements") return { ...i, badge: badgeText(unread) };
     if (i.href === "/admin/approvals") return { ...i, badge: badgeText(pendingApprovals) };
