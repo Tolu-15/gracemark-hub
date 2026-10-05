@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import PoweredBy from "@/components/shared/PoweredBy";
+import { markLoginPromptsPending } from "@/lib/loginPrompts";
 
 export default function OtpVerifyPage() {
   const router = useRouter();
@@ -104,6 +105,7 @@ export default function OtpVerifyPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Invalid code.");
       setSuccess(true);
+      markLoginPromptsPending();
       setTimeout(() => router.replace("/admin/dashboard"), 1200);
     } catch (err: any) {
       setError(err.message || "Verification failed.");

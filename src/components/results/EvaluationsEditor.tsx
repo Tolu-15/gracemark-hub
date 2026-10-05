@@ -48,6 +48,9 @@ export default function EvaluationsEditor({
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+  // Tags each load() call so a slower, older request (previous class/term) can't
+  // resolve after a newer one and overwrite the screen with stale data.
+  const loadSeqRef = React.useRef(0);
 
   useEffect(() => {
     if (!classId && classes[0]) setClassId(classes[0].id);
@@ -59,20 +62,24 @@ export default function EvaluationsEditor({
 
   const load = useCallback(async () => {
     if (!classId) return;
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     setMessage(null);
     try {
       const res = await fetch(`/api/results/evaluations?class_id=${classId}&term=${term}`, { headers: await getAuthHeaders() });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || "Could not load students.");
+      if (loadSeqRef.current !== seq) return; // a newer class/term selection already took over
       setSession(json.session);
       setRows(json.students);
       setDirty(false);
     } catch (e: any) {
-      setMessage({ type: "error", text: e.message });
-      setRows([]);
+      if (loadSeqRef.current === seq) {
+        setMessage({ type: "error", text: e.message });
+        setRows([]);
+      }
     } finally {
-      setLoading(false);
+      if (loadSeqRef.current === seq) setLoading(false);
     }
   }, [classId, term]);
 

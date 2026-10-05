@@ -18,7 +18,9 @@ import {
   isSeniorClass,
 } from "@/lib/gradingEngine";
 import { RawScores } from "@/types/result";
-import { SkeletonRows } from "@/components/shared/Skeleton";
+import { PageLoader, InlineSpinner } from "@/components/shared/PageLoader";
+import { enqueue, isNetworkFailure } from "@/lib/offlineQueue";
+import OfflineQueueBanner from "@/components/shared/OfflineQueueBanner";
 
 type ViewMode = "all" | "pr1" | "pr2" | "pr3" | "tr";
 
@@ -65,6 +67,16 @@ export default function TeacherScoreEntryPage() {
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "unsaved" | "saving" | "saved">("idle");
   const isDirtyRef = React.useRef(false);
   const isInitialLoadRef = React.useRef(true);
+  // Tracks whether admins have already been pinged that this teacher started
+  // editing this class/subject/term, so we notify once per editing session
+  // rather than on every autosave. Reset whenever loadScores re-runs.
+  const editNotifiedRef = React.useRef(false);
+  // Serializes autosave/manual-save requests so a debounced autosave can't
+  // race a manual save (or another autosave) with a stale deletedResultIds list.
+  const savingInFlightRef = React.useRef(false);
+  // Tags each loadScores() call so a slower, older request can't overwrite the
+  // screen after a newer filter change has already resolved.
+  const loadSeqRef = React.useRef(0);
 
   const selectedClassName = classes.find((c) => c.id === selectedClass)?.name || "";
   const isSenior = isSeniorClass(selectedClassName);
@@ -201,25 +213,14 @@ export default function TeacherScoreEntryPage() {
 
       setTeacherAssignments(parsedAssignments);
 
-      // Extract unique classes
+      // Extract unique classes. The grade sheet is purely subject-based entry, so a
+      // class only belongs here if the teacher actually teaches a subject in it —
+      // being that class's class teacher (a separate, homeroom-only role) does not
+      // by itself give them anything to grade there.
       const classMap = new Map<string, { id: string; name: string }>();
       parsedAssignments.forEach((a) => {
         if (a.class_id && a.class_name) classMap.set(a.class_id, { id: a.class_id, name: a.class_name });
       });
-
-      // Also include classes where the teacher is class teacher
-      try {
-        const { data: cta } = await supabase
-          .from("class_teacher_assignments")
-          .select("class_id, classes(id, name)")
-          .in("teacher_user_id", idList)
-          .eq("status", "active");
-        (cta || []).forEach((c: any) => {
-          if (c.classes?.id && c.classes?.name) classMap.set(c.classes.id, c.classes);
-        });
-      } catch (ctaErr) {
-        console.warn("Could not query class_teacher_assignments:", ctaErr);
-      }
 
       let cList = Array.from(classMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 
@@ -266,6 +267,13 @@ export default function TeacherScoreEntryPage() {
   // Load scores for selected Class, Subject, and Term
   const loadScores = useCallback(async () => {
     if (!selectedClass || !selectedSubject) return;
+    // Each call to loadScores makes several sequential requests (students, optouts,
+    // results). If the teacher switches class/subject/term again before those finish,
+    // an earlier, slower call can resolve after the latest one and overwrite the screen
+    // with the previous filter's data. Tagging each call with a sequence number and
+    // discarding any that are no longer the latest fixes that "filter changed but the
+    // old data is still showing" bug.
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     setStatusMsg("");
 
@@ -295,8 +303,7 @@ export default function TeacherScoreEntryPage() {
       );
 
       if (!studentList.length) {
-        setRows([]);
-        setLoading(false);
+        if (loadSeqRef.current === seq) setRows([]);
         return;
       }
 
@@ -308,7 +315,6 @@ export default function TeacherScoreEntryPage() {
         { headers: await getAuthHeaders() }
       );
       const optJson = await optRes.json().catch(() => ({}));
-      setNotOffering(new Set(optRes.ok && optJson.ok ? optJson.studentIds : []));
 
       // 3. Fetch existing results
       let resultsQuery = supabase
@@ -321,6 +327,12 @@ export default function TeacherScoreEntryPage() {
       const { data: results, error: rErr } = await resultsQuery;
 
       if (rErr) throw rErr;
+
+      // A newer loadScores() call (from switching filters again) has already taken
+      // over — drop this one instead of clobbering the screen with stale data.
+      if (loadSeqRef.current !== seq) return;
+
+      setNotOffering(new Set(optRes.ok && optJson.ok ? optJson.studentIds : []));
 
       const resultMap = new Map<string, any>();
       (results || []).forEach((r) => resultMap.set(r.student_id, r));
@@ -342,18 +354,24 @@ export default function TeacherScoreEntryPage() {
       setRows(newRows);
       isDirtyRef.current = false;
       isInitialLoadRef.current = true;
+      editNotifiedRef.current = false;
       setAutoSaveStatus("idle");
     } catch (err: any) {
       console.error("Load scores error:", err);
-      setStatusMsg(`Error loading scores: ${err.message}`);
+      if (loadSeqRef.current === seq) setStatusMsg(`Error loading scores: ${err.message}`);
     } finally {
-      setLoading(false);
+      if (loadSeqRef.current === seq) setLoading(false);
     }
   }, [selectedClass, selectedSubject, selectedTerm, currentSession]);
 
   useEffect(() => {
     loadScores();
   }, [loadScores]);
+
+  // Nothing on screen yet vs. re-fetching after a filter change with rows already showing —
+  // the two get different loading treatments (see the table body below).
+  const isFirstLoad = (loading || metaLoading) && rows.length === 0;
+  const isRefetching = loading && !metaLoading && rows.length > 0;
 
   // Weeks in which the class was given classwork / homework (the Excel "AV RATE")
   const offeringRows = useMemo(() => rows.filter((r) => !notOffering.has(r.student_id)), [rows, notOffering]);
@@ -462,7 +480,8 @@ export default function TeacherScoreEntryPage() {
     }
 
     const timer = setTimeout(async () => {
-      if (!isDirtyRef.current) return;
+      if (!isDirtyRef.current || savingInFlightRef.current) return;
+      savingInFlightRef.current = true;
       setAutoSaveStatus("saving");
       try {
         // Guard: check if any student has an invalid score exceeding max before auto-saving
@@ -477,17 +496,38 @@ export default function TeacherScoreEntryPage() {
         const { recordsToSave, deletedResultIds } = buildRecords(false);
 
         if (recordsToSave.length > 0 || deletedResultIds.length > 0) {
-          const { data: sessionData } = await supabase.auth.getSession();
-          const res = await fetch("/api/results/save", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
-            body: JSON.stringify({ records: recordsToSave, deletedResultIds }),
-          });
-          if (res.ok) {
-            isDirtyRef.current = false;
-            setAutoSaveStatus("saved");
-          } else {
-            setAutoSaveStatus("unsaved");
+          const notifyEditStart = !editNotifiedRef.current;
+          const body = JSON.stringify({ records: recordsToSave, deletedResultIds, notifyEditStart });
+          try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const res = await fetch("/api/results/save", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
+              body,
+            });
+            if (res.ok) {
+              isDirtyRef.current = false;
+              editNotifiedRef.current = true;
+              setAutoSaveStatus("saved");
+              // Deleted rows may still be re-evaluated on the next autosave pass
+              // (e.g. the student's scores stay empty); clear their stale resultId
+              // now so we don't try to delete the same already-gone row again.
+              if (deletedResultIds.length) {
+                const deletedSet = new Set(deletedResultIds);
+                setRows((prev) => prev.map((r) => (r.resultId && deletedSet.has(r.resultId) ? { ...r, resultId: undefined } : r)));
+              }
+            } else {
+              setAutoSaveStatus("unsaved");
+            }
+          } catch (fetchErr) {
+            if (isNetworkFailure(fetchErr)) {
+              enqueue({ url: "/api/results/save", method: "POST", body, label: `Grade sheet — ${selectedTerm}` });
+              isDirtyRef.current = false;
+              editNotifiedRef.current = true;
+              setAutoSaveStatus("saved");
+            } else {
+              throw fetchErr;
+            }
           }
         } else {
           setAutoSaveStatus("idle");
@@ -495,6 +535,8 @@ export default function TeacherScoreEntryPage() {
       } catch (e) {
         console.warn("Auto-save draft error:", e);
         setAutoSaveStatus("unsaved");
+      } finally {
+        savingInFlightRef.current = false;
       }
     }, 1800);
 
@@ -581,7 +623,8 @@ export default function TeacherScoreEntryPage() {
 
   // Save draft or submit to admin
   async function handleSave(submit = false) {
-    if (!rows.length) return;
+    if (!rows.length || savingInFlightRef.current) return;
+    savingInFlightRef.current = true;
     setSavingAction(submit ? "submit" : "draft");
     setStatusMsg("");
 
@@ -606,30 +649,51 @@ export default function TeacherScoreEntryPage() {
         return;
       }
 
-      const { data: sessionData } = await supabase.auth.getSession();
-      const res = await fetch("/api/results/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
-        body: JSON.stringify({ records: recordsToSave, deletedResultIds }),
-      });
+      const notifyEditStart = !editNotifiedRef.current;
+      const body = JSON.stringify({ records: recordsToSave, deletedResultIds, notifyEditStart });
 
-      const resJson = await res.json();
-      if (!res.ok) {
-        throw new Error(resJson.error || "Failed to save results.");
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const res = await fetch("/api/results/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
+          body,
+        });
+
+        const resJson = await res.json();
+        if (!res.ok) {
+          throw new Error(resJson.error || "Failed to save results.");
+        }
+
+        isDirtyRef.current = false;
+        editNotifiedRef.current = true;
+        setAutoSaveStatus(submit ? "idle" : "saved");
+        setStatusMsg(
+          submit
+            ? "Scores submitted to administration for review and approval!"
+            : "✓ Draft scores saved successfully! (Scores remain in draft and are NOT submitted to admin)"
+        );
+        loadScores();
+      } catch (fetchErr: any) {
+        if (isNetworkFailure(fetchErr)) {
+          enqueue({ url: "/api/results/save", method: "POST", body, label: `Grade sheet — ${selectedTerm}` });
+          isDirtyRef.current = false;
+          editNotifiedRef.current = true;
+          setAutoSaveStatus("saved");
+          setStatusMsg(
+            submit
+              ? "You're offline — this submission was saved and will go to administration automatically once you're back online."
+              : "You're offline — this draft was saved and will sync automatically once you're back online."
+          );
+        } else {
+          throw fetchErr;
+        }
       }
-
-      isDirtyRef.current = false;
-      setAutoSaveStatus(submit ? "idle" : "saved");
-      setStatusMsg(
-        submit
-          ? "Scores submitted to administration for review and approval!"
-          : "✓ Draft scores saved successfully! (Scores remain in draft and are NOT submitted to admin)"
-      );
-      loadScores();
     } catch (err: any) {
       console.error("Save scores exception:", err);
       setStatusMsg(`Save failed: ${err.message}`);
     } finally {
+      savingInFlightRef.current = false;
       setSavingAction("none");
       setTimeout(() => setStatusMsg(""), 5000);
     }
@@ -637,6 +701,7 @@ export default function TeacherScoreEntryPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      <OfflineQueueBanner />
       {/* Top action header */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -835,7 +900,15 @@ export default function TeacherScoreEntryPage() {
 
       {/* Spreadsheet Mark Sheet Grid */}
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
+        {isRefetching && (
+          <div className="px-4 py-2 border-b border-slate-100">
+            <InlineSpinner label="Updating grade sheet…" />
+          </div>
+        )}
+        {isFirstLoad ? (
+          <PageLoader label="Loading grade sheet…" />
+        ) : (
+        <div className={`overflow-x-auto ${isRefetching ? "gm-refetching" : ""}`}>
           <table className="w-full text-left border-collapse min-w-[1200px]">
             <thead>
               <tr className="bg-slate-100 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-600 text-center">
@@ -951,9 +1024,7 @@ export default function TeacherScoreEntryPage() {
             </thead>
 
             <tbody className="divide-y divide-slate-100 text-xs">
-              {loading || metaLoading ? (
-                <SkeletonRows rows={10} cols={12} />
-              ) : rows.length === 0 ? (
+              {rows.length === 0 ? (
                 <tr>
                   <td colSpan={30} className="px-6 py-12 text-center text-slate-400">
                     No students found in this class.
@@ -1177,6 +1248,7 @@ export default function TeacherScoreEntryPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );

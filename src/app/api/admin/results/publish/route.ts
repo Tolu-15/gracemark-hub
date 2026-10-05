@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
 import { logAudit } from "@/lib/audit";
-import { buildClassReports, ensureEnrollments, Milestone, MILESTONES, STATUS_COLUMN } from "@/lib/reportBuilder";
+import { notifyUsers } from "@/lib/notify";
+import { applyLevelWidePositions, buildClassReports, ensureEnrollments, Milestone, MILESTONES, STATUS_COLUMN } from "@/lib/reportBuilder";
+import { usersByAnyId } from "@/lib/serverContext";
+import { awardPositionBadges } from "@/lib/badges";
 
 /**
  * POST { class_id, term, milestone, force? }
@@ -58,6 +61,7 @@ export async function POST(req: NextRequest) {
       await ensureEnrollments(service, class_id, build.sessionId, missing);
       build = await buildClassReports(service, { classId: class_id, term, session, milestone });
     }
+    await applyLevelWidePositions(service, build);
 
     const publishedAt = new Date().toISOString();
     const snapshots = build.reports.map((report) => ({
@@ -81,9 +85,13 @@ export async function POST(req: NextRequest) {
       await service.from("result_snapshots").delete().eq("term", term).eq("report_type", milestone).in("enrollment_id", stale);
     }
 
+    if (milestone === "TR") {
+      await awardPositionBadges(service, build.reports, term, session);
+    }
+
     // Mark exactly the included result rows as published for this milestone
     const col = STATUS_COLUMN[milestone];
-    const { data: students } = await service.from("students").select("id").eq("class_id", class_id);
+    const { data: students } = await service.from("students").select("id, user_id").eq("class_id", class_id);
     const studentIds = (students || []).map((s: any) => s.id);
     await service.from("results").update({ [col]: "draft" }).eq("term", term).eq("session", session).in("student_id", studentIds);
     const { error: stErr } = await service.from("results").update({ [col]: "published", published_at: publishedAt }).in("id", build.resultIds);
@@ -97,6 +105,19 @@ export async function POST(req: NextRequest) {
       summary: `Published ${milestone} for ${cls?.name || "class"} (${term}, ${session}) — ${snapshots.length} students${force ? " (forced past warnings)" : ""}`,
       metadata: { class_id, term, session, milestone, students: snapshots.length, forced: Boolean(force) },
     });
+
+    const rawUserIds = (students || []).map((s: any) => s.user_id).filter(Boolean);
+    if (rawUserIds.length) {
+      const userMap = await usersByAnyId(service, rawUserIds);
+      const recipientIds = Array.from(new Set(Array.from(userMap.values()).map((u) => u.id)));
+      await notifyUsers(actor, recipientIds, {
+        type: "results.publish",
+        title: "New result published",
+        body: `Your ${milestone.replace(/_/g, " ")} for ${cls?.name || "your class"} (${term}, ${session}) is now available.`,
+        link: "/student/result",
+        metadata: { class_id, term, session, milestone },
+      });
+    }
 
     return NextResponse.json({ ok: true, published: snapshots.length, publishedAt });
   } catch (err: any) {

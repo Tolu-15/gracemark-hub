@@ -13,6 +13,7 @@ import {
 import { SkeletonValue } from "@/components/shared/Skeleton";
 import AnnouncementsPreview from "@/components/announcements/AnnouncementsPreview";
 import PendingActionsFeed from "@/components/shared/PendingActionsFeed";
+import TermProgressWidget from "@/components/admin/TermProgressWidget";
 
 interface TermStatus {
   term: string;
@@ -296,6 +297,8 @@ export default function AdminDashboardPage() {
         <PendingActionsFeed role="admin" />
 
         <AnnouncementsPreview role="admin" />
+
+        <TermProgressWidget />
 
       {/* Primary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">

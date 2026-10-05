@@ -5,8 +5,9 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { resolveStudentUserIdCandidates } from "@/lib/auth";
+import { resolveStudentUserIdCandidates, signOut } from "@/lib/auth";
 import { getStudentCurrentInvoice, formatCurrency } from "@/lib/schoolFinance";
+import PoweredBy from "@/components/shared/PoweredBy";
 
 export default function StudentLockedPage() {
   const router = useRouter();
@@ -14,6 +15,18 @@ export default function StudentLockedPage() {
   const [balance, setBalance] = useState(0);
   const [lockReason, setLockReason] = useState("Outstanding school fee balance");
   const [loading, setLoading] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    try {
+      await signOut();
+    } catch (err) {
+      console.error("Sign out error:", err);
+    } finally {
+      router.replace("/");
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -73,7 +86,28 @@ export default function StudentLockedPage() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900 text-slate-100 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900 text-slate-100 flex flex-col">
+      <header className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-slate-800">
+        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">GraceMark Portal</span>
+        <button
+          type="button"
+          onClick={handleSignOut}
+          disabled={signingOut}
+          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-rose-500/15 text-slate-300 hover:text-rose-300 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+            />
+          </svg>
+          {signingOut ? "Signing out…" : "Log Out"}
+        </button>
+      </header>
+
+      <div className="flex-1 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-slate-800 border border-slate-700 rounded-3xl p-8 shadow-2xl text-center space-y-6">
         <div className="w-16 h-16 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-2xl flex items-center justify-center mx-auto text-3xl font-bold">
           Access locked
@@ -131,6 +165,11 @@ export default function StudentLockedPage() {
         <p className="text-[11px] text-slate-500">
           If you believe this is an error, please contact the school administrator.
         </p>
+      </div>
+      </div>
+
+      <div className="tdev-dark-shell">
+        <PoweredBy />
       </div>
     </div>
   );

@@ -1,7 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
+
+interface ClassPermission {
+  isClassTeacher: boolean;
+  subjectIds: Set<string>;
+}
 
 export default function TeacherGradebookPage() {
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
@@ -12,6 +17,13 @@ export default function TeacherGradebookPage() {
   const [session, setSession] = useState("2026/2027");
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  // What this teacher may actually see per class: the full cross-subject master
+  // view if they're the class teacher, otherwise only the subject(s) they teach
+  // there. Mirrors the access rule enforced server-side in /api/teacher/gradebook.
+  const [classPermissions, setClassPermissions] = useState<Map<string, ClassPermission>>(new Map());
+  // Tags each loadResults() call so a slower, older request (previous filter
+  // selection) can't resolve after a newer one and overwrite the screen.
+  const loadSeqRef = React.useRef(0);
 
   // 1. Initial Load: App term settings & teacher assigned classes
   useEffect(() => {
@@ -38,6 +50,17 @@ export default function TeacherGradebookPage() {
         const teacherUid = profile?.id || user.id;
         const idList = Array.from(new Set([user.id, teacherUid].filter(Boolean)));
         const classMap = new Map<string, { id: string; name: string }>();
+        // Mirrors the server's access rule: class-teacher status unlocks every
+        // subject for that class; a subject assignment unlocks only that subject.
+        const permissions = new Map<string, ClassPermission>();
+        const getPerm = (id: string) => {
+          let p = permissions.get(id);
+          if (!p) {
+            p = { isClassTeacher: false, subjectIds: new Set() };
+            permissions.set(id, p);
+          }
+          return p;
+        };
 
         // 1. Check class_teacher_assignments
         try {
@@ -47,7 +70,10 @@ export default function TeacherGradebookPage() {
             .in("teacher_user_id", idList)
             .eq("status", "active");
           (cta || []).forEach((a: any) => {
-            if (a.classes?.id && a.classes?.name) classMap.set(a.classes.id, a.classes);
+            if (a.classes?.id && a.classes?.name) {
+              classMap.set(a.classes.id, a.classes);
+              getPerm(a.classes.id).isClassTeacher = true;
+            }
           });
         } catch (e) {
           console.warn("CTA lookup failed in gradebook:", e);
@@ -60,7 +86,10 @@ export default function TeacherGradebookPage() {
             .select("id, name")
             .in("class_teacher_id", idList);
           (ctClasses || []).forEach((c: any) => {
-            if (c?.id && c?.name) classMap.set(c.id, c);
+            if (c?.id && c?.name) {
+              classMap.set(c.id, c);
+              getPerm(c.id).isClassTeacher = true;
+            }
           });
         } catch (e) {
           console.warn("classes lookup failed in gradebook:", e);
@@ -70,24 +99,22 @@ export default function TeacherGradebookPage() {
         try {
           const { data: sta } = await supabase
             .from("subject_teacher_assignments")
-            .select("class_id, classes(id, name)")
+            .select("class_id, subject_id, classes(id, name)")
             .in("teacher_user_id", idList)
             .eq("status", "active");
           (sta || []).forEach((a: any) => {
-            if (a.classes?.id && a.classes?.name) classMap.set(a.classes.id, a.classes);
+            if (a.classes?.id && a.classes?.name) {
+              classMap.set(a.classes.id, a.classes);
+              if (a.subject_id) getPerm(a.classes.id).subjectIds.add(a.subject_id);
+            }
           });
         } catch (e) {
           console.warn("STA lookup failed in gradebook:", e);
         }
 
-        // 4. Fallback: if no class teacher assignment found, query classes for selection
-        if (!classMap.size) {
-          const { data: allClasses } = await supabase.from("classes").select("id, name").order("name");
-          (allClasses || []).forEach((c) => classMap.set(c.id, c));
-        }
-
         const classList = Array.from(classMap.values()).sort((a, b) => a.name.localeCompare(b.name));
         setClasses(classList);
+        setClassPermissions(permissions);
         if (classList.length > 0) {
           setSelectedClass(classList[0].id);
         }
@@ -118,9 +145,25 @@ export default function TeacherGradebookPage() {
     loadSubjects();
   }, []);
 
+  // Subjects this teacher may pick for the selected class — every subject if
+  // they're the class teacher, otherwise only the one(s) they're assigned to teach.
+  const availableSubjects = useMemo(() => {
+    const perm = classPermissions.get(selectedClass);
+    if (!perm || perm.isClassTeacher) return subjects;
+    return subjects.filter((s) => perm.subjectIds.has(s.id));
+  }, [subjects, selectedClass, classPermissions]);
+
+  // Drop a subject selection that's no longer valid after switching classes.
+  useEffect(() => {
+    if (selectedSubject && !availableSubjects.some((s) => s.id === selectedSubject)) {
+      setSelectedSubject("");
+    }
+  }, [availableSubjects, selectedSubject]);
+
   // 3. Load gradebook results via resilient server API
   const loadResults = useCallback(async () => {
     if (!selectedClass) return;
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     try {
       const url = new URL("/api/teacher/gradebook", window.location.origin);
@@ -134,12 +177,13 @@ export default function TeacherGradebookPage() {
         throw new Error("Failed to fetch gradebook from server.");
       }
       const data = await res.json();
+      if (loadSeqRef.current !== seq) return; // a newer filter selection already took over
       setResults(data.results || []);
     } catch (err) {
       console.error("Load gradebook results error:", err);
-      setResults([]);
+      if (loadSeqRef.current === seq) setResults([]);
     } finally {
-      setLoading(false);
+      if (loadSeqRef.current === seq) setLoading(false);
     }
   }, [selectedClass, selectedSubject, term, session]);
 
@@ -149,8 +193,32 @@ export default function TeacherGradebookPage() {
 
   const scores = results.map((r) => Number(r.total) || 0).filter((n) => n > 0);
   const avg = scores.length ? +(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : 0;
-  const high = scores.length ? Math.max(...scores) : 0;
-  const low = scores.length ? Math.min(...scores) : 0;
+
+  // Highest/lowest scorer per subject (not just the number) — grouped so a
+  // teacher viewing "All Subjects" sees each subject's own top/bottom student
+  // rather than one score mixed across every subject.
+  const subjectHighLow = useMemo(() => {
+    const bySubject = new Map<string, { name: string; rows: { name: string; total: number }[] }>();
+    results.forEach((r) => {
+      const total = Number(r.total) || 0;
+      if (total <= 0) return;
+      const key = r.subject_id || r.subjects?.name || "subject";
+      const entry = bySubject.get(key) || { name: r.subjects?.name || "Subject", rows: [] as { name: string; total: number }[] };
+      entry.rows.push({ name: r.students?.name || "Student", total });
+      bySubject.set(key, entry);
+    });
+    return Array.from(bySubject.values())
+      .map(({ name, rows }) => {
+        const max = Math.max(...rows.map((r) => r.total));
+        const min = Math.min(...rows.map((r) => r.total));
+        return {
+          name,
+          highest: { score: max, names: rows.filter((r) => r.total === max).map((r) => r.name) },
+          lowest: { score: min, names: rows.filter((r) => r.total === min).map((r) => r.name) },
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [results]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -204,7 +272,7 @@ export default function TeacherGradebookPage() {
             className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
           >
             <option value="">All Subjects</option>
-            {subjects.map((s) => (
+            {availableSubjects.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
               </option>
@@ -243,26 +311,36 @@ export default function TeacherGradebookPage() {
       </div>
 
       {/* Benchmarks Header Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
-            Class Average
-          </span>
-          <span className="text-2xl font-black text-slate-900">{avg} / 100</span>
-        </div>
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
-          <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 block mb-1">
-            Highest Score
-          </span>
-          <span className="text-2xl font-black text-emerald-700">{high} / 100</span>
-        </div>
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
-          <span className="text-xs font-bold uppercase tracking-wider text-amber-600 block mb-1">
-            Lowest Score
-          </span>
-          <span className="text-2xl font-black text-amber-700">{low} / 100</span>
-        </div>
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs w-full sm:w-64">
+        <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+          Class Average
+        </span>
+        <span className="text-2xl font-black text-slate-900">{avg} / 100</span>
       </div>
+
+      {/* Highest / Lowest scorer, per subject */}
+      {subjectHighLow.length > 0 && (
+        <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Highest &amp; Lowest, per Subject</span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {subjectHighLow.map((s) => (
+              <div key={s.name} className="flex flex-col sm:flex-row sm:items-center gap-2 px-4 py-3">
+                <span className="text-sm font-semibold text-slate-700 w-full sm:w-40 shrink-0">{s.name}</span>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-semibold">
+                    Highest: {s.highest.names.join(", ")} — {s.highest.score}/100
+                  </span>
+                  <span className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 font-semibold">
+                    Lowest: {s.lowest.names.join(", ")} — {s.lowest.score}/100
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Scores Table */}
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">

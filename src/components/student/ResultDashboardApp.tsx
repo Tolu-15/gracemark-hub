@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/supabase/client";
 import ReportSheet from "@/components/results/ReportSheet";
-import { Skeleton } from "@/components/shared/Skeleton";
+import { PageLoader, InlineSpinner } from "@/components/shared/PageLoader";
 import { printWithTitle } from "@/lib/printTitle";
 
 const TERMS = [
@@ -47,8 +47,12 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
   const [tab, setTab] = useState<MilestoneKey | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Tags each load() call so a slower, older request (e.g. from the previous term)
+  // can't resolve after a newer one and overwrite the screen with stale results.
+  const loadSeqRef = React.useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -59,6 +63,8 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
       const res = await fetch(`/api/student/report?${params.toString()}`, { headers: await getAuthHeaders() });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || "Could not load results.");
+      if (loadSeqRef.current !== seq) return; // a newer selection already took over
+
       setData(json);
       if (!session) setSession(json.session);
       if (!term) setTerm(json.term);
@@ -67,15 +73,21 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
       const published = MILESTONE_TABS.map((m) => m.key).filter((k) => json.reports[k]);
       setTab((prev) => (prev && published.includes(prev) ? prev : published[published.length - 1] || null));
     } catch (e: any) {
-      setError(e.message);
+      if (loadSeqRef.current === seq) setError(e.message);
     } finally {
-      setLoading(false);
+      if (loadSeqRef.current === seq) setLoading(false);
     }
   }, [session, term, studentId]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // Nothing on screen yet vs. re-fetching after switching session/term with a report
+  // already showing — the latter keeps the old report visible (dimmed) instead of
+  // wiping it back to a skeleton, and never flashes a false "no results" state.
+  const isFirstLoad = loading && !data;
+  const isRefetching = loading && !!data;
 
   const published = data ? MILESTONE_TABS.filter((m) => data.reports[m.key]) : [];
   const current = tab && data ? data.reports[tab] : null;
@@ -90,10 +102,7 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
             Session
             <select
               value={session}
-              onChange={(e) => {
-                setSession(e.target.value);
-                setTab(null);
-              }}
+              onChange={(e) => setSession(e.target.value)}
               className="mt-1 block px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-800 normal-case tracking-normal"
             >
               {(data?.sessions.length ? data.sessions : [session]).filter(Boolean).map((s) => (
@@ -107,10 +116,7 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
             Term
             <select
               value={term}
-              onChange={(e) => {
-                setTerm(e.target.value);
-                setTab(null);
-              }}
+              onChange={(e) => setTerm(e.target.value)}
               className="mt-1 block px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-800 normal-case tracking-normal"
             >
               {TERMS.map((t) => (
@@ -121,6 +127,7 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
               ))}
             </select>
           </label>
+          {isRefetching && <InlineSpinner label="Updating…" className="mb-2" />}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -165,44 +172,28 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
         </div>
       </div>
 
-      {loading ? (
-        <div className="space-y-4 py-6" role="status" aria-label="Loading results">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="border border-slate-200 rounded-xl p-4 space-y-2">
-                <Skeleton block className="h-3 w-16" />
-                <Skeleton block className="h-6 w-20" />
-              </div>
-            ))}
-          </div>
-          <div className="border border-slate-200 rounded-xl p-4 space-y-3">
-            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-              <div key={i} className="flex items-center gap-4">
-                <Skeleton className="h-4 w-6" />
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-4 w-10" />
-                <Skeleton className="h-4 w-10" />
-                <Skeleton className="h-4 w-12" />
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : error ? (
-        <div className="p-6 text-center rounded-2xl border border-rose-200 bg-rose-50">
-          <p className="text-sm font-semibold text-rose-700">{error}</p>
-          <button type="button" onClick={load} className="mt-3 px-4 py-2 bg-white border border-rose-200 rounded-lg text-xs font-bold text-rose-700 cursor-pointer">
-            Try again
-          </button>
-        </div>
-      ) : !current ? (
-        <div className="py-16 px-6 text-center rounded-2xl border border-slate-200 bg-slate-50">
-          <p className="text-base font-bold text-slate-900">No results released yet</p>
-          <p className="text-sm text-slate-500 mt-1">
-            The school has not published any {termLabel} {session} results{data?.student.name ? ` for ${data.student.name}` : ""}. Please check back later.
-          </p>
-        </div>
+      {isFirstLoad ? (
+        <PageLoader label="Loading your results…" />
       ) : (
-        <ReportSheet report={current} />
+        <div className={isRefetching ? "gm-refetching" : ""}>
+          {error ? (
+            <div className="p-6 text-center rounded-2xl border border-rose-200 bg-rose-50">
+              <p className="text-sm font-semibold text-rose-700">{error}</p>
+              <button type="button" onClick={load} className="mt-3 px-4 py-2 bg-white border border-rose-200 rounded-lg text-xs font-bold text-rose-700 cursor-pointer">
+                Try again
+              </button>
+            </div>
+          ) : !current ? (
+            <div className="py-16 px-6 text-center rounded-2xl border border-slate-200 bg-slate-50">
+              <p className="text-base font-bold text-slate-900">No results released yet</p>
+              <p className="text-sm text-slate-500 mt-1">
+                The school has not published any {termLabel} {session} results{data?.student.name ? ` for ${data.student.name}` : ""}. Please check back later.
+              </p>
+            </div>
+          ) : (
+            <ReportSheet report={current} />
+          )}
+        </div>
       )}
     </div>
   );

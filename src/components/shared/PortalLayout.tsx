@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth";
 import PoweredBy from "./PoweredBy";
+import NotificationBell from "./NotificationBell";
+import PwaAndPushPrompt from "./PwaAndPushPrompt";
 
 export interface NavItem {
   label: string;
@@ -330,26 +332,29 @@ export default function PortalLayout({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="p-2 rounded-xl transition text-xs flex items-center gap-1 cursor-pointer shrink-0"
-            style={{ color: "#7ba3d8" }}
-            title="Sign Out"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-              />
-            </svg>
-          </button>
+          <div className="flex items-center gap-1 shrink-0" style={{ color: "#c5d8f0" }}>
+            <NotificationBell />
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="p-2 rounded-xl transition text-xs flex items-center gap-1 cursor-pointer shrink-0"
+              style={{ color: "#7ba3d8" }}
+              title="Sign Out"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Desktop / Page-Specific Header */}
-        {(title || headerActions) && (
+        {(title || headerActions) ? (
           <header className="portal-header hidden lg:flex bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 items-center justify-between gap-3 sticky top-0 z-20 shrink-0">
             <div className="portal-header-start flex items-center gap-3">
               <div className="portal-header-title min-w-0">
@@ -361,10 +366,15 @@ export default function PortalLayout({
                 {subtitle && <div className="text-sm text-slate-500 mt-0.5">{subtitle}</div>}
               </div>
             </div>
-            {headerActions && (
-              <div className="portal-header-actions flex items-center gap-2">{headerActions}</div>
-            )}
+            <div className="portal-header-actions flex items-center gap-3">
+              {headerActions}
+              <NotificationBell />
+            </div>
           </header>
+        ) : (
+          <div className="hidden lg:flex justify-end px-4 sm:px-6 lg:px-8 pt-3 pb-1 sticky top-0 z-20 bg-transparent">
+            <NotificationBell />
+          </div>
         )}
 
         <div className="portal-content flex-1 p-3.5 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
@@ -373,6 +383,7 @@ export default function PortalLayout({
 
         <PoweredBy />
       </main>
+      <PwaAndPushPrompt />
     </div>
   );
 }
