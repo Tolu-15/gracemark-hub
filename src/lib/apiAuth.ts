@@ -101,3 +101,14 @@ export async function requireTeacherAssignment(
   return Boolean(data?.length);
 }
 
+/**
+ * Gates the Dev Tools page: an admin flagged is_developer on their own
+ * users row, not a hardcoded email (keeps it manageable without a deploy
+ * and out of source control).
+ */
+export async function requireDeveloper(actor: ApiActor): Promise<boolean> {
+  if (actor.role !== "admin" || !actor.dbUserId) return false;
+  const { data } = await actor.service.from("users").select("is_developer").eq("id", actor.dbUserId).maybeSingle();
+  return Boolean(data?.is_developer);
+}
+
