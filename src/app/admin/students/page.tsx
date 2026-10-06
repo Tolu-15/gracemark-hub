@@ -223,9 +223,27 @@ export default function AdminStudentsPage() {
           if (legErr) throw updErr || legErr;
         }
 
+        // Keep the login email in sync with the admission number (or an explicit
+        // email edit) — previously an admission_no edit left the old email (and
+        // whichever account used to have it) attached, which could silently hand
+        // one student's login to whoever is entered next with that old number.
+        const cleanAdmEdit = admission_no.trim().replace(/[^A-Z0-9]/gi, "").toLowerCase();
+        const desiredEmail = (email.trim() || `${cleanAdmEdit}@student.gracemark.edu.ng`).toLowerCase();
+        if (desiredEmail !== (editingStudent.users?.email || "").toLowerCase()) {
+          const syncRes = await fetch("/api/admin/students/sync-login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+            body: JSON.stringify({ student_id: editingStudent.id, new_email: desiredEmail }),
+          });
+          const syncJson = await syncRes.json().catch(() => ({}));
+          if (!syncRes.ok || !syncJson.ok) {
+            throw new Error(syncJson.error || "Could not update this student's login email.");
+          }
+        }
+
         // If a new password was provided during edit, update their auth password
         if (password.trim()) {
-          const authEmail = email.trim() || `${admission_no.trim().replace(/[^A-Z0-9]/gi, "").toLowerCase()}@student.gracemark.edu.ng`;
+          const authEmail = desiredEmail;
           const { data: sessionData } = await supabase.auth.getSession();
           const token = sessionData?.session?.access_token;
           if (token) {
