@@ -89,8 +89,8 @@ export async function GET(req: NextRequest) {
   if (top) {
     const bests = await Promise.all(
       levels.map(async (g) => {
-        const { rows } = await rankLevel(service, g.classIds, term, session, milestone);
-        return { level: g.name, classNames: g.classNames, best: rows[0] || null, studentCount: rows.length };
+        const { isSenior, rows } = await rankLevel(service, g.classIds, term, session, milestone);
+        return { level: g.name, classNames: g.classNames, best: rows[0] || null, studentCount: rows.length, isSenior };
       })
     );
     return NextResponse.json({ ok: true, term, session, milestone, bests });
