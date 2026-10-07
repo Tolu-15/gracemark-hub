@@ -38,6 +38,7 @@ interface BestOfClass {
   classNames: string[];
   best: LeaderboardRow | null;
   studentCount: number;
+  isSenior: boolean;
 }
 
 function gradeTone(g?: string) {
@@ -213,7 +214,7 @@ export default function AdminLeaderboardPage() {
                             <div className="text-sm font-bold text-slate-900 truncate mt-1">🏆 {b.best.name}</div>
                             <div className="text-[11px] text-slate-500">
                               {b.classNames.length > 1 ? b.best.className : b.best.admissionNo} ·{" "}
-                              {b.best.gpa !== null ? `GPA ${b.best.gpa.toFixed(2)}` : `${b.best.percentage}%`}
+                              {b.isSenior && b.best.gpa !== null ? `${b.best.percentage}% · GPA ${b.best.gpa.toFixed(2)}` : `${b.best.percentage}%`}
                             </div>
                           </>
                         ) : (
@@ -246,8 +247,8 @@ export default function AdminLeaderboardPage() {
                         </div>
                         <div className={`px-2 py-1 rounded-lg text-xs font-bold ${gradeTone(r.grade)}`}>{r.grade}</div>
                         <div className="text-right w-20 shrink-0">
-                          <div className="text-sm font-black text-slate-900">{isSenior ? r.gpa?.toFixed(2) : `${r.percentage}%`}</div>
-                          <div className="text-[10px] text-slate-400">{isSenior ? "GPA" : "average"}</div>
+                          <div className="text-sm font-black text-slate-900">{r.percentage}%</div>
+                          <div className="text-[10px] text-slate-400">{isSenior && r.gpa !== null ? `GPA ${r.gpa.toFixed(2)}` : "average"}</div>
                         </div>
                       </div>
                     ))}
