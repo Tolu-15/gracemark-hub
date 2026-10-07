@@ -43,6 +43,9 @@ export default function AdminDevToolsPage() {
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState("");
 
+  const [fixing, setFixing] = useState(false);
+  const [fixMessage, setFixMessage] = useState("");
+
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<LookupResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -82,6 +85,22 @@ export default function AdminDevToolsPage() {
       setScanError(err.message || "Scan failed.");
     } finally {
       setScanning(false);
+    }
+  }
+
+  async function fixOrphans() {
+    setFixing(true);
+    setFixMessage("");
+    try {
+      const res = await fetch("/api/admin/dev-tools/fix-orphans", { method: "POST", headers: await getAuthHeaders() });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || "Cleanup failed.");
+      setFixMessage(`Removed ${json.removedCount} orphaned login account(s).`);
+      await runScan();
+    } catch (err: any) {
+      setFixMessage(err.message || "Cleanup failed.");
+    } finally {
+      setFixing(false);
     }
   }
 
@@ -137,16 +156,29 @@ export default function AdminDevToolsPage() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Account Integrity Scanner</h2>
-                  <button
-                    type="button"
-                    onClick={runScan}
-                    disabled={scanning}
-                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-xs cursor-pointer disabled:opacity-50"
-                  >
-                    {scanning ? "Scanning…" : "Run Scan"}
-                  </button>
+                  <div className="flex gap-2">
+                    {issues !== null && issues.some((i) => i.type === "orphaned_account") && (
+                      <button
+                        type="button"
+                        onClick={fixOrphans}
+                        disabled={fixing}
+                        className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs cursor-pointer disabled:opacity-50"
+                      >
+                        {fixing ? "Cleaning…" : "Clean Up Orphaned Logins"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={runScan}
+                      disabled={scanning}
+                      className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-xs cursor-pointer disabled:opacity-50"
+                    >
+                      {scanning ? "Scanning…" : "Run Scan"}
+                    </button>
+                  </div>
                 </div>
                 {scanError && <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold mb-2">{scanError}</div>}
+                {fixMessage && <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold mb-2">{fixMessage}</div>}
                 <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
                   {issues === null ? (
                     <div className="py-10 text-center text-slate-400 text-sm">Click &ldquo;Run Scan&rdquo; to check for duplicate admission numbers, orphaned logins, and email drift.</div>
