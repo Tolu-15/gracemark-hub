@@ -51,6 +51,9 @@ export default function AdminDevToolsPage() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
 
+  const [clearingId, setClearingId] = useState<string | null>(null);
+  const [clearMessages, setClearMessages] = useState<Record<string, string>>({});
+
   async function loadHealth() {
     setLoadingHealth(true);
     try {
@@ -101,6 +104,26 @@ export default function AdminDevToolsPage() {
       setFixMessage(err.message || "Cleanup failed.");
     } finally {
       setFixing(false);
+    }
+  }
+
+  async function clearStudentResults(studentId: string, name: string) {
+    if (!window.confirm(`Delete ALL results and published report cards for ${name}? This cannot be undone.`)) return;
+    setClearingId(studentId);
+    setClearMessages((prev) => ({ ...prev, [studentId]: "" }));
+    try {
+      const res = await fetch("/api/admin/dev-tools/clear-student-results", {
+        method: "POST",
+        headers: { ...(await getAuthHeaders()), "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to clear results.");
+      setClearMessages((prev) => ({ ...prev, [studentId]: `Cleared ${json.resultsDeleted} result(s), ${json.snapshotsDeleted} snapshot(s).` }));
+    } catch (err: any) {
+      setClearMessages((prev) => ({ ...prev, [studentId]: err.message || "Failed to clear results." }));
+    } finally {
+      setClearingId(null);
     }
   }
 
@@ -219,7 +242,8 @@ export default function AdminDevToolsPage() {
                 {searchError && <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold mb-2">{searchError}</div>}
                 <div className="space-y-3">
                   {results.map((r) => (
-                    <div key={r.student.id} className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                    <div key={r.student.id} className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
                       <div>
                         <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">Student</div>
                         <div className="font-semibold text-slate-900">{r.student.name}</div>
@@ -248,6 +272,18 @@ export default function AdminDevToolsPage() {
                           <div className="text-rose-600 font-semibold">No auth record</div>
                         )}
                       </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => clearStudentResults(r.student.id, r.student.name)}
+                        disabled={clearingId === r.student.id}
+                        className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs cursor-pointer disabled:opacity-50"
+                      >
+                        {clearingId === r.student.id ? "Clearing…" : "Clear Scores"}
+                      </button>
+                      {clearMessages[r.student.id] && <span className="text-xs text-slate-600">{clearMessages[r.student.id]}</span>}
+                    </div>
                     </div>
                   ))}
                 </div>
