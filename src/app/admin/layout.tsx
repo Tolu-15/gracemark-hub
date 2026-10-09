@@ -29,6 +29,11 @@ const adminNavItems: NavItem[] = [
   },
   {
     category: "Academics & Staff",
+    label: "Teacher Gradebook",
+    href: "/admin/teachers/gradebook",
+  },
+  {
+    category: "Academics & Staff",
     label: "Manage Subjects",
     href: "/admin/subjects",
   },
