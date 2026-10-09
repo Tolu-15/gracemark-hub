@@ -34,6 +34,11 @@ const adminNavItems: NavItem[] = [
   },
   {
     category: "Academics & Staff",
+    label: "Teacher Mark Sheet",
+    href: "/admin/teachers/score-sheet",
+  },
+  {
+    category: "Academics & Staff",
     label: "Manage Subjects",
     href: "/admin/subjects",
   },
