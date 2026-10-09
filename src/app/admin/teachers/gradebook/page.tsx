@@ -17,6 +17,10 @@ export default function AdminTeacherGradebookPage() {
   const [selectedClass, setSelectedClass] = useState("");
   const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
   const [selectedSubject, setSelectedSubject] = useState("");
+  // Subject list configured for the selected class (via its subject group), if
+  // any — the subject picker is narrowed to these, same as the teacher's own
+  // score-entry/gradebook pages, instead of showing every subject in the school.
+  const [classSubjectIds, setClassSubjectIds] = useState<Map<string, string> | null>(null);
   const [term, setTerm] = useState("term1");
   const [sessions, setSessions] = useState<string[]>([]);
   const [session, setSession] = useState("");
@@ -46,6 +50,40 @@ export default function AdminTeacherGradebookPage() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!selectedClass) return;
+    let cancelled = false;
+    (async () => {
+      const { data: cls } = await supabase.from("classes").select("subject_group_code").eq("id", selectedClass).maybeSingle();
+      const groupCode = (cls as any)?.subject_group_code;
+      if (!groupCode) {
+        if (!cancelled) setClassSubjectIds(null);
+        return;
+      }
+      const { data: list } = await supabase.from("subject_group_subjects").select("subject_id, frequency").eq("group_code", groupCode);
+      if (!cancelled) {
+        setClassSubjectIds(list && list.length ? new Map(list.map((l: any) => [l.subject_id, l.frequency || "fortnightly"])) : null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClass]);
+
+  // Subjects actually on the selected class's subject list; every subject if
+  // the class has no list configured.
+  const availableSubjects = useMemo(() => {
+    if (!classSubjectIds) return subjects;
+    return subjects.filter((s) => classSubjectIds.has(s.id));
+  }, [subjects, classSubjectIds]);
+
+  // Drop a subject selection that's no longer valid after switching classes.
+  useEffect(() => {
+    if (selectedSubject && !availableSubjects.some((s) => s.id === selectedSubject)) {
+      setSelectedSubject("");
+    }
+  }, [availableSubjects, selectedSubject]);
 
   const loadResults = useCallback(async () => {
     if (!selectedClass) return;
@@ -146,7 +184,7 @@ export default function AdminTeacherGradebookPage() {
             className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
           >
             <option value="">All Subjects</option>
-            {subjects.map((s) => (
+            {availableSubjects.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
               </option>

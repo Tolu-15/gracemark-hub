@@ -86,12 +86,6 @@ export default function AdminScoreSheetPage() {
   }, []);
 
   useEffect(() => {
-    if (subjects.length > 0 && (!selectedSubject || !subjects.some((s) => s.id === selectedSubject))) {
-      setSelectedSubject(subjects[0].id);
-    }
-  }, [subjects, selectedSubject]);
-
-  useEffect(() => {
     if (!selectedClass) return;
     let cancelled = false;
     (async () => {
@@ -110,6 +104,19 @@ export default function AdminScoreSheetPage() {
       cancelled = true;
     };
   }, [selectedClass]);
+
+  // Subjects actually on the selected class's subject list; every subject if
+  // the class has no list configured.
+  const availableSubjects = useMemo(() => {
+    if (!classSubjectIds) return subjects;
+    return subjects.filter((s) => classSubjectIds.has(s.id));
+  }, [subjects, classSubjectIds]);
+
+  useEffect(() => {
+    if (availableSubjects.length > 0 && (!selectedSubject || !availableSubjects.some((s) => s.id === selectedSubject))) {
+      setSelectedSubject(availableSubjects[0].id);
+    }
+  }, [availableSubjects, selectedSubject]);
 
   const loadScores = useCallback(async () => {
     if (!selectedClass || !selectedSubject) return;
@@ -258,7 +265,7 @@ export default function AdminScoreSheetPage() {
               onChange={(e) => setSelectedSubject(e.target.value)}
               className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
             >
-              {subjects.map((s) => (
+              {availableSubjects.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
                 </option>
