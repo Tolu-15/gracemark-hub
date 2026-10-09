@@ -398,7 +398,7 @@ export default function TeacherScoreEntryPage() {
       empty.cw.length ? `classwork week ${empty.cw.join(", ")}` : "",
       empty.hw.length ? `homework week ${empty.hw.join(", ")}` : "",
     ].filter(Boolean);
-    return parts.length ? `${parts.join(" and ")} ${empty.cw.length + empty.hw.length > 1 ? "are" : "is"} empty for every student and will count as 0. Enter the scores if the work was given.` : "";
+    return parts.length ? `${parts.join(" and ")} ${empty.cw.length + empty.hw.length > 1 ? "are" : "is"} empty for every student. If that work was actually given, enter the scores — until then it's left out of each student's average rather than counted as 0.` : "";
   }, [frequency, offeringRows, weeks]);
 
   function buildRecords(submit: boolean) {
@@ -709,7 +709,7 @@ export default function TeacherScoreEntryPage() {
             Master Continuous Assessment Mark Sheet
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Enter each classwork/homework /10 and tests as marked (T1 /15, T2 /15, T3 /30). Weeks with no entries for the whole class are not counted. Tick &ldquo;Not offering&rdquo; for a student who does not take this subject.
+            Enter each classwork/homework /10 and tests as marked (T1 /15, T2 /15, T3 /30). A week a student has no entry for yet is left out of their average, not counted as 0. Tick &ldquo;Not offering&rdquo; for a student who does not take this subject.
           </p>
         </div>
 
