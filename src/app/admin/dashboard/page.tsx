@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import { getAppSettings, setAppSettings } from "@/lib/appSettings";
 import {
   getAcademicSessions,
@@ -13,6 +13,7 @@ import {
 import { SkeletonValue } from "@/components/shared/Skeleton";
 import AnnouncementsPreview from "@/components/announcements/AnnouncementsPreview";
 import TermProgressWidget from "@/components/admin/TermProgressWidget";
+import PendingActionsFeed from "@/components/shared/PendingActionsFeed";
 
 interface TermStatus {
   term: string;
@@ -256,29 +257,13 @@ export default function AdminDashboardPage() {
 
       const newAllow = !t.allow_edit;
 
-      // 1. Direct persistence in Supabase
-      const { error: dbError } = await supabase.from("terms").upsert(
-        {
-          session: effectiveSession,
-          term: t.term,
-          allow_teacher_edit: newAllow,
-          status: newAllow ? "open" : "closed",
-        },
-        { onConflict: "session,term" }
-      );
-
-      if (dbError) {
-        console.warn("Direct terms upsert note:", dbError.message);
-      }
-
-      // 2. Also notify API
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
-      await fetch("/api/admin/terms/toggle-edit", {
+      // Persist through the server (service role), which is authoritative — the
+      // browser's own client may be blocked by RLS and must not be trusted silently.
+      const res = await fetch("/api/admin/terms/toggle-edit", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(await getAuthHeaders()),
         },
         body: JSON.stringify({
           session: effectiveSession,
@@ -286,6 +271,10 @@ export default function AdminDashboardPage() {
           allow_edit: newAllow,
         }),
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.error) {
+        throw new Error(json.error || `Failed to update term (status ${res.status})`);
+      }
 
       await loadTermPermissions();
     } catch (err: any) {
@@ -304,6 +293,8 @@ export default function AdminDashboardPage() {
           Monitor academy metrics, academic cycles, and continuous assessment workflow.
         </p>
       </div>
+
+        <PendingActionsFeed role="admin" />
 
         <AnnouncementsPreview role="admin" />
 
