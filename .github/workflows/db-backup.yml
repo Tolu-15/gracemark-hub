@@ -19,7 +19,7 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      BACKUP_DIR: ${{ runner.temp }}/backup
+      BACKUP_DIR: /tmp/db-backup
       HAS_DEPLOY_KEY: ${{ secrets.BACKUPS_DEPLOY_KEY != '' }}
       BACKUPS_REPO: git@github.com:Tolu-15/gracemark-backups.git
     steps:
@@ -40,7 +40,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: db-backup-${{ github.run_id }}
-          path: ${{ runner.temp }}/backup
+          path: /tmp/db-backup
           retention-days: 30
           if-no-files-found: error
 
