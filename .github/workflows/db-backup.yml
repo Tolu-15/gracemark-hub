@@ -1,0 +1,71 @@
+name: Database backup
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # daily, 02:00 UTC (03:00 Nigeria time)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      BACKUP_DIR: ${{ runner.temp }}/backup
+      HAS_DEPLOY_KEY: ${{ secrets.BACKUPS_DEPLOY_KEY != '' }}
+      BACKUPS_REPO: git@github.com:Tolu-15/gracemark-backups.git
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --omit=dev --ignore-scripts
+
+      - name: Dump database to JSON
+        run: node scripts/backup_database.js
+
+      - name: Upload as workflow artifact (30 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: ${{ runner.temp }}/backup
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Push to private backups repo
+        if: env.HAS_DEPLOY_KEY == 'true'
+        env:
+          DEPLOY_KEY: ${{ secrets.BACKUPS_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/backups_key
+          chmod 600 ~/.ssh/backups_key
+          ssh-keyscan -t ed25519,rsa github.com >> ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/backups_key -o IdentitiesOnly=yes"
+
+          git clone --depth 1 "$BACKUPS_REPO" "$RUNNER_TEMP/backups-repo"
+          cd "$RUNNER_TEMP/backups-repo"
+          rm -rf latest && mkdir latest
+          cp "$BACKUP_DIR"/*.json latest/
+          git config user.name "gracemark-backup-bot"
+          git config user.email "backup-bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No data changes since last backup."
+          else
+            git commit -m "Backup $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push origin HEAD
+          fi
