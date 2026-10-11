@@ -18,16 +18,37 @@ export default function PendingActionsFeed({ role }: { role: "admin" | "teacher"
 
   const isAdmin = role === "admin";
 
+  // Admin sees every pending item funnel into the exact same Approvals page
+  // regardless of which one they click, so a 48-row list is just 48 copies of
+  // the same button. One compact summary card replaces it; the teacher view
+  // keeps the per-item list since each row deep-links to a different class/
+  // subject in score-entry.
+  if (isAdmin) {
+    const classCount = new Set(items.map((i) => i.classId)).size;
+    const studentCount = items.reduce((sum, i) => sum + i.count, 0);
+    return (
+      <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-rose-900">Scores awaiting review ({items.length})</h3>
+          <p className="text-xs text-rose-800 mt-0.5">
+            Teachers have submitted these for approval — {studentCount} student record{studentCount === 1 ? "" : "s"} across {classCount}{" "}
+            class{classCount === 1 ? "" : "es"}.
+          </p>
+        </div>
+        <Link
+          href="/admin/approvals"
+          className="shrink-0 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold text-center"
+        >
+          Review All
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5">
-      <h3 className="text-sm font-bold text-rose-900">
-        {isAdmin ? `Scores awaiting review (${items.length})` : `Returned for correction (${items.length})`}
-      </h3>
-      <p className="text-xs text-rose-800 mt-0.5">
-        {isAdmin
-          ? "Teachers have submitted these for approval."
-          : 'The admin sent these scores back. Correct them, then click "Submit to Admin" again.'}
-      </p>
+      <h3 className="text-sm font-bold text-rose-900">Returned for correction ({items.length})</h3>
+      <p className="text-xs text-rose-800 mt-0.5">The admin sent these scores back. Correct them, then click &ldquo;Submit to Admin&rdquo; again.</p>
       <ul className="mt-3 space-y-2">
         {items.map((item) => (
           <li
@@ -41,19 +62,13 @@ export default function PendingActionsFeed({ role }: { role: "admin" | "teacher"
                   ({TERM_LABEL[item.term] || item.term} Term, {item.count} student{item.count === 1 ? "" : "s"})
                 </span>
               </div>
-              {!isAdmin && item.reason && (
-                <div className="text-xs text-rose-800 mt-0.5">Admin&rsquo;s message: &ldquo;{item.reason}&rdquo;</div>
-              )}
+              {item.reason && <div className="text-xs text-rose-800 mt-0.5">Admin&rsquo;s message: &ldquo;{item.reason}&rdquo;</div>}
             </div>
             <Link
-              href={
-                isAdmin
-                  ? "/admin/approvals"
-                  : `/teacher/score-entry?class=${item.classId}&subject=${item.subjectId}&term=${item.term}`
-              }
+              href={`/teacher/score-entry?class=${item.classId}&subject=${item.subjectId}&term=${item.term}`}
               className="shrink-0 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold text-center"
             >
-              {isAdmin ? "Review" : "Fix scores"}
+              Fix scores
             </Link>
           </li>
         ))}
