@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
 import { logAudit } from "@/lib/audit";
 import { notifyUsers } from "@/lib/notify";
+import { sendResultPublishedEmail } from "@/lib/email";
 import { applyLevelWidePositions, buildClassReports, ensureEnrollments, Milestone, MILESTONES, STATUS_COLUMN } from "@/lib/reportBuilder";
 import { usersByAnyId } from "@/lib/serverContext";
 import { awardPositionBadges } from "@/lib/badges";
@@ -117,6 +118,19 @@ export async function POST(req: NextRequest) {
         link: "/student/result",
         metadata: { class_id, term, session, milestone },
       });
+    }
+
+    // Best-effort — a mail provider hiccup must never undo or block a publish.
+    try {
+      await sendResultPublishedEmail({
+        className: cls?.name || "a class",
+        milestone,
+        term,
+        session,
+        studentCount: snapshots.length,
+      });
+    } catch (mailErr) {
+      console.warn("Result-published email failed:", mailErr);
     }
 
     return NextResponse.json({ ok: true, published: snapshots.length, publishedAt });

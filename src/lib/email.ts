@@ -391,6 +391,93 @@ export async function sendTeacherWelcomeEmail(params: {
 }
 
 
+/** Who gets pinged every time a result is published, regardless of who's signed in as admin. */
+const RESULT_PUBLISHED_RECIPIENTS = [
+  { email: "toluwanimibabalola2707@gmail.com", name: "Admin" },
+  { email: "gracemarkacademy@gmail.com", name: "GraceMark Academy" },
+];
+
+const MILESTONE_LABEL: Record<string, string> = {
+  PR1: "1st Progress Report",
+  PR2: "2nd Progress Report",
+  PR3: "3rd Progress Report",
+  TR: "Terminal Result",
+};
+const TERM_LABEL: Record<string, string> = { term1: "1st Term", term2: "2nd Term", term3: "3rd Term" };
+
+/** Fired every time an admin publishes a milestone for a class — tells the fixed admin notification list what just went out. */
+export async function sendResultPublishedEmail(params: {
+  className: string;
+  milestone: string;
+  term: string;
+  session: string;
+  studentCount: number;
+}): Promise<void> {
+  const milestoneLabel = MILESTONE_LABEL[params.milestone] || params.milestone;
+  const termLabel = TERM_LABEL[params.term] || params.term;
+  const loginUrl = "https://www.gracemarkportal.com.ng/";
+
+  await sendEmail({
+    sender: { name: SENDER_NAME, email: SENDER_EMAIL },
+    to: RESULT_PUBLISHED_RECIPIENTS,
+    subject: `GraceMark Portal — Result Published: ${params.className} (${milestoneLabel})`,
+    htmlContent: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+      <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:36px 16px;">
+          <tr><td align="center">
+            <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;">
+              <tr><td style="height:4px;background:#c9a84c;font-size:0;line-height:0;">&nbsp;</td></tr>
+              <tr>
+                <td style="padding:28px 36px;background:#0f172a;">
+                  <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#c9a84c;letter-spacing:2px;text-transform:uppercase;">GraceMark Academy</p>
+                  <h1 style="margin:0;font-size:21px;font-weight:800;color:#ffffff;">Result Published</h1>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:30px 36px;">
+                  <p style="margin:0 0 18px;font-size:14px;color:#475569;line-height:1.6;">
+                    The <strong style="color:#0f172a;">${milestoneLabel}</strong> for <strong style="color:#0f172a;">${params.className}</strong> has just been published.
+                  </p>
+                  <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+                    <tr>
+                      <td style="padding:10px 14px;background:#f8fafc;font-size:12px;font-weight:700;color:#64748b;width:130px;">Class</td>
+                      <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#0f172a;font-weight:700;">${params.className}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:10px 14px;background:#f8fafc;font-size:12px;font-weight:700;color:#64748b;">Milestone</td>
+                      <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#0f172a;">${milestoneLabel}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:10px 14px;background:#f8fafc;font-size:12px;font-weight:700;color:#64748b;">Term / Session</td>
+                      <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#0f172a;">${termLabel}, ${params.session}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:10px 14px;background:#f8fafc;font-size:12px;font-weight:700;color:#64748b;">Students</td>
+                      <td style="padding:10px 14px;font-size:13px;color:#0f172a;">${params.studentCount}</td>
+                    </tr>
+                  </table>
+                  <div style="text-align:center;margin:24px 0 4px;">
+                    <a href="${loginUrl}" target="_blank" style="display:inline-block;background:#0f172a;color:#ffffff;padding:12px 28px;border-radius:10px;font-weight:700;font-size:13px;text-decoration:none;">Open Portal &rarr;</a>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:20px 36px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
+                  <p style="margin:0;font-size:11px;color:#64748b;">GraceMark Academic Portal &bull; <a href="${loginUrl}" style="color:#2563eb;text-decoration:none;">www.gracemarkportal.com.ng</a></p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  });
+}
+
 export interface AssignmentChange {
   kind: "added" | "removed";
   role: "Class Teacher" | "Subject Teacher";
