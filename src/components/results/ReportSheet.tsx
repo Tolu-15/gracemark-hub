@@ -4,7 +4,7 @@ import React from "react";
 import type { StudentReport, SubjectLine } from "@/lib/reportBuilder";
 import { JUNIOR_GRADE_BANDS, SENIOR_GRADE_BANDS } from "@/lib/gradingEngine";
 
-type Report = StudentReport & { publishedAt?: string };
+type Report = StudentReport & { publishedAt?: string; draft?: boolean };
 
 const fmt = (n: number | null | undefined, dp = 1) =>
   n === null || n === undefined || !Number.isFinite(Number(n)) ? "—" : Number(n).toFixed(dp).replace(/\.0+$/, "");
@@ -234,6 +234,11 @@ export default function ReportSheet({ report }: { report: Report }) {
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{isTR ? "Student Report" : "Continuous Assessment"}</div>
           <div className="text-sm font-black">{isTR ? "Terminal Result" : report.milestoneLabel.split(" (")[0]}</div>
           {!isTR && <div className="text-[11px] text-slate-500">{report.milestoneLabel.match(/\((.*)\)/)?.[1]}</div>}
+          {report.draft && (
+            <div className="mt-1 inline-block rounded border border-amber-500 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-700">
+              Draft &middot; not yet published
+            </div>
+          )}
         </div>
       </header>
 
