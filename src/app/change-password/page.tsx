@@ -75,6 +75,28 @@ export default function ChangePasswordPage() {
         throw new Error(data.error || "Failed to update password.");
       }
 
+      // Changing the password through the admin API (required for a forced
+      // first-login change, since there's no "current password" to verify
+      // client-side) revokes this user's existing refresh token as a
+      // security measure. The browser's current access token keeps working
+      // until it naturally expires, then silently fails to refresh and
+      // bounces back to login — looking like "the dashboard loads, then
+      // kicks me out a while later." Re-authenticating with the new
+      // password now gets a fresh, valid session before we ever navigate.
+      if (currentUser?.email) {
+        const { error: reauthErr } = await supabase.auth.signInWithPassword({
+          email: currentUser.email,
+          password,
+        });
+        if (reauthErr) {
+          setError("Password updated — please sign in again with your new password.");
+          setSubmitting(false);
+          await supabase.auth.signOut();
+          setTimeout(() => router.replace("/"), 1800);
+          return;
+        }
+      }
+
       setSuccess(true);
       setTimeout(() => {
         router.replace(destinationForRole(role || "student"));
