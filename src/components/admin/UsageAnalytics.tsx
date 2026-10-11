@@ -27,6 +27,12 @@ interface EngagementRow {
   prints: number;
   last_view: string | null;
 }
+interface NeverSignedInRow {
+  name: string;
+  admission_no: string;
+  class_name: string | null;
+  has_guardian_email: boolean;
+}
 interface Analytics {
   days: number;
   trackingSince: string | null;
@@ -37,6 +43,7 @@ interface Analytics {
   resultViews: { students: number; total: number };
   resultPrints: { students: number; total: number };
   engagement: EngagementRow[];
+  neverSignedIn: NeverSignedInRow[];
   staffActions: { actor_role: string | null; action: string; n: number; last_at: string }[];
   staffActors: { email: string; actor_role: string | null; n: number; last_at: string }[];
   staffDaily: { day: string; n: number }[];
@@ -155,6 +162,7 @@ export default function UsageAnalytics() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [onlyUnopened, setOnlyUnopened] = useState(false);
+  const [classFilter, setClassFilter] = useState("");
 
   const load = useCallback(async (range: number) => {
     setLoading(true);
@@ -197,6 +205,14 @@ export default function UsageAnalytics() {
   const engagement = useMemo(
     () => (data ? data.engagement.filter((e) => !onlyUnopened || e.views === 0) : []),
     [data, onlyUnopened]
+  );
+  const neverClasses = useMemo(
+    () => Array.from(new Set((data?.neverSignedIn || []).map((n) => n.class_name || "No class"))).sort(),
+    [data]
+  );
+  const neverSignedIn = useMemo(
+    () => (data?.neverSignedIn || []).filter((n) => !classFilter || (n.class_name || "No class") === classFilter),
+    [data, classFilter]
   );
   const trackingSince = data?.trackingSince ? fmtDateTime(data.trackingSince) : null;
 
@@ -336,6 +352,60 @@ export default function UsageAnalytics() {
                       <td className={`px-3 py-1.5 text-right font-bold ${e.views > 0 ? "text-emerald-700" : "text-slate-400"}`}>{e.views}</td>
                       <td className={`px-3 py-1.5 text-right font-bold ${e.prints > 0 ? "text-emerald-700" : "text-slate-400"}`}>{e.prints}</td>
                       <td className="px-4 py-1.5 text-slate-600">{fmtDateTime(e.last_view)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-sm font-bold text-slate-900">Students who have never signed in ({data.neverSignedIn.length})</div>
+                <div className="text-[11px] text-slate-500">Showing {neverSignedIn.length}. These students have not used their login yet.</div>
+              </div>
+              <select
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+                className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700"
+                aria-label="Filter by class"
+              >
+                <option value="">All classes</option>
+                {neverClasses.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="max-h-96 overflow-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 text-slate-500 sticky top-0">
+                  <tr>
+                    <th className="text-left px-4 py-1.5">Student</th>
+                    <th className="text-left px-3 py-1.5">Class</th>
+                    <th className="text-right px-4 py-1.5">Guardian email</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {neverSignedIn.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-6 text-center text-slate-400">
+                        Every student has signed in.
+                      </td>
+                    </tr>
+                  )}
+                  {neverSignedIn.map((n) => (
+                    <tr key={n.admission_no}>
+                      <td className="px-4 py-1.5">
+                        <div className="font-semibold text-slate-900">{n.name}</div>
+                        <div className="text-slate-400">{n.admission_no}</div>
+                      </td>
+                      <td className="px-3 py-1.5 text-slate-600">{n.class_name || "—"}</td>
+                      <td className={`px-4 py-1.5 text-right font-semibold ${n.has_guardian_email ? "text-emerald-700" : "text-slate-400"}`}>
+                        {n.has_guardian_email ? "On file" : "None"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
