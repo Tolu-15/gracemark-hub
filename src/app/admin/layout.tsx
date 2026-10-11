@@ -6,6 +6,15 @@ import PortalLayout, { NavItem } from "@/components/shared/PortalLayout";
 import { useAnnouncementBadge, badgeText } from "@/components/announcements/useAnnouncementBadge";
 import { usePendingActions } from "@/components/shared/usePendingActions";
 import { useIsDeveloper } from "@/components/shared/useIsDeveloper";
+import { useIsRestrictedAdmin } from "@/components/shared/useIsRestrictedAdmin";
+
+// Pages a view-only admin (e.g. the proprietress) can see in the nav.
+const RESTRICTED_ADMIN_HREFS = new Set([
+  "/admin/dashboard",
+  "/admin/historical-results",
+  "/admin/leaderboard",
+  "/admin/settings/change-password",
+]);
 
 const adminNavItems: NavItem[] = [
   {
@@ -168,11 +177,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const unread = useAnnouncementBadge();
   const { count: pendingApprovals } = usePendingActions();
   const isDeveloper = useIsDeveloper();
-  const navItems = adminNavItems.map((i) => {
+  const isRestricted = useIsRestrictedAdmin();
+  let navItems = adminNavItems.map((i) => {
     if (i.href === "/admin/announcements") return { ...i, badge: badgeText(unread) };
     if (i.href === "/admin/approvals") return { ...i, badge: badgeText(pendingApprovals) };
     return i;
   });
+  if (isRestricted) {
+    navItems = navItems.filter((i) => RESTRICTED_ADMIN_HREFS.has(i.href));
+  }
   if (isDeveloper) {
     navItems.push({
       category: "Developer",

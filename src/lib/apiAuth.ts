@@ -112,3 +112,14 @@ export async function requireDeveloper(actor: ApiActor): Promise<boolean> {
   return Boolean(data?.is_developer);
 }
 
+/**
+ * Whether the signed-in admin is a view-only account (e.g. the proprietress),
+ * flagged is_restricted_admin on their own users row. Only gates the nav UI
+ * for now — it does not block any admin API route.
+ */
+export async function isRestrictedAdmin(actor: ApiActor): Promise<boolean> {
+  if (actor.role !== "admin" || !actor.dbUserId) return false;
+  const { data } = await actor.service.from("users").select("is_restricted_admin").eq("id", actor.dbUserId).maybeSingle();
+  return Boolean(data?.is_restricted_admin);
+}
+
