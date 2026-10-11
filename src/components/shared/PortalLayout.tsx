@@ -7,6 +7,7 @@ import { signOut } from "@/lib/auth";
 import PoweredBy from "./PoweredBy";
 import NotificationBell from "./NotificationBell";
 import PwaAndPushPrompt from "./PwaAndPushPrompt";
+import { trackEvent } from "@/lib/activity";
 
 export interface NavItem {
   label: string;
@@ -49,6 +50,10 @@ export default function PortalLayout({
   // Close mobile nav on route change
   useEffect(() => {
     setNavOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    trackEvent("page_view", { path: pathname });
   }, [pathname]);
 
   // Close on Escape key and handle resize

@@ -207,6 +207,9 @@ export default function AdminStudentsPage() {
 
     try {
       if (editingStudent) {
+        // A changed guardian email gets a fresh welcome from the Dev Tools bulk send.
+        const guardianWelcomeReset =
+          guardian_email.trim() !== (editingStudent.guardian_email || "") ? { guardian_welcome_sent_at: null } : {};
         // Update existing student
         const { error: updErr } = await supabase
           .from("students")
@@ -216,6 +219,7 @@ export default function AdminStudentsPage() {
             admission_no: admission_no.trim(),
             gender,
             guardian_email: guardian_email.trim() || null,
+            ...guardianWelcomeReset,
           })
           .eq("id", editingStudent.id);
 
@@ -228,6 +232,7 @@ export default function AdminStudentsPage() {
               admission_no: admission_no.trim(),
               gender,
               guardian_email: guardian_email.trim() || null,
+              ...guardianWelcomeReset,
             })
             .eq("id", editingStudent.id);
           if (legErr) throw updErr || legErr;

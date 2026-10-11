@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
 import { getAuthHeaders } from "@/lib/supabase/client";
 import { PageLoader } from "@/components/shared/PageLoader";
+import UsageAnalytics from "@/components/admin/UsageAnalytics";
 
 interface ScanIssue {
   type: string;
@@ -24,6 +25,15 @@ const ISSUE_LABEL: Record<string, string> = {
   email_drift: "Login email doesn't match admission number",
   duplicate_email: "Duplicate login email",
 };
+
+interface EmailTemplate {
+  id: string;
+  name: string;
+  audience: string;
+  trigger: string;
+  subject: string;
+  htmlContent: string;
+}
 
 function StatCard({ label, value, tone }: { label: string; value: React.ReactNode; tone?: "warn" }) {
   return (
@@ -54,6 +64,12 @@ export default function AdminDevToolsPage() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
 
+  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+  const [pendingWelcomes, setPendingWelcomes] = useState(0);
+  const [openTemplate, setOpenTemplate] = useState<string | null>(null);
+  const [sendingWelcomes, setSendingWelcomes] = useState(false);
+  const [welcomeMessage, setWelcomeMessage] = useState("");
+
   const [clearingId, setClearingId] = useState<string | null>(null);
   const [clearMessages, setClearMessages] = useState<Record<string, string>>({});
 
@@ -75,9 +91,42 @@ export default function AdminDevToolsPage() {
     }
   }
 
+  async function loadTemplates() {
+    try {
+      const res = await fetch("/api/admin/dev-tools/email-templates", { headers: await getAuthHeaders() });
+      const json = await res.json();
+      if (res.ok && json.ok) {
+        setTemplates(json.templates || []);
+        setPendingWelcomes(json.pendingGuardianWelcomes || 0);
+      }
+    } catch {
+      /* gallery just stays empty */
+    }
+  }
+
   useEffect(() => {
     loadHealth();
+    loadTemplates();
   }, []);
+
+  async function sendGuardianWelcomes() {
+    if (!window.confirm(`Send the welcome email to ${pendingWelcomes} guardian(s) who haven't received one yet?`)) return;
+    setSendingWelcomes(true);
+    setWelcomeMessage("");
+    try {
+      const res = await fetch("/api/admin/dev-tools/send-guardian-welcomes", { method: "POST", headers: await getAuthHeaders() });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || "Send failed.");
+      const failed = (json.results || []).filter((r: any) => !r.sent);
+      const failedText = failed.length > 0 ? ` Failed: ${failed.map((r: any) => `${r.name} (${r.error})`).join("; ")}` : "";
+      setWelcomeMessage(`Sent ${json.sentCount} welcome email(s).${failedText}`);
+      await loadTemplates();
+    } catch (err: any) {
+      setWelcomeMessage(err.message || "Send failed.");
+    } finally {
+      setSendingWelcomes(false);
+    }
+  }
 
   async function runScan() {
     setScanning(true);
@@ -196,6 +245,8 @@ export default function AdminDevToolsPage() {
                 </div>
               </div>
 
+              <UsageAnalytics />
+
               {/* Integrity scanner */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -253,6 +304,58 @@ export default function AdminDevToolsPage() {
                       ))}
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* Guardian emails */}
+              <div>
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Guardian Emails</h2>
+                <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-sm text-slate-700">
+                    <span className="font-black text-slate-900">{pendingWelcomes}</span> guardian email(s) on file haven&apos;t received the welcome message yet.
+                    <p className="text-xs text-slate-400 mt-0.5">New emails entered by a student are welcomed automatically; this covers the ones added before that existed.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={sendGuardianWelcomes}
+                    disabled={sendingWelcomes || pendingWelcomes === 0}
+                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-xs cursor-pointer disabled:opacity-50"
+                  >
+                    {sendingWelcomes ? "Sending…" : "Send Welcome to Guardians"}
+                  </button>
+                </div>
+                {welcomeMessage && <div className="mt-2 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">{welcomeMessage}</div>}
+              </div>
+
+              {/* Email templates */}
+              <div>
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Email Templates ({templates.length})</h2>
+                <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs divide-y divide-slate-100 overflow-hidden">
+                  {templates.length === 0 && <div className="py-8 text-center text-slate-400 text-sm">No templates loaded.</div>}
+                  {templates.map((t) => (
+                    <div key={t.id}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenTemplate(openTemplate === t.id ? null : t.id)}
+                        className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 hover:bg-slate-50 cursor-pointer"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-slate-900">{t.name}</div>
+                          <div className="text-xs text-slate-500 truncate">{t.audience} · {t.trigger}</div>
+                        </div>
+                        <span className="text-xs font-bold text-indigo-600 shrink-0">{openTemplate === t.id ? "Hide" : "Preview"}</span>
+                      </button>
+                      {openTemplate === t.id && (
+                        <div className="px-4 pb-4">
+                          <div className="text-[11px] text-slate-500 mb-2">
+                            <span className="font-bold uppercase tracking-wider text-slate-400">Subject: </span>
+                            {t.subject}
+                          </div>
+                          <iframe title={t.name} srcDoc={t.htmlContent} sandbox="" className="w-full h-[560px] rounded-xl border border-slate-200 bg-white" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
 

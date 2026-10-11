@@ -5,6 +5,7 @@ import { getAuthHeaders } from "@/lib/supabase/client";
 import ReportSheet from "@/components/results/ReportSheet";
 import { PageLoader, InlineSpinner } from "@/components/shared/PageLoader";
 import { printWithTitle } from "@/lib/printTitle";
+import { trackEvent } from "@/lib/activity";
 
 const TERMS = [
   { value: "term1", label: "1st Term" },
@@ -92,6 +93,25 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
   const published = data ? MILESTONE_TABS.filter((m) => data.reports[m.key]) : [];
   const current = tab && data ? data.reports[tab] : null;
   const termLabel = TERMS.find((t) => t.value === term)?.label || "";
+
+  // A student's own report sheet appearing on screen counts as a view (once per
+  // milestone/term/session per visit). Admins previewing a student are not counted.
+  const viewedKeysRef = React.useRef(new Set<string>());
+  useEffect(() => {
+    if (studentId || !current || !tab) return;
+    const key = `${session}|${term}|${tab}`;
+    if (viewedKeysRef.current.has(key)) return;
+    viewedKeysRef.current.add(key);
+    trackEvent("result_view", { metadata: { milestone: tab, term, session } });
+  }, [studentId, current, tab, term, session]);
+
+  // "beforeprint" fires for the Print button and for Ctrl/Cmd+P alike.
+  useEffect(() => {
+    if (studentId || !current || !tab) return;
+    const onBeforePrint = () => trackEvent("result_print", { metadata: { milestone: tab, term, session } });
+    window.addEventListener("beforeprint", onBeforePrint);
+    return () => window.removeEventListener("beforeprint", onBeforePrint);
+  }, [studentId, current, tab, term, session]);
 
   return (
     <div className="rd-root max-w-5xl mx-auto p-3 sm:p-6 print:p-0 space-y-4">
