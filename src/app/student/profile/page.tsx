@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getSupabaseBrowserClient, getAuthHeaders } from "@/lib/supabase/client";
 import { resolveStudentUserIdCandidates } from "@/lib/auth";
 import { formatDate } from "@/lib/schoolFinance";
 
@@ -11,6 +11,12 @@ export default function StudentProfilePage() {
   const [student, setStudent] = useState<any>(null);
   const [userEmail, setUserEmail] = useState("");
   const [loading, setLoading] = useState(true);
+
+  const [editingGuardianEmail, setEditingGuardianEmail] = useState(false);
+  const [guardianEmailInput, setGuardianEmailInput] = useState("");
+  const [guardianSaving, setGuardianSaving] = useState(false);
+  const [guardianError, setGuardianError] = useState("");
+  const [guardianSaved, setGuardianSaved] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -33,6 +39,7 @@ export default function StudentProfilePage() {
           .maybeSingle();
 
         setStudent(std);
+        setGuardianEmailInput(std?.guardian_email || "");
       } catch (err) {
         console.error("Student profile load error:", err);
       } finally {
@@ -42,6 +49,34 @@ export default function StudentProfilePage() {
 
     load();
   }, [router]);
+
+  async function saveGuardianEmail(e: React.FormEvent) {
+    e.preventDefault();
+    setGuardianError("");
+    const email = guardianEmailInput.trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setGuardianError("Please enter a valid email address.");
+      return;
+    }
+    setGuardianSaving(true);
+    try {
+      const res = await fetch("/api/student/guardian-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+        body: JSON.stringify({ guardian_email: email }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to save email.");
+      setStudent((prev: any) => (prev ? { ...prev, guardian_email: email || null } : prev));
+      setEditingGuardianEmail(false);
+      setGuardianSaved(true);
+      setTimeout(() => setGuardianSaved(false), 2500);
+    } catch (err: any) {
+      setGuardianError(err.message || "Failed to save email. Please try again.");
+    } finally {
+      setGuardianSaving(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -136,6 +171,55 @@ export default function StudentProfilePage() {
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 sm:col-span-2">
                 <span className="text-slate-400 block mb-1">Residential Address</span>
                 <span className="font-medium text-slate-800 text-sm">{student?.address || "—"}</span>
+              </div>
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 sm:col-span-2">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-slate-400">Guardian Email (for result notifications)</span>
+                  {!editingGuardianEmail && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGuardianEmailInput(student?.guardian_email || "");
+                        setGuardianError("");
+                        setEditingGuardianEmail(true);
+                      }}
+                      className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 cursor-pointer"
+                    >
+                      {student?.guardian_email ? "Edit" : "Add"}
+                    </button>
+                  )}
+                </div>
+                {editingGuardianEmail ? (
+                  <form onSubmit={saveGuardianEmail} className="space-y-2 mt-1">
+                    <input
+                      type="email"
+                      value={guardianEmailInput}
+                      onChange={(e) => setGuardianEmailInput(e.target.value)}
+                      placeholder="parent@example.com"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    />
+                    {guardianError && <p className="text-[11px] text-rose-600 font-medium">{guardianError}</p>}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="submit"
+                        disabled={guardianSaving}
+                        className="px-3 py-1.5 bg-slate-900 text-white text-[11px] font-bold rounded-lg hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
+                      >
+                        {guardianSaving ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingGuardianEmail(false)}
+                        className="px-3 py-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-700 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <span className="font-medium text-slate-800 text-sm">{student?.guardian_email || "—"}</span>
+                )}
+                {guardianSaved && <p className="text-[11px] text-emerald-600 font-bold mt-1">Saved ✓</p>}
               </div>
             </div>
           </div>
