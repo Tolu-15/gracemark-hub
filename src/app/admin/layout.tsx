@@ -13,6 +13,7 @@ const RESTRICTED_ADMIN_HREFS = new Set([
   "/admin/dashboard",
   "/admin/historical-results",
   "/admin/leaderboard",
+  "/admin/report-cards",
   "/admin/settings/change-password",
 ]);
 
