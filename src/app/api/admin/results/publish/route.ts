@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
 import { logAudit } from "@/lib/audit";
 import { notifyUsers } from "@/lib/notify";
-import { sendResultPublishedEmail } from "@/lib/email";
+import { sendResultPublishedEmail, sendGuardianResultPublishedEmail } from "@/lib/email";
 import { applyLevelWidePositions, buildClassReports, ensureEnrollments, Milestone, MILESTONES, STATUS_COLUMN } from "@/lib/reportBuilder";
 import { usersByAnyId } from "@/lib/serverContext";
 import { awardPositionBadges } from "@/lib/badges";
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
 
     // Mark exactly the included result rows as published for this milestone
     const col = STATUS_COLUMN[milestone];
-    const { data: students } = await service.from("students").select("id, user_id").eq("class_id", class_id);
+    const { data: students } = await service.from("students").select("id, user_id, name, full_name, guardian_email").eq("class_id", class_id);
     const studentIds = (students || []).map((s: any) => s.id);
     await service.from("results").update({ [col]: "draft" }).eq("term", term).eq("session", session).in("student_id", studentIds);
     const { error: stErr } = await service.from("results").update({ [col]: "published", published_at: publishedAt }).in("id", build.resultIds);
@@ -132,6 +132,24 @@ export async function POST(req: NextRequest) {
     } catch (mailErr) {
       console.warn("Result-published email failed:", mailErr);
     }
+
+    // One best-effort email per guardian who has an email on file, for the
+    // students actually included in this publish. Never lets one bad address
+    // block the rest, and never blocks or undoes the publish itself.
+    const publishedStudentIds = new Set(build.reports.map((r) => r.student.id));
+    const guardianTargets = (students || []).filter((s: any) => publishedStudentIds.has(s.id) && s.guardian_email);
+    await Promise.allSettled(
+      guardianTargets.map((s: any) =>
+        sendGuardianResultPublishedEmail({
+          guardianEmail: s.guardian_email,
+          studentName: s.full_name || s.name || "Your ward",
+          className: cls?.name || "their class",
+          milestone,
+          term,
+          session,
+        }).catch((err) => console.warn(`Guardian email failed for student ${s.id}:`, err))
+      )
+    );
 
     return NextResponse.json({ ok: true, published: snapshots.length, publishedAt });
   } catch (err: any) {

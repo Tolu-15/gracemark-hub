@@ -24,6 +24,7 @@ export default function AdminStudentsPage() {
     gender: "" as "" | "male" | "female",
     email: "",
     password: "",
+    guardian_email: "",
   });
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -126,7 +127,7 @@ export default function AdminStudentsPage() {
       let finalStudentsData: any[] = [];
       const resCanonical = await supabase
         .from("students")
-        .select("id, full_name, gender, admission_no, current_class_id, portal_access_status, portal_lock_reason, classes:current_class_id(id, name), users(email)")
+        .select("id, full_name, gender, admission_no, current_class_id, portal_access_status, portal_lock_reason, guardian_email, classes:current_class_id(id, name), users(email)")
         .order("full_name", { ascending: true });
 
       if (!resCanonical.error && resCanonical.data) {
@@ -139,7 +140,7 @@ export default function AdminStudentsPage() {
       } else {
         const resLegacy = await supabase
           .from("students")
-          .select("id, name, gender, admission_no, class_id, portal_access_status, portal_lock_reason, classes:class_id(id, name), users(email)")
+          .select("id, name, gender, admission_no, class_id, portal_access_status, portal_lock_reason, guardian_email, classes:class_id(id, name), users(email)")
           .order("name", { ascending: true });
         if (resLegacy.error) throw resCanonical.error || resLegacy.error;
         finalStudentsData = resLegacy.data || [];
@@ -169,6 +170,7 @@ export default function AdminStudentsPage() {
         gender: (student as any).gender === "female" ? "female" : (student as any).gender === "male" ? "male" : "",
         email: student.users?.email || "",
         password: "",
+        guardian_email: student.guardian_email || "",
       });
     } else {
       setEditingStudent(null);
@@ -179,6 +181,7 @@ export default function AdminStudentsPage() {
         gender: "",
         email: "",
         password: "gracemark",
+        guardian_email: "",
       });
     }
     setIsModalOpen(true);
@@ -189,10 +192,15 @@ export default function AdminStudentsPage() {
     setFormError("");
     setSaving(true);
 
-    const { name, admission_no, class_id, gender, email, password } = formData;
+    const { name, admission_no, class_id, gender, email, password, guardian_email } = formData;
 
     if (!name.trim() || !admission_no.trim() || !class_id || !gender) {
       setFormError("Name, Admission Number, Class and Gender are required.");
+      setSaving(false);
+      return;
+    }
+    if (guardian_email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guardian_email.trim())) {
+      setFormError("Guardian email doesn't look like a valid email address.");
       setSaving(false);
       return;
     }
@@ -207,6 +215,7 @@ export default function AdminStudentsPage() {
             current_class_id: class_id,
             admission_no: admission_no.trim(),
             gender,
+            guardian_email: guardian_email.trim() || null,
           })
           .eq("id", editingStudent.id);
 
@@ -218,6 +227,7 @@ export default function AdminStudentsPage() {
               class_id,
               admission_no: admission_no.trim(),
               gender,
+              guardian_email: guardian_email.trim() || null,
             })
             .eq("id", editingStudent.id);
           if (legErr) throw updErr || legErr;
@@ -340,6 +350,7 @@ export default function AdminStudentsPage() {
             user_id: targetDbUserId,
             portal_access_status: "active",
             gender,
+            guardian_email: guardian_email.trim() || null,
           },
         ]);
 
@@ -865,6 +876,22 @@ export default function AdminStudentsPage() {
                     </label>
                   ))}
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-500 uppercase tracking-wider text-[10px] mb-1">
+                  Guardian Email (optional)
+                </label>
+                <input
+                  type="email"
+                  value={formData.guardian_email}
+                  onChange={(e) => setFormData({ ...formData, guardian_email: e.target.value })}
+                  placeholder="parent@example.com"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  If set, the guardian is emailed whenever this student's class result is published.
+                </p>
               </div>
 
               {!editingStudent && (
