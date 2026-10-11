@@ -138,6 +138,11 @@ const adminNavItems: NavItem[] = [
     href: "/admin/admissions/applicants",
   },
   {
+    category: "Admissions & CBT",
+    label: "Admission Form Packages",
+    href: "/admin/admissions/forms",
+  },
+  {
     category: "Settings",
     label: "Portal Access Policy",
     href: "/admin/settings/portal-access",
