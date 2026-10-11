@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
 import { getAuthHeaders } from "@/lib/supabase/client";
 import { PageLoader } from "@/components/shared/PageLoader";
+import UsageAnalytics from "@/components/admin/UsageAnalytics";
 
 interface ScanIssue {
   type: string;
@@ -243,6 +244,8 @@ export default function AdminDevToolsPage() {
                   <StatCard label="Push-enabled accounts" value={`${health.push.distinctUsersSubscribed} / ${health.push.totalStaffAndStudents}`} />
                 </div>
               </div>
+
+              <UsageAnalytics />
 
               {/* Integrity scanner */}
               <div>
