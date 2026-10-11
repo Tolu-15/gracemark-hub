@@ -82,12 +82,6 @@ export default function TermProgressWidget() {
           </div>
         </div>
       </div>
-
-      {!loading && counts.submitted > 0 && (
-        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-4 font-semibold">
-          {counts.submitted} score{counts.submitted === 1 ? "" : "s"} waiting for your review.
-        </p>
-      )}
     </div>
   );
 }
