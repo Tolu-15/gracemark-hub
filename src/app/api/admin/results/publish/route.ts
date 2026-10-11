@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
 import { logAudit } from "@/lib/audit";
-import { notifyUsers } from "@/lib/notify";
+import { notifyUsers, notifyAdmins } from "@/lib/notify";
 import { sendResultPublishedEmail, sendGuardianResultPublishedEmail } from "@/lib/email";
 import { applyLevelWidePositions, buildClassReports, ensureEnrollments, Milestone, MILESTONES, STATUS_COLUMN } from "@/lib/reportBuilder";
 import { usersByAnyId } from "@/lib/serverContext";
@@ -116,6 +116,36 @@ export async function POST(req: NextRequest) {
         title: "New result published",
         body: `Your ${milestone.replace(/_/g, " ")} for ${cls?.name || "your class"} (${term}, ${session}) is now available.`,
         link: "/student/result",
+        metadata: { class_id, term, session, milestone },
+      });
+    }
+
+    // Push notifications also reach admin and this class's teachers — anyone
+    // who has push enabled gets pinged, not just the students whose result it is.
+    await notifyAdmins(actor, {
+      type: "results.publish",
+      title: "Result published",
+      body: `${milestone.replace(/_/g, " ")} for ${cls?.name || "a class"} (${term}, ${session}) was published — ${snapshots.length} students.`,
+      link: "/admin/historical-results",
+      metadata: { class_id, term, session, milestone },
+    });
+
+    const [{ data: cta }, { data: sta }, { data: classRow }] = await Promise.all([
+      service.from("class_teacher_assignments").select("teacher_user_id").eq("class_id", class_id).eq("status", "active"),
+      service.from("subject_teacher_assignments").select("teacher_user_id").eq("class_id", class_id).eq("status", "active"),
+      service.from("classes").select("class_teacher_id").eq("id", class_id).maybeSingle(),
+    ]);
+    const rawTeacherIds = [...(cta || []).map((r: any) => r.teacher_user_id), ...(sta || []).map((r: any) => r.teacher_user_id), classRow?.class_teacher_id].filter(
+      Boolean
+    );
+    const teacherUserMap = await usersByAnyId(service, rawTeacherIds);
+    const teacherIds = Array.from(new Set(Array.from(teacherUserMap.values()).map((u) => u.id)));
+    if (teacherIds.length) {
+      await notifyUsers(actor, teacherIds, {
+        type: "results.publish",
+        title: "Result published",
+        body: `${milestone.replace(/_/g, " ")} for ${cls?.name || "your class"} (${term}, ${session}) was published.`,
+        link: "/teacher/gradebook",
         metadata: { class_id, term, session, milestone },
       });
     }
