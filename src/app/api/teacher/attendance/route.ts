@@ -256,13 +256,17 @@ export async function POST(req: NextRequest) {
         .eq("term", activeTerm);
       if (allErr) throw allErr;
 
+      // "Times opened" is the number of days the class actually met so far, not the
+      // 120-day term estimate — otherwise a student present every day still shows
+      // ~100 absences mid-term. A date on which nobody was marked present (a public
+      // holiday entered by mistake) isn't a school day, so it doesn't count.
       const presentBy: Record<string, number> = {};
       const dates = new Set<string>();
       (allRecords || []).forEach((r: any) => {
-        dates.add(r.date);
+        if (r.am_present || r.pm_present) dates.add(r.date);
         if (r.am_present && r.pm_present) presentBy[r.enrollment_id] = (presentBy[r.enrollment_id] || 0) + 1;
       });
-      const opened = Math.max(DEFAULT_SCHOOL_DAYS, dates.size);
+      const opened = dates.size;
 
       const summaries = enrollmentIds.map((id) => {
         const present = presentBy[id] || 0;

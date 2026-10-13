@@ -501,7 +501,7 @@ export async function buildClassReports(
     (recRes.data || []).forEach((r: any) => {
       const sid = studentByEnrollment.get(r.enrollment_id);
       if (!sid) return;
-      presentCounts.set(sid, (presentCounts.get(sid) || 0) + (r.am_present ? 1 : 0) + (r.pm_present ? 1 : 0));
+      presentCounts.set(sid, (presentCounts.get(sid) || 0) + (r.am_present && r.pm_present ? 1 : 0));
     });
     presentCounts.forEach((present, sid) => {
       if (!attendanceByStudent.has(sid) && schoolTimesOpened) {
