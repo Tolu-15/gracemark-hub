@@ -133,6 +133,11 @@ const adminNavItems: NavItem[] = [
     href: "/admin/finance/reports",
   },
   {
+    category: "Finance & Fees",
+    label: "Scratch Cards",
+    href: "/admin/scratch-cards",
+  },
+  {
     category: "Admissions & CBT",
     label: "Form Builder & QR Codes",
     href: "/admin/forms",

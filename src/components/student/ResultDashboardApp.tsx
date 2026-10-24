@@ -6,6 +6,7 @@ import ReportSheet from "@/components/results/ReportSheet";
 import { PageLoader, InlineSpinner } from "@/components/shared/PageLoader";
 import { printWithTitle } from "@/lib/printTitle";
 import { trackEvent } from "@/lib/activity";
+import TerminalResultGate, { type TrCardInfo, type TrInfo } from "@/components/student/TerminalResultGate";
 
 const TERMS = [
   { value: "term1", label: "1st Term" },
@@ -39,6 +40,8 @@ interface ReportResponse {
   term: string;
   reports: Record<MilestoneKey, any | null>;
   availableTerms: Record<string, string[]>;
+  /** Students only: whether a Terminal Result is published and the state of their scratch card. */
+  tr?: TrInfo | null;
 }
 
 export default function ResultDashboardApp({ studentId, initialTerm, initialSession, onClose }: ResultDashboardAppProps) {
@@ -51,6 +54,8 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
   // Tags each load() call so a slower, older request (e.g. from the previous term)
   // can't resolve after a newer one and overwrite the screen with stale results.
   const loadSeqRef = React.useRef(0);
+  // Terminal results opened with a scratch card view, kept in memory only for this page visit.
+  const [opened, setOpened] = useState<Record<string, { report: any; card: TrCardInfo }>>({});
 
   const load = useCallback(async () => {
     const seq = ++loadSeqRef.current;
@@ -71,7 +76,7 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
       if (!term) setTerm(json.term);
 
       // Open the latest published milestone
-      const published = MILESTONE_TABS.map((m) => m.key).filter((k) => json.reports[k]);
+      const published = MILESTONE_TABS.map((m) => m.key).filter((k) => json.reports[k] || (k === "TR" && !studentId && json.tr?.published));
       setTab((prev) => (prev && published.includes(prev) ? prev : published[published.length - 1] || null));
     } catch (e: any) {
       if (loadSeqRef.current === seq) setError(e.message);
@@ -90,8 +95,14 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
   const isFirstLoad = loading && !data;
   const isRefetching = loading && !!data;
 
-  const published = data ? MILESTONE_TABS.filter((m) => data.reports[m.key]) : [];
-  const current = tab && data ? data.reports[tab] : null;
+  // A student's Terminal Result is not in `reports`: it only appears after a scratch card view.
+  const isStudentView = !studentId;
+  const trPublished = Boolean(isStudentView && data?.tr?.published);
+  const openedKey = `${session}|${term}`;
+  const openedTr = opened[openedKey] || null;
+  const published = data ? MILESTONE_TABS.filter((m) => data.reports[m.key] || (m.key === "TR" && trPublished)) : [];
+  const current = tab && data ? (tab === "TR" && isStudentView ? openedTr?.report || null : data.reports[tab]) : null;
+  const showGate = Boolean(data && tab === "TR" && trPublished && !openedTr);
   const termLabel = TERMS.find((t) => t.value === term)?.label || "";
 
   // A student's own report sheet appearing on screen counts as a view (once per
@@ -203,6 +214,16 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
                 Try again
               </button>
             </div>
+          ) : showGate && data?.tr ? (
+            <TerminalResultGate
+              session={session}
+              term={term}
+              termLabel={termLabel}
+              studentName={data.student.name}
+              tr={data.tr}
+              onOpened={(report, card) => setOpened((prev) => ({ ...prev, [openedKey]: { report, card } }))}
+              onRefresh={load}
+            />
           ) : !current ? (
             <div className="py-16 px-6 text-center rounded-2xl border border-slate-200 bg-slate-50">
               <p className="text-base font-bold text-slate-900">No results released yet</p>
@@ -211,7 +232,15 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
               </p>
             </div>
           ) : (
-            <ReportSheet report={current} />
+            <>
+              {tab === "TR" && isStudentView && openedTr && (
+                <div className="no-print print:hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                  Scratch card: <strong>{openedTr.card.viewsLeft}</strong> of {openedTr.card.viewsAllowed} views left. Print from this page as often as you like.
+                  Leaving or refreshing it means opening the result again will use another view.
+                </div>
+              )}
+              <ReportSheet report={current} />
+            </>
           )}
         </div>
       )}
