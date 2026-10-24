@@ -110,7 +110,7 @@ export default function TeacherDashboardPage() {
       {/* Welcome Card */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-xs">
         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200 mb-2">
-          Teahcer's Workspace
+          Teacher's Workspace
         </span>
         <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
           Welcome back, {teacherName}
