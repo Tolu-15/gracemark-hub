@@ -108,7 +108,7 @@ export const SENIOR_GRADE_BANDS: GradeBand[] = [
   { min: 75, grade: "A", remark: "EXCELLENT" },
   { min: 70, grade: "B", remark: "VERY GOOD" },
   { min: 50, grade: "C", remark: "CREDIT" },
-  { min: 40, grade: "D", remark: "PASS" },
+  { min: 40, grade: "D", remark: "WEAK" },
   { min: 0, grade: "F", remark: "FAIL" },
 ];
 
