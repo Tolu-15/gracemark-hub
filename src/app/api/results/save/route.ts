@@ -207,41 +207,28 @@ export async function POST(req: NextRequest) {
 
     // Draft autosaves are not logged; submissions, admin edits and removals are.
     const submitted = cleanRecords.filter((r: any) => r.status === "submitted").length;
-    // The client flags the first draft save of an editing session (per class/subject/term
-    // it opens) so admins get a single heads-up rather than one per autosave keystroke.
-    const editStarted = Boolean(body.notifyEditStart) && actor.role === "teacher" && !submitted;
-    if (submitted || actor.role === "admin" || deletedResultIds.length || editStarted) {
+    if (submitted || actor.role === "admin" || deletedResultIds.length) {
       const first = cleanRecords[0];
       const [{ data: cls }, { data: sub }] = await Promise.all([
         service.from("classes").select("name").eq("id", first.class_id).maybeSingle(),
         service.from("subjects").select("name").eq("id", first.subject_id).maybeSingle(),
       ]);
 
-      if (submitted || actor.role === "admin" || deletedResultIds.length) {
-        await logAudit(actor, {
-          action: submitted ? "scores.submit" : "scores.edit",
-          entityType: "results",
-          entityId: first.class_id,
-          summary: `${submitted ? "Submitted" : "Edited"} ${cleanRecords.length} score record(s) — ${sub?.name || "subject"}, ${cls?.name || "class"} (${first.term}, ${first.session})${deletedResultIds.length ? `; removed ${deletedResultIds.length}` : ""}`,
-          metadata: { class_id: first.class_id, subject_id: first.subject_id, term: first.term, session: first.session, records: cleanRecords.length, submitted, deleted: deletedResultIds.length },
-        });
-      }
+      await logAudit(actor, {
+        action: submitted ? "scores.submit" : "scores.edit",
+        entityType: "results",
+        entityId: first.class_id,
+        summary: `${submitted ? "Submitted" : "Edited"} ${cleanRecords.length} score record(s) — ${sub?.name || "subject"}, ${cls?.name || "class"} (${first.term}, ${first.session})${deletedResultIds.length ? `; removed ${deletedResultIds.length}` : ""}`,
+        metadata: { class_id: first.class_id, subject_id: first.subject_id, term: first.term, session: first.session, records: cleanRecords.length, submitted, deleted: deletedResultIds.length },
+      });
 
       // A teacher submitting scores for approval is the one event worth pinging admins for —
-      // draft autosaves fire too often to notify on every keystroke.
+      // draft autosaves and "started editing" pings were pure noise (never read).
       if (submitted && actor.role === "teacher") {
         await notifyAdmins(actor, {
           type: "scores.submit",
           title: "Scores submitted for approval",
           body: `${sub?.name || "A subject"} — ${cls?.name || "class"} (${first.term}, ${first.session}): ${submitted} score(s) submitted.`,
-          link: "/admin/approvals",
-          metadata: { class_id: first.class_id, subject_id: first.subject_id, term: first.term, session: first.session },
-        });
-      } else if (editStarted) {
-        await notifyAdmins(actor, {
-          type: "scores.edit_start",
-          title: "Teacher started editing grades",
-          body: `${sub?.name || "A subject"} — ${cls?.name || "class"} (${first.term}, ${first.session}): grade entry is in progress.`,
           link: "/admin/approvals",
           metadata: { class_id: first.class_id, subject_id: first.subject_id, term: first.term, session: first.session },
         });

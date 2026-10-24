@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor, ApiActor } from "@/lib/apiAuth";
-import { notifyAdmins } from "@/lib/notify";
 
 const DEFAULT_SCHOOL_DAYS = 120;
 
@@ -280,17 +279,6 @@ export async function POST(req: NextRequest) {
         .upsert(summaries, { onConflict: "enrollment_id,term" });
       if (summaryErr) throw summaryErr;
 
-      if (actor.role === "teacher") {
-        const { data: cls } = await service.from("classes").select("name").eq("id", classId).maybeSingle();
-        await notifyAdmins(actor, {
-          type: "attendance.edit",
-          title: "Attendance register updated",
-          body: `${cls?.name || "A class"} (${activeTerm}): daily register edited for ${rows.length} student(s) on ${records[0]?.date || "today"}.`,
-          link: "/admin/dashboard",
-          metadata: { class_id: classId, term: activeTerm, date: records[0]?.date },
-        });
-      }
-
       return NextResponse.json({
         ok: true,
         message: `Daily register saved and synced for ${rows.length} students!`,
@@ -315,17 +303,6 @@ export async function POST(req: NextRequest) {
       .from("attendance_summaries")
       .upsert(summaries, { onConflict: "enrollment_id,term" });
     if (sumErr) throw sumErr;
-
-    if (actor.role === "teacher") {
-      const { data: cls } = await service.from("classes").select("name").eq("id", classId).maybeSingle();
-      await notifyAdmins(actor, {
-        type: "attendance.edit",
-        title: "Attendance summary updated",
-        body: `${cls?.name || "A class"} (${activeTerm}): term attendance summary edited for ${rows.length} student(s).`,
-        link: "/admin/dashboard",
-        metadata: { class_id: classId, term: activeTerm },
-      });
-    }
 
     return NextResponse.json({
       ok: true,
