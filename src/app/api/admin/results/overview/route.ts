@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
       studentIds.length
         ? service
             .from("results")
-            .select("id, student_id, subject_id, status, return_reason, updated_at, pr1_status, pr2_status, pr3_status, tr_status")
+            .select("id, student_id, subject_id, status, return_reason, updated_at, teacher_id, pr1_status, pr2_status, pr3_status, tr_status")
             .eq("term", term)
             .eq("session", session)
             .in("student_id", studentIds)
@@ -49,7 +49,13 @@ export async function GET(req: NextRequest) {
     ]);
     if (resultsRes.error) throw resultsRes.error;
 
-    const teacherIds = Array.from(new Set((assignRes.data || []).map((a: any) => a.teacher_user_id)));
+    // Assigned teachers plus whoever last saved each score (results.teacher_id), looked up together.
+    const teacherIds = Array.from(
+      new Set([
+        ...(assignRes.data || []).map((a: any) => a.teacher_user_id),
+        ...(resultsRes.data || []).map((r: any) => r.teacher_id),
+      ].filter(Boolean))
+    );
     const { data: users } = teacherIds.length
       ? await service.from("users").select("id, auth_id, display_name").or(`id.in.(${teacherIds.join(",")}),auth_id.in.(${teacherIds.join(",")})`)
       : { data: [] };
@@ -75,6 +81,8 @@ export async function GET(req: NextRequest) {
         teachers: (assignRes.data || [])
           .filter((a: any) => a.subject_id === subj.subject_id)
           .map((a: any) => nameOf.get(a.teacher_user_id) || "Teacher"),
+        // Who last saved scores for this subject (set when a teacher saves; blank on older scores).
+        enteredBy: Array.from(new Set(subjRows.map((r: any) => (r.teacher_id ? nameOf.get(r.teacher_id) : null)).filter(Boolean))) as string[],
         counts,
         missing: offering.filter((id: string) => !withRows.has(id)).length,
         notOffering: studentIds.length - offering.length,

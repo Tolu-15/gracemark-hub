@@ -85,9 +85,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Whoever saves as a teacher is recorded on the score, so late or wrong entries can be traced.
+  // Admin edits leave the existing teacher in place rather than overwriting it. It is added to
+  // every record in the request alike, so the batch has one consistent shape.
+  const enteredBy = actor.role === "teacher" && actor.dbUserId ? { teacher_id: actor.dbUserId } : {};
+
   // Only score fields are accepted from the client. Approval and publishing
   // status can only be changed by the admin endpoints.
   const cleanRecords = records.map((r: any) => ({
+    ...enteredBy,
     student_id: r.student_id,
     subject_id: r.subject_id,
     class_id: r.class_id,

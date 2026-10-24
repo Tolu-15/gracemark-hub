@@ -19,6 +19,7 @@ interface GridRow {
   subjectId: string;
   name: string;
   teachers: string[];
+  enteredBy?: string[];
   counts: Record<string, number>;
   missing: number;
   notOffering: number;
@@ -538,6 +539,7 @@ export default function AdminApprovalsPage() {
                             {allApproved && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">All approved</span>}
                           </div>
                           <div className="text-[11px] text-slate-500">{row.teachers.length ? row.teachers.join(", ") : "No teacher assigned"}</div>
+                          {row.enteredBy && row.enteredBy.length > 0 && <div className="text-[11px] text-slate-400">Entered by {row.enteredBy.join(", ")}</div>}
                           {row.returnReason && <div className="text-[11px] text-rose-600 mt-0.5">Returned: {row.returnReason}</div>}
                         </td>
                         <td className="px-2 py-2.5 text-center font-bold text-sky-700">
