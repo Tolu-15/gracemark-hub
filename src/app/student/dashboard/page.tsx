@@ -39,7 +39,9 @@ export default function StudentDashboardPage() {
   });
 
   // Latest published (frozen) report for the selected term
-  const [latest, setLatest] = useState<{ milestone: string; report: any; count: number } | null>(null);
+  // `tr` is set when the latest release is the Terminal Result: students only get that after a
+  // scratch card view, so the card shows its status instead of the report itself.
+  const [latest, setLatest] = useState<{ milestone: string; report: any; count: number; tr?: any } | null>(null);
   const [loadingResults, setLoadingResults] = useState(false);
 
   // Overlay Report Dashboard
@@ -156,8 +158,13 @@ export default function StudentDashboardPage() {
           setLatest(null);
           return;
         }
-        const order = ["PR1", "PR2", "PR3", "TR"];
+        const order = ["PR1", "PR2", "PR3"];
         const published = order.filter((k) => json.reports[k]);
+        if (json.tr?.published) {
+          // The Terminal Result is withheld from this response; it opens through the scratch card gate.
+          setLatest({ milestone: "TR", report: null, count: published.length + 1, tr: json.tr });
+          return;
+        }
         const key = published[published.length - 1];
         setLatest(key ? { milestone: key, report: json.reports[key], count: published.length } : null);
       } catch (err) {
@@ -356,16 +363,27 @@ export default function StudentDashboardPage() {
                 <div className="text-base font-bold text-slate-900">
                   {latest.milestone === "TR" ? "Terminal Result" : latest.report.milestoneLabel}
                 </div>
-                <div className="text-xs text-slate-500">
-                  {latest.report.subjects?.length || 0} subjects · Overall {latest.report.summary?.percentage}% ({latest.report.summary?.remark})
-                  {latest.milestone === "TR" && latest.report.summary?.gpa !== null ? ` · GPA ${latest.report.summary.gpa}` : ""}
-                </div>
+                {latest.tr ? (
+                  <div className="text-xs text-slate-500">
+                    {latest.tr.card?.status === "active"
+                      ? `Scratch card active · ${latest.tr.card.viewsLeft} of ${latest.tr.card.viewsAllowed} views left`
+                      : latest.tr.card?.status === "issued"
+                        ? "Your scratch card is ready: enter its PIN to activate it"
+                        : latest.tr.card?.status === "exhausted"
+                          ? "All views on your scratch card are used. A new card is needed to view it again"
+                          : `Ready to view with a scratch card (₦${Number(latest.tr.price ?? 1000).toLocaleString("en-NG")})`}
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-500">
+                    {latest.report.subjects?.length || 0} subjects · Overall {latest.report.summary?.percentage}% ({latest.report.summary?.remark})
+                  </div>
+                )}
               </div>
               <button
                 onClick={() => setShowFullReport(true)}
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg hover:bg-slate-800 cursor-pointer"
               >
-                View report sheet
+                {latest.tr ? "Open terminal result" : "View report sheet"}
               </button>
             </div>
           )}
