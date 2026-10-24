@@ -19,6 +19,7 @@ interface StudentProfile {
   name: string;
   class_id: string;
   classes?: { id: string; name: string } | null;
+  guardian_email?: string | null;
 }
 
 interface FeeSummary {
@@ -48,6 +49,13 @@ export default function StudentDashboardPage() {
   const [upcomingCbt, setUpcomingCbt] = useState<any[]>([]);
   const [recentCbtAttempts, setRecentCbtAttempts] = useState<any[]>([]);
 
+  // Guardian email prompt — nudges the student to add a parent/guardian
+  // email (used for result-publish notifications) if none is on file yet.
+  const [showGuardianPrompt, setShowGuardianPrompt] = useState(false);
+  const [guardianEmailInput, setGuardianEmailInput] = useState("");
+  const [guardianSaving, setGuardianSaving] = useState(false);
+  const [guardianError, setGuardianError] = useState("");
+
   // 1. Initial Profile & Settings Load
   useEffect(() => {
     async function init() {
@@ -63,12 +71,16 @@ export default function StudentDashboardPage() {
       const candidateIds = await resolveStudentUserIdCandidates(user.id);
       let { data: std } = await supabase
         .from("students")
-        .select("id, admission_no, name, class_id, classes:class_id(id, name)")
+        .select("id, admission_no, name, class_id, guardian_email, classes:class_id(id, name)")
         .in("user_id", candidateIds)
         .maybeSingle();
 
       if (std) {
         setStudent(std as any);
+        if (!std.guardian_email) {
+          const dismissed = typeof window !== "undefined" && localStorage.getItem(`gma_guardian_email_dismissed_${std.id}`);
+          if (!dismissed) setShowGuardianPrompt(true);
+        }
       }
 
       const [settings, dbSessions] = await Promise.all([
@@ -163,6 +175,39 @@ export default function StudentDashboardPage() {
   const formatCurrency = (amt: number) => {
     return "₦" + Number(amt || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 });
   };
+
+  function dismissGuardianPrompt() {
+    if (student?.id && typeof window !== "undefined") {
+      localStorage.setItem(`gma_guardian_email_dismissed_${student.id}`, "1");
+    }
+    setShowGuardianPrompt(false);
+  }
+
+  async function saveGuardianEmail(e: React.FormEvent) {
+    e.preventDefault();
+    setGuardianError("");
+    const email = guardianEmailInput.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setGuardianError("Please enter a valid email address.");
+      return;
+    }
+    setGuardianSaving(true);
+    try {
+      const res = await fetch("/api/student/guardian-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+        body: JSON.stringify({ guardian_email: email }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to save email.");
+      setStudent((prev) => (prev ? { ...prev, guardian_email: email } : prev));
+      setShowGuardianPrompt(false);
+    } catch (err: any) {
+      setGuardianError(err.message || "Failed to save email. Please try again.");
+    } finally {
+      setGuardianSaving(false);
+    }
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto print:overflow-visible">
@@ -397,6 +442,45 @@ export default function StudentDashboardPage() {
           </div>
         </section>
       </div>
+
+      {/* Guardian Email Prompt */}
+      {showGuardianPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-bold text-slate-900">Add a parent/guardian email?</h3>
+            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+              We'll email your parent or guardian whenever a new result is published, so they stay in the loop. This is optional and you can add it later from your profile.
+            </p>
+            <form onSubmit={saveGuardianEmail} className="mt-4 space-y-3">
+              <input
+                type="email"
+                required
+                value={guardianEmailInput}
+                onChange={(e) => setGuardianEmailInput(e.target.value)}
+                placeholder="parent@example.com"
+                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              />
+              {guardianError && <p className="text-xs text-rose-600 font-medium">{guardianError}</p>}
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="submit"
+                  disabled={guardianSaving}
+                  className="flex-1 px-4 py-2.5 bg-slate-900 text-white text-xs font-bold rounded-lg hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
+                >
+                  {guardianSaving ? "Saving…" : "Save Email"}
+                </button>
+                <button
+                  type="button"
+                  onClick={dismissGuardianPrompt}
+                  className="px-4 py-2.5 text-xs font-bold text-slate-500 hover:text-slate-700 cursor-pointer"
+                >
+                  Not now
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Full Report Dashboard Overlay Modal */}
       {showFullReport && student && (

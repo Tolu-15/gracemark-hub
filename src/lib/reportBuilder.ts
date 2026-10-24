@@ -628,3 +628,49 @@ export async function buildClassReports(
 
   return { ...empty, reports, issues, resultIds, enrollmentByStudent };
 }
+
+/**
+ * The SSS1/2/3 level is split into separate classes per arm (e.g. "SSS 1
+ * Science", "SSS 1 Arts", "SSS 1 Commercial") so each can have its own
+ * subject list — but "position in class" is meant to rank across the whole
+ * year level, not just a student's own arm. Strips the arm suffix so those
+ * three rows group together; JSS classes have no arm suffix, so each stays
+ * its own group.
+ */
+export function levelGroupName(className: string): string {
+  return className.replace(/\s+(Science|Arts|Commercial)\s*$/i, "").trim();
+}
+
+/**
+ * Recomputes position/rankedCount across every class sharing the same year
+ * level (e.g. all of SSS 1's arms combined) and overwrites them on `build`'s
+ * own reports. Everything else on `build` — subject lines, class averages,
+ * issues, resultIds for publishing — stays scoped to just this one class,
+ * since those are genuinely specific to the arm (different subjects,
+ * different teachers submitting). Only the single rank number is level-wide.
+ * No-op for PR milestones (position is TR-only) or a level with no siblings.
+ */
+export async function applyLevelWidePositions(service: any, build: ClassBuild): Promise<void> {
+  if (build.milestone !== "TR" || !build.reports.length) return;
+
+  const groupName = levelGroupName(build.className);
+  const { data: allClasses } = await service.from("classes").select("id, name");
+  const siblingIds = ((allClasses || []) as { id: string; name: string }[])
+    .filter((c) => levelGroupName(c.name) === groupName)
+    .map((c) => c.id);
+  const otherIds = siblingIds.filter((id) => id !== build.classId);
+  if (!otherIds.length) return; // JSS classes, or an SSS class with no sibling arms
+
+  const otherBuilds = await Promise.all(
+    otherIds.map((cid) => buildClassReports(service, { classId: cid, term: build.term, session: build.session, milestone: build.milestone }))
+  );
+
+  const allReports = [...build.reports, ...otherBuilds.flatMap((b) => b.reports)];
+  const positions = rankPositions(allReports.map((r) => ({ id: r.student.id, value: r.isSenior ? r.summary.gpa : r.summary.percentage })));
+  const rankedCount = positions.size;
+
+  build.reports.forEach((r) => {
+    r.summary.position = positions.get(r.student.id) ?? null;
+    r.summary.rankedCount = rankedCount;
+  });
+}

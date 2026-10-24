@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
 import { logAudit } from "@/lib/audit";
-import { buildClassReports, ensureEnrollments, Milestone, MILESTONES, STATUS_COLUMN } from "@/lib/reportBuilder";
+import { notifyUsers, notifyAdmins } from "@/lib/notify";
+import { sendResultPublishedEmail, sendGuardianResultPublishedEmail } from "@/lib/email";
+import { applyLevelWidePositions, buildClassReports, ensureEnrollments, Milestone, MILESTONES, STATUS_COLUMN } from "@/lib/reportBuilder";
+import { usersByAnyId } from "@/lib/serverContext";
+import { awardPositionBadges } from "@/lib/badges";
 
 /**
  * POST { class_id, term, milestone, force? }
@@ -58,6 +62,7 @@ export async function POST(req: NextRequest) {
       await ensureEnrollments(service, class_id, build.sessionId, missing);
       build = await buildClassReports(service, { classId: class_id, term, session, milestone });
     }
+    await applyLevelWidePositions(service, build);
 
     const publishedAt = new Date().toISOString();
     const snapshots = build.reports.map((report) => ({
@@ -81,9 +86,13 @@ export async function POST(req: NextRequest) {
       await service.from("result_snapshots").delete().eq("term", term).eq("report_type", milestone).in("enrollment_id", stale);
     }
 
+    if (milestone === "TR") {
+      await awardPositionBadges(service, build.reports, term, session);
+    }
+
     // Mark exactly the included result rows as published for this milestone
     const col = STATUS_COLUMN[milestone];
-    const { data: students } = await service.from("students").select("id").eq("class_id", class_id);
+    const { data: students } = await service.from("students").select("id, user_id, name, full_name, guardian_email").eq("class_id", class_id);
     const studentIds = (students || []).map((s: any) => s.id);
     await service.from("results").update({ [col]: "draft" }).eq("term", term).eq("session", session).in("student_id", studentIds);
     const { error: stErr } = await service.from("results").update({ [col]: "published", published_at: publishedAt }).in("id", build.resultIds);
@@ -97,6 +106,80 @@ export async function POST(req: NextRequest) {
       summary: `Published ${milestone} for ${cls?.name || "class"} (${term}, ${session}) — ${snapshots.length} students${force ? " (forced past warnings)" : ""}`,
       metadata: { class_id, term, session, milestone, students: snapshots.length, forced: Boolean(force) },
     });
+
+    const rawUserIds = (students || []).map((s: any) => s.user_id).filter(Boolean);
+    if (rawUserIds.length) {
+      const userMap = await usersByAnyId(service, rawUserIds);
+      const recipientIds = Array.from(new Set(Array.from(userMap.values()).map((u) => u.id)));
+      await notifyUsers(actor, recipientIds, {
+        type: "results.publish",
+        title: "New result published",
+        body: `Your ${milestone.replace(/_/g, " ")} for ${cls?.name || "your class"} (${term}, ${session}) is now available.`,
+        link: "/student/result",
+        metadata: { class_id, term, session, milestone },
+      });
+    }
+
+    // Push notifications also reach admin and this class's teachers — anyone
+    // who has push enabled gets pinged, not just the students whose result it is.
+    await notifyAdmins(actor, {
+      type: "results.publish",
+      title: "Result published",
+      body: `${milestone.replace(/_/g, " ")} for ${cls?.name || "a class"} (${term}, ${session}) was published — ${snapshots.length} students.`,
+      link: "/admin/historical-results",
+      metadata: { class_id, term, session, milestone },
+    });
+
+    const [{ data: cta }, { data: sta }, { data: classRow }] = await Promise.all([
+      service.from("class_teacher_assignments").select("teacher_user_id").eq("class_id", class_id).eq("status", "active"),
+      service.from("subject_teacher_assignments").select("teacher_user_id").eq("class_id", class_id).eq("status", "active"),
+      service.from("classes").select("class_teacher_id").eq("id", class_id).maybeSingle(),
+    ]);
+    const rawTeacherIds = [...(cta || []).map((r: any) => r.teacher_user_id), ...(sta || []).map((r: any) => r.teacher_user_id), classRow?.class_teacher_id].filter(
+      Boolean
+    );
+    const teacherUserMap = await usersByAnyId(service, rawTeacherIds);
+    const teacherIds = Array.from(new Set(Array.from(teacherUserMap.values()).map((u) => u.id)));
+    if (teacherIds.length) {
+      await notifyUsers(actor, teacherIds, {
+        type: "results.publish",
+        title: "Result published",
+        body: `${milestone.replace(/_/g, " ")} for ${cls?.name || "your class"} (${term}, ${session}) was published.`,
+        link: "/teacher/gradebook",
+        metadata: { class_id, term, session, milestone },
+      });
+    }
+
+    // Best-effort — a mail provider hiccup must never undo or block a publish.
+    try {
+      await sendResultPublishedEmail({
+        className: cls?.name || "a class",
+        milestone,
+        term,
+        session,
+        studentCount: snapshots.length,
+      });
+    } catch (mailErr) {
+      console.warn("Result-published email failed:", mailErr);
+    }
+
+    // One best-effort email per guardian who has an email on file, for the
+    // students actually included in this publish. Never lets one bad address
+    // block the rest, and never blocks or undoes the publish itself.
+    const publishedStudentIds = new Set(build.reports.map((r) => r.student.id));
+    const guardianTargets = (students || []).filter((s: any) => publishedStudentIds.has(s.id) && s.guardian_email);
+    await Promise.allSettled(
+      guardianTargets.map((s: any) =>
+        sendGuardianResultPublishedEmail({
+          guardianEmail: s.guardian_email,
+          studentName: s.full_name || s.name || "Your ward",
+          className: cls?.name || "their class",
+          milestone,
+          term,
+          session,
+        }).catch((err) => console.warn(`Guardian email failed for student ${s.id}:`, err))
+      )
+    );
 
     return NextResponse.json({ ok: true, published: snapshots.length, publishedAt });
   } catch (err: any) {

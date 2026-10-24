@@ -42,6 +42,9 @@ export default function AdminHistoricalResultsPage() {
   const [loadingCareer, setLoadingCareer] = useState(false);
   const [reportView, setReportView] = useState<{ session: string; term: string } | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tags each runSearch() call so a slower, older keystroke's search can't resolve
+  // after a newer one and overwrite the results with a stale query's matches.
+  const searchSeqRef = useRef(0);
 
   // Broadsheet
   const [bsSession, setBsSession] = useState("");
@@ -71,6 +74,7 @@ export default function AdminHistoricalResultsPage() {
 
   // ---------------- Student lookup ----------------
   const runSearch = useCallback(async (q: string) => {
+    const seq = ++searchSeqRef.current;
     if (q.trim().length < 2) {
       setMatches([]);
       setSearchError("");
@@ -82,13 +86,16 @@ export default function AdminHistoricalResultsPage() {
       const res = await fetch(`/api/admin/historical-lookup?q=${encodeURIComponent(q.trim())}`, { headers: await getAuthHeaders() });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || "Search failed.");
+      if (searchSeqRef.current !== seq) return; // a newer keystroke's search already took over
       setMatches(json.matches || []);
       if (!json.matches?.length) setSearchError(`No student found for "${q.trim()}".`);
     } catch (e: any) {
-      setSearchError(e.message);
-      setMatches([]);
+      if (searchSeqRef.current === seq) {
+        setSearchError(e.message);
+        setMatches([]);
+      }
     } finally {
-      setSearching(false);
+      if (searchSeqRef.current === seq) setSearching(false);
     }
   }, []);
 
@@ -465,6 +472,33 @@ export default function AdminHistoricalResultsPage() {
                 <div className="px-4 py-2 border-b border-amber-200 bg-amber-50 text-xs text-amber-900 print:hidden">
                   Some scores are not approved yet, so these figures may still change:{" "}
                   {sheet.issues.filter((i: any) => i.code === "not_approved" || i.code === "returned").map((i: any) => i.message).join(" ")}
+                </div>
+              )}
+
+              {sheet.subjects.length > 0 && (
+                <div className="border-b border-slate-200 print:hidden">
+                  <div className="px-4 py-2 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Highest &amp; Lowest, per Subject
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {sheet.subjects.map((s: any) => {
+                      const st = sheet.subjectStats[s.id] || {};
+                      if (!st.highestNames?.length) return null;
+                      return (
+                        <div key={s.id} className="flex flex-col sm:flex-row sm:items-center gap-2 px-4 py-2">
+                          <span className="text-xs font-semibold text-slate-700 w-full sm:w-40 shrink-0">{s.name}</span>
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-semibold">
+                              Highest: {st.highestNames.join(", ")} — {fmt(st.highest)}%
+                            </span>
+                            <span className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 font-semibold">
+                              Lowest: {st.lowestNames.join(", ")} — {fmt(st.lowest)}%
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 

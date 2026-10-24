@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor, ApiActor } from "@/lib/apiAuth";
 import { sendAssignmentUpdateEmail, AssignmentChange } from "@/lib/email";
+import { notifyUsers } from "@/lib/notify";
 
 type Service = ApiActor["service"];
 
@@ -137,7 +138,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const authorization = await requireApiActor(req, ["admin"]);
   if ("response" in authorization) return authorization.response;
-  const { service } = authorization.actor;
+  const { actor } = authorization;
+  const { service } = actor;
 
   if (!process.env.BREVO_API_KEY) {
     return NextResponse.json({ ok: false, error: "Email is not configured (BREVO_API_KEY is missing)." }, { status: 503 });
@@ -172,6 +174,13 @@ export async function POST(req: NextRequest) {
           if (error) throw error;
         }
         sentNames.push(teacher.name);
+        await notifyUsers(actor, [teacher.teacherId], {
+          type: "assignment.update",
+          title: "Class/subject assignment updated",
+          body: `Your teaching assignments changed for ${session?.name || "this session"} — check your email for details.`,
+          link: "/teacher/dashboard",
+          metadata: { changes: teacher.changes },
+        });
       } catch (err: any) {
         failed.push({ name: teacher.name, error: err.message || "Send failed" });
       }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
-import { buildClassReports, Milestone, MILESTONES } from "@/lib/reportBuilder";
+import { applyLevelWidePositions, buildClassReports, Milestone, MILESTONES } from "@/lib/reportBuilder";
 
 /** GET ?class_id=&term=&milestone=&student_id= → the report exactly as it would be published now. */
 export async function GET(req: NextRequest) {
@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
   const { data: settings } = await service.from("app_settings").select("current_session").limit(1).maybeSingle();
   try {
     const build = await buildClassReports(service, { classId, term, session: settings?.current_session || "", milestone });
+    await applyLevelWidePositions(service, build);
     const report = build.reports.find((r) => r.student.id === studentId) || build.reports[0] || null;
     return NextResponse.json({ ok: true, report });
   } catch (err: any) {

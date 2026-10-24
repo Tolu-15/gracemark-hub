@@ -26,8 +26,12 @@ export default function AdminFinanceReportsPage() {
   const [session, setSession] = useState("");
   const [term, setTerm] = useState("term1");
   const [sessionsList, setSessionsList] = useState<string[]>([]);
+  // Tags each loadData() call so a slower, older request (previous session/term
+  // filter) can't resolve after a newer one and overwrite the screen.
+  const loadSeqRef = React.useRef(0);
 
   const loadData = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     try {
       const [{ data: classesData }, settings, { data: invoicesData, error: iErr }, { data: studentsData }, dbSessions] =
@@ -38,6 +42,9 @@ export default function AdminFinanceReportsPage() {
           supabase.from("students").select("id, class_id, current_class_id"),
           getAcademicSessions(),
         ]);
+
+      // A newer loadData() call (filters changed again) already took over.
+      if (loadSeqRef.current !== seq) return;
 
       const names = dbSessions.map((s) => s.name);
       setSessionsList(names);
@@ -95,7 +102,7 @@ export default function AdminFinanceReportsPage() {
     } catch (err) {
       console.error("Failed to load financial reports:", err);
     } finally {
-      setLoading(false);
+      if (loadSeqRef.current === seq) setLoading(false);
     }
   }, [session, term]);
 

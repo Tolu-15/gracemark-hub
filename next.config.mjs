@@ -10,15 +10,9 @@ const nextConfig = {
     "@supabase/realtime-js",
     "@supabase/storage-js",
   ],
+  // next/image is unused; disabling the optimizer removes the Next 14 image-API attack surface
   images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'kfdfplxidvgoffqrfipw.supabase.co',
-        port: '',
-        pathname: '/**',
-      },
-    ],
+    unoptimized: true,
   },
 };
 

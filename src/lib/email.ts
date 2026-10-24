@@ -44,17 +44,29 @@ async function sendEmail(payload: BrevoEmailPayload): Promise<void> {
   }
 }
 
+/** Rendered subject + HTML of one email, separate from delivery so templates can be previewed. */
+export interface EmailContent {
+  subject: string;
+  htmlContent: string;
+}
+
 /** Sends a 6-digit OTP to an admin for new-device verification. */
 export async function sendOtpEmail(
   toEmail: string,
   otp: string,
   name?: string
 ): Promise<void> {
-  const displayName = name || "Administrator";
-
   await sendEmail({
     sender: { name: SENDER_NAME, email: SENDER_EMAIL },
-    to: [{ email: toEmail, name: displayName }],
+    to: [{ email: toEmail, name: name || "Administrator" }],
+    ...buildOtpEmail(otp, name),
+  });
+}
+
+export function buildOtpEmail(otp: string, name?: string): EmailContent {
+  const displayName = name || "Administrator";
+
+  return {
     subject: "GraceMark Portal — New Device Verification Code",
     htmlContent: `
       <!DOCTYPE html>
@@ -96,7 +108,7 @@ export async function sendOtpEmail(
       </body>
       </html>
     `,
-  });
+  };
 }
 
 /** Sends a 6-digit OTP specifically for password reset verification. */
@@ -105,11 +117,17 @@ export async function sendPasswordResetOtpEmail(
   otp: string,
   name?: string
 ): Promise<void> {
-  const displayName = name || "User";
-
   await sendEmail({
     sender: { name: SENDER_NAME, email: SENDER_EMAIL },
-    to: [{ email: toEmail, name: displayName }],
+    to: [{ email: toEmail, name: name || "User" }],
+    ...buildPasswordResetOtpEmail(otp, name),
+  });
+}
+
+export function buildPasswordResetOtpEmail(otp: string, name?: string): EmailContent {
+  const displayName = name || "User";
+
+  return {
     subject: "GraceMark Portal — Password Reset Code",
     htmlContent: `
       <!DOCTYPE html>
@@ -151,7 +169,7 @@ export async function sendPasswordResetOtpEmail(
       </body>
       </html>
     `,
-  });
+  };
 }
 
 /** Sends a confirmation email after a successful password change. */
@@ -160,12 +178,18 @@ export async function sendPasswordChangedEmail(
   name: string,
   role: string
 ): Promise<void> {
-  const roleLabel =
-    role === "admin" ? "Administrator" : role === "teacher" ? "Teacher" : "Student";
-
   await sendEmail({
     sender: { name: SENDER_NAME, email: SENDER_EMAIL },
     to: [{ email: toEmail, name }],
+    ...buildPasswordChangedEmail(name, role),
+  });
+}
+
+export function buildPasswordChangedEmail(name: string, role: string): EmailContent {
+  const roleLabel =
+    role === "admin" ? "Administrator" : role === "teacher" ? "Teacher" : "Student";
+
+  return {
     subject: "GraceMark Portal — Password Changed Successfully",
     htmlContent: `
       <!DOCTYPE html>
@@ -203,23 +227,31 @@ export async function sendPasswordChangedEmail(
       </body>
       </html>
     `,
-  });
+  };
 }
 
-/** Sends a welcome email to a newly created teacher with login credentials and class/subject allocation form link. */
-export async function sendTeacherWelcomeEmail(params: {
+interface TeacherWelcomeParams {
   toEmail: string;
   name: string;
   staffId: string;
   password: string;
   formUrl?: string;
-}): Promise<void> {
-  const formUrl = params.formUrl || "https://forms.gle/bhiJ4CUkXJbHRP5p6";
-  const loginUrl = "https://www.gracemarkportal.com.ng/";
+}
 
+/** Sends a welcome email to a newly created teacher with login credentials and class/subject allocation form link. */
+export async function sendTeacherWelcomeEmail(params: TeacherWelcomeParams): Promise<void> {
   await sendEmail({
     sender: { name: SENDER_NAME, email: SENDER_EMAIL },
     to: [{ email: params.toEmail, name: params.name }],
+    ...buildTeacherWelcomeEmail(params),
+  });
+}
+
+export function buildTeacherWelcomeEmail(params: TeacherWelcomeParams): EmailContent {
+  const formUrl = params.formUrl || "https://forms.gle/bhiJ4CUkXJbHRP5p6";
+  const loginUrl = "https://www.gracemarkportal.com.ng/";
+
+  return {
     subject: "GraceMark Academy — Staff Portal Access & Subject Allocation",
     htmlContent: `
       <!DOCTYPE html>
@@ -387,9 +419,238 @@ export async function sendTeacherWelcomeEmail(params: {
       </body>
       </html>
     `,
+  };
+}
+
+
+/** Who gets pinged every time a result is published, regardless of who's signed in as admin. */
+const RESULT_PUBLISHED_RECIPIENTS = [
+  { email: "toluwanimibabalola2707@gmail.com", name: "Admin" },
+  { email: "gracemarkacademy@gmail.com", name: "GraceMark Academy" },
+];
+
+const MILESTONE_LABEL: Record<string, string> = {
+  PR1: "1st Progress Report",
+  PR2: "2nd Progress Report",
+  PR3: "3rd Progress Report",
+  TR: "Terminal Result",
+};
+const TERM_LABEL: Record<string, string> = { term1: "1st Term", term2: "2nd Term", term3: "3rd Term" };
+
+interface ResultPublishedParams {
+  className: string;
+  milestone: string;
+  term: string;
+  session: string;
+  studentCount: number;
+}
+
+/** Fired every time an admin publishes a milestone for a class — tells the fixed admin notification list what just went out. */
+export async function sendResultPublishedEmail(params: ResultPublishedParams): Promise<void> {
+  await sendEmail({
+    sender: { name: SENDER_NAME, email: SENDER_EMAIL },
+    to: RESULT_PUBLISHED_RECIPIENTS,
+    ...buildResultPublishedEmail(params),
   });
 }
 
+export function buildResultPublishedEmail(params: ResultPublishedParams): EmailContent {
+  const milestoneLabel = MILESTONE_LABEL[params.milestone] || params.milestone;
+  const termLabel = TERM_LABEL[params.term] || params.term;
+  const loginUrl = "https://www.gracemarkportal.com.ng/";
+
+  return {
+    subject: `GraceMark Portal — Result Published: ${params.className} (${milestoneLabel})`,
+    htmlContent: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+      <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:36px 16px;">
+          <tr><td align="center">
+            <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;">
+              <tr><td style="height:4px;background:#c9a84c;font-size:0;line-height:0;">&nbsp;</td></tr>
+              <tr>
+                <td style="padding:28px 36px;background:#0f172a;">
+                  <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#c9a84c;letter-spacing:2px;text-transform:uppercase;">GraceMark Academy</p>
+                  <h1 style="margin:0;font-size:21px;font-weight:800;color:#ffffff;">Result Published</h1>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:30px 36px;">
+                  <p style="margin:0 0 18px;font-size:14px;color:#475569;line-height:1.6;">
+                    The <strong style="color:#0f172a;">${milestoneLabel}</strong> for <strong style="color:#0f172a;">${params.className}</strong> has just been published.
+                  </p>
+                  <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+                    <tr>
+                      <td style="padding:10px 14px;background:#f8fafc;font-size:12px;font-weight:700;color:#64748b;width:130px;">Class</td>
+                      <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#0f172a;font-weight:700;">${params.className}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:10px 14px;background:#f8fafc;font-size:12px;font-weight:700;color:#64748b;">Milestone</td>
+                      <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#0f172a;">${milestoneLabel}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:10px 14px;background:#f8fafc;font-size:12px;font-weight:700;color:#64748b;">Term / Session</td>
+                      <td style="padding:10px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#0f172a;">${termLabel}, ${params.session}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:10px 14px;background:#f8fafc;font-size:12px;font-weight:700;color:#64748b;">Students</td>
+                      <td style="padding:10px 14px;font-size:13px;color:#0f172a;">${params.studentCount}</td>
+                    </tr>
+                  </table>
+                  <div style="text-align:center;margin:24px 0 4px;">
+                    <a href="${loginUrl}" target="_blank" style="display:inline-block;background:#0f172a;color:#ffffff;padding:12px 28px;border-radius:10px;font-weight:700;font-size:13px;text-decoration:none;">Open Portal &rarr;</a>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:20px 36px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
+                  <p style="margin:0;font-size:11px;color:#64748b;">GraceMark Academic Portal &bull; <a href="${loginUrl}" style="color:#2563eb;text-decoration:none;">www.gracemarkportal.com.ng</a></p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+}
+
+interface GuardianResultPublishedParams {
+  guardianEmail: string;
+  studentName: string;
+  className: string;
+  milestone: string;
+  term: string;
+  session: string;
+}
+
+/** Sent to one student's guardian_email (if set) whenever their class's result is published. */
+export async function sendGuardianResultPublishedEmail(params: GuardianResultPublishedParams): Promise<void> {
+  await sendEmail({
+    sender: { name: SENDER_NAME, email: SENDER_EMAIL },
+    to: [{ email: params.guardianEmail }],
+    ...buildGuardianResultPublishedEmail(params),
+  });
+}
+
+export function buildGuardianResultPublishedEmail(params: GuardianResultPublishedParams): EmailContent {
+  const milestoneLabel = MILESTONE_LABEL[params.milestone] || params.milestone;
+  const termLabel = TERM_LABEL[params.term] || params.term;
+  const loginUrl = "https://www.gracemarkportal.com.ng/";
+
+  return {
+    subject: `GraceMark Academy — ${params.studentName}'s ${milestoneLabel} is Published`,
+    htmlContent: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+      <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:36px 16px;">
+          <tr><td align="center">
+            <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;">
+              <tr><td style="height:4px;background:#c9a84c;font-size:0;line-height:0;">&nbsp;</td></tr>
+              <tr>
+                <td style="padding:28px 36px;background:#0f172a;">
+                  <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#c9a84c;letter-spacing:2px;text-transform:uppercase;">GraceMark Academy</p>
+                  <h1 style="margin:0;font-size:21px;font-weight:800;color:#ffffff;">Your Ward's Result is Published</h1>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:30px 36px;">
+                  <p style="margin:0 0 18px;font-size:14px;color:#475569;line-height:1.6;">
+                    Dear Guardian, the <strong style="color:#0f172a;">${milestoneLabel}</strong> for <strong style="color:#0f172a;">${params.studentName}</strong>
+                    (${params.className}, ${termLabel}, ${params.session}) has just been published on the GraceMark portal.
+                  </p>
+                  <div style="text-align:center;margin:24px 0 4px;">
+                    <a href="${loginUrl}" target="_blank" style="display:inline-block;background:#0f172a;color:#ffffff;padding:12px 28px;border-radius:10px;font-weight:700;font-size:13px;text-decoration:none;">View on Portal &rarr;</a>
+                  </div>
+                  <p style="margin:18px 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">Sign in with your ward's admission number to view the full result breakdown.</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:20px 36px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
+                  <p style="margin:0;font-size:11px;color:#64748b;">GraceMark Academic Portal &bull; <a href="${loginUrl}" style="color:#2563eb;text-decoration:none;">www.gracemarkportal.com.ng</a></p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+}
+
+interface GuardianWelcomeParams {
+  guardianEmail: string;
+  studentName: string;
+  className: string;
+}
+
+/** Sent once to a guardian right after their email is registered against a student. */
+export async function sendGuardianWelcomeEmail(params: GuardianWelcomeParams): Promise<void> {
+  await sendEmail({
+    sender: { name: SENDER_NAME, email: SENDER_EMAIL },
+    to: [{ email: params.guardianEmail }],
+    ...buildGuardianWelcomeEmail(params),
+  });
+}
+
+export function buildGuardianWelcomeEmail(params: GuardianWelcomeParams): EmailContent {
+  const loginUrl = "https://www.gracemarkportal.com.ng/";
+  const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  return {
+    subject: `GraceMark Academy — Welcome, you'll now receive ${params.studentName}'s result updates`,
+    htmlContent: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+      <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:36px 16px;">
+          <tr><td align="center">
+            <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;">
+              <tr><td style="height:4px;background:#c9a84c;font-size:0;line-height:0;">&nbsp;</td></tr>
+              <tr>
+                <td style="padding:28px 36px;background:#0f172a;">
+                  <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#c9a84c;letter-spacing:2px;text-transform:uppercase;">GraceMark Academy</p>
+                  <h1 style="margin:0;font-size:21px;font-weight:800;color:#ffffff;">Welcome, Dear Guardian</h1>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:30px 36px;">
+                  <p style="margin:0 0 16px;font-size:14px;color:#475569;line-height:1.6;">
+                    Thank you for adding your email address. You are now registered as the guardian contact for
+                    <strong style="color:#0f172a;">${esc(params.studentName)}</strong> (${esc(params.className)}) at GraceMark Academy.
+                  </p>
+                  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #c9a84c;border-radius:10px;padding:16px 20px;margin:20px 0;">
+                    <p style="margin:0 0 6px;font-size:13px;font-weight:800;color:#0f172a;">What you will receive</p>
+                    <p style="margin:0;font-size:13px;color:#475569;line-height:1.6;">
+                      An email each time the school publishes ${esc(params.studentName)}'s progress reports and terminal result, so you never miss an update.
+                    </p>
+                  </div>
+                  <div style="text-align:center;margin:24px 0 4px;">
+                    <a href="${loginUrl}" target="_blank" style="display:inline-block;background:#0f172a;color:#ffffff;padding:12px 28px;border-radius:10px;font-weight:700;font-size:13px;text-decoration:none;">Visit the Portal &rarr;</a>
+                  </div>
+                  <p style="margin:18px 0 0;font-size:12px;color:#94a3b8;line-height:1.5;">To view a full result, sign in with your ward's admission number. If this email reached you by mistake, please contact the school administrator.</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:20px 36px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
+                  <p style="margin:0;font-size:11px;color:#64748b;">GraceMark Academic Portal &bull; <a href="${loginUrl}" style="color:#2563eb;text-decoration:none;">www.gracemarkportal.com.ng</a></p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+}
 
 export interface AssignmentChange {
   kind: "added" | "removed";
@@ -398,13 +659,23 @@ export interface AssignmentChange {
   subjectName?: string;
 }
 
-/** Tells a teacher which class / subject assignments were added or removed since the last notice. */
-export async function sendAssignmentUpdateEmail(params: {
+interface AssignmentUpdateParams {
   toEmail: string;
   name: string;
   session: string;
   changes: AssignmentChange[];
-}): Promise<void> {
+}
+
+/** Tells a teacher which class / subject assignments were added or removed since the last notice. */
+export async function sendAssignmentUpdateEmail(params: AssignmentUpdateParams): Promise<void> {
+  await sendEmail({
+    sender: { name: SENDER_NAME, email: SENDER_EMAIL },
+    to: [{ email: params.toEmail, name: params.name }],
+    ...buildAssignmentUpdateEmail(params),
+  });
+}
+
+export function buildAssignmentUpdateEmail(params: AssignmentUpdateParams): EmailContent {
   const loginUrl = "https://www.gracemarkportal.com.ng/";
   const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -423,9 +694,7 @@ export async function sendAssignmentUpdateEmail(params: {
     </tr>`;
   };
 
-  await sendEmail({
-    sender: { name: SENDER_NAME, email: SENDER_EMAIL },
-    to: [{ email: params.toEmail, name: params.name }],
+  return {
     subject: "GraceMark Academy — Your Class & Subject Assignments Were Updated",
     htmlContent: `
       <!DOCTYPE html>
@@ -469,5 +738,52 @@ export async function sendAssignmentUpdateEmail(params: {
       </body>
       </html>
     `,
-  });
+  };
+}
+
+export interface EmailTemplatePreview {
+  id: string;
+  name: string;
+  audience: string;
+  trigger: string;
+  subject: string;
+  htmlContent: string;
+}
+
+/** Every transactional template rendered with sample data, for the Dev Tools gallery. Never sends anything. */
+export function getEmailTemplatePreviews(): EmailTemplatePreview[] {
+  const entry = (
+    id: string,
+    name: string,
+    audience: string,
+    trigger: string,
+    content: EmailContent
+  ): EmailTemplatePreview => ({ id, name, audience, trigger, ...content });
+
+  return [
+    entry("guardian-welcome", "Guardian welcome", "Guardian", "Right after a guardian email is added by the student, or sent in bulk from Dev Tools",
+      buildGuardianWelcomeEmail({ guardianEmail: "parent@example.com", studentName: "Ademola Judith", className: "JSS 2" })),
+    entry("guardian-result", "Result published (guardian)", "Guardian", "When a milestone is published for the student's class",
+      buildGuardianResultPublishedEmail({ guardianEmail: "parent@example.com", studentName: "Ademola Judith", className: "JSS 2", milestone: "PR1", term: "term1", session: "2026/2027" })),
+    entry("result-published-admin", "Result published (admin summary)", "Admins", "When an admin publishes a milestone for a class",
+      buildResultPublishedEmail({ className: "JSS 2", milestone: "PR1", term: "term1", session: "2026/2027", studentCount: 32 })),
+    entry("teacher-welcome", "Teacher welcome", "Teacher", "When a teacher account is created or login is resent",
+      buildTeacherWelcomeEmail({ toEmail: "teacher@example.com", name: "Mrs. Adebayo", staffId: "GMT001", password: "Temp#1234" })),
+    entry("assignment-update", "Assignment update", "Teacher", "When class/subject assignments change and the admin notifies the teacher",
+      buildAssignmentUpdateEmail({
+        toEmail: "teacher@example.com",
+        name: "Mrs. Adebayo",
+        session: "2026/2027",
+        changes: [
+          { kind: "added", role: "Subject Teacher", className: "JSS 2", subjectName: "Mathematics" },
+          { kind: "removed", role: "Class Teacher", className: "JSS 1" },
+        ],
+      })),
+    entry("otp-new-device", "New device verification", "Admin", "Sign-in from an unrecognised device",
+      buildOtpEmail("482915", "Administrator")),
+    entry("otp-password-reset", "Password reset code", "Any user", "Forgot-password request",
+      buildPasswordResetOtpEmail("739204", "Ademola Judith")),
+    entry("password-changed", "Password changed", "Any user", "After a successful password reset",
+      buildPasswordChangedEmail("Ademola Judith", "student")),
+  ];
 }

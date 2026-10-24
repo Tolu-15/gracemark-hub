@@ -45,8 +45,12 @@ export default function AuditLogPage() {
   const [to, setTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Tags each load() call so a slower, older request (previous filter/page) can't
+  // resolve after a newer one and overwrite the screen with stale rows.
+  const loadSeqRef = React.useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     setError("");
     try {
@@ -58,13 +62,14 @@ export default function AuditLogPage() {
       const res = await fetch(`/api/admin/audit?${params.toString()}`, { headers: await getAuthHeaders() });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || "Could not load the audit log.");
+      if (loadSeqRef.current !== seq) return; // a newer filter/page already took over
       setRows(json.logs);
       setTotal(json.total);
       setPageSize(json.pageSize);
     } catch (e: any) {
-      setError(e.message);
+      if (loadSeqRef.current === seq) setError(e.message);
     } finally {
-      setLoading(false);
+      if (loadSeqRef.current === seq) setLoading(false);
     }
   }, [page, category, q, from, to]);
 

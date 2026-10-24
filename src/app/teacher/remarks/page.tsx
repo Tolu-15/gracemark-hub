@@ -21,14 +21,17 @@ export default function TeacherRemarksPage() {
       ]);
       if (settings?.current_term) setTerm(settings.current_term);
 
-      // Class teachers first; subject teachers of a class can also fill it in.
+      // Personal remarks/skills are one-per-student-per-term, not per subject, so
+      // only the class teacher fills them in — a subject teacher of the class has
+      // no more claim to them than any other teacher.
       const ids = Array.from(new Set([user.id, (profile as any)?.id].filter(Boolean)));
-      const [cta, sta] = await Promise.all([
-        supabase.from("class_teacher_assignments").select("classes(id, name)").in("teacher_user_id", ids).eq("status", "active"),
-        supabase.from("subject_teacher_assignments").select("classes(id, name)").in("teacher_user_id", ids).eq("status", "active"),
-      ]);
+      const { data: cta } = await supabase
+        .from("class_teacher_assignments")
+        .select("classes(id, name)")
+        .in("teacher_user_id", ids)
+        .eq("status", "active");
       const map = new Map<string, { id: string; name: string }>();
-      [...(cta.data || []), ...(sta.data || [])].forEach((a: any) => {
+      (cta || []).forEach((a: any) => {
         if (a.classes?.id) map.set(a.classes.id, a.classes);
       });
       setClasses(Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name)));

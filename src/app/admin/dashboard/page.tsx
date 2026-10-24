@@ -12,6 +12,7 @@ import {
 } from "@/lib/academicSessions";
 import { SkeletonValue } from "@/components/shared/Skeleton";
 import AnnouncementsPreview from "@/components/announcements/AnnouncementsPreview";
+import TermProgressWidget from "@/components/admin/TermProgressWidget";
 import PendingActionsFeed from "@/components/shared/PendingActionsFeed";
 
 interface TermStatus {
@@ -303,6 +304,8 @@ export default function AdminDashboardPage() {
         <PendingActionsFeed role="admin" />
 
         <AnnouncementsPreview role="admin" />
+
+        <TermProgressWidget />
 
       {/* Primary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
 import { calculateGPA, getGradeAndRemark, rankPositions } from "@/lib/gradingEngine";
-import { buildClassReports, Milestone, MILESTONES, promotionFor, StudentReport } from "@/lib/reportBuilder";
+import { applyLevelWidePositions, buildClassReports, levelGroupName, Milestone, MILESTONES, promotionFor, StudentReport } from "@/lib/reportBuilder";
 import { getClassSubjects } from "@/lib/subjectGroups";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +22,19 @@ function stats(values: number[]) {
     highest: round1(Math.max(...values)),
     lowest: round1(Math.min(...values)),
     count: values.length,
+  };
+}
+
+/** Same as stats(), but also names who scored the highest/lowest (ties: all of them). */
+function statsWithNames(pairs: { name: string; value: number }[]) {
+  const base = stats(pairs.map((p) => p.value));
+  if (!pairs.length) return { ...base, highestNames: [] as string[], lowestNames: [] as string[] };
+  const max = Math.max(...pairs.map((p) => p.value));
+  const min = Math.min(...pairs.map((p) => p.value));
+  return {
+    ...base,
+    highestNames: pairs.filter((p) => p.value === max).map((p) => p.name),
+    lowestNames: pairs.filter((p) => p.value === min).map((p) => p.name),
   };
 }
 
@@ -50,18 +63,23 @@ export async function GET(req: NextRequest) {
     // ---------------- Term broadsheet (PR1 / PR2 / PR3 / TR) ----------------
     if (term !== "annual") {
       const build = await buildClassReports(service, { classId, term, session, milestone });
+      await applyLevelWidePositions(service, build);
       const isTR = milestone === "TR";
       const reports = build.reports;
       const isSenior = reports[0]?.isSenior ?? false;
 
       const subjectStats: Record<string, any> = {};
       subjects.forEach((sub) => {
-        const lines = reports.map((r) => r.subjects.find((l) => l.subjectId === sub.id)).filter(Boolean) as StudentReport["subjects"];
-        const values = lines.map((l) => (isTR ? l.total : l.percentage || 0));
+        const pairs = reports
+          .map((r) => {
+            const line = r.subjects.find((l) => l.subjectId === sub.id);
+            return line ? { name: r.student.name, value: isTR ? line.total : line.percentage || 0, grade: line.grade } : null;
+          })
+          .filter((p): p is { name: string; value: number; grade: string } => p !== null);
         subjectStats[sub.id] = {
-          ...stats(values),
-          grades: gradeCounts(lines.map((l) => l.grade)),
-          passes: lines.filter((l) => l.grade !== "F").length,
+          ...statsWithNames(pairs),
+          grades: gradeCounts(pairs.map((p) => p.grade)),
+          passes: pairs.filter((p) => p.grade !== "F").length,
         };
       });
 
@@ -116,66 +134,82 @@ export async function GET(req: NextRequest) {
     }
 
     // ---------------- Annual broadsheet (1st + 2nd + 3rd term) ----------------
-    const builds = await Promise.all(
-      (["term1", "term2", "term3"] as const).map((t) => buildClassReports(service, { classId, term: t, session, milestone: "TR" }))
-    );
-    const isSenior = builds.find((b) => b.reports.length)?.reports[0]?.isSenior ?? false;
-    const className = builds[0].className;
+    // Builds every student's annual per-subject averages for one class, without
+    // ranking yet — reused for the target class and its sibling arms so position
+    // can be computed across the whole year level (see applyLevelWidePositions).
+    async function annualRowsFor(cid: string) {
+      const builds = await Promise.all(
+        (["term1", "term2", "term3"] as const).map((t) => buildClassReports(service, { classId: cid, term: t, session, milestone: "TR" }))
+      );
+      const isSenior = builds.find((b) => b.reports.length)?.reports[0]?.isSenior ?? false;
+      const className = builds[0].className;
 
-    const byStudent = new Map<string, { name: string; admissionNo: string; terms: (StudentReport | null)[] }>();
-    builds.forEach((b, i) =>
-      b.reports.forEach((r) => {
-        const entry = byStudent.get(r.student.id) || { name: r.student.name, admissionNo: r.student.admissionNo, terms: [null, null, null] };
-        entry.terms[i] = r;
-        byStudent.set(r.student.id, entry);
-      })
-    );
+      const byStudent = new Map<string, { name: string; admissionNo: string; terms: (StudentReport | null)[] }>();
+      builds.forEach((b, i) =>
+        b.reports.forEach((r) => {
+          const entry = byStudent.get(r.student.id) || { name: r.student.name, admissionNo: r.student.admissionNo, terms: [null, null, null] };
+          entry.terms[i] = r;
+          byStudent.set(r.student.id, entry);
+        })
+      );
 
-    const rows = Array.from(byStudent.entries()).map(([studentId, e]) => {
-      const perSubject: Record<string, any> = {};
-      subjects.forEach((sub) => {
-        const totals = e.terms.map((r) => r?.subjects.find((l) => l.subjectId === sub.id)?.total ?? null);
-        const present = totals.filter((v): v is number => v !== null);
-        if (!present.length) return;
-        const annual = Math.round((present.reduce((a, b) => a + b, 0) / present.length) * 100) / 100;
-        const { grade, remark } = getGradeAndRemark(annual, isSenior);
-        perSubject[sub.id] = { term1: totals[0], term2: totals[1], term3: totals[2], annual, grade, remark };
+      const classRows = Array.from(byStudent.entries()).map(([studentId, e]) => {
+        const perSubject: Record<string, any> = {};
+        subjects.forEach((sub) => {
+          const totals = e.terms.map((r) => r?.subjects.find((l) => l.subjectId === sub.id)?.total ?? null);
+          const present = totals.filter((v): v is number => v !== null);
+          if (!present.length) return;
+          const annual = Math.round((present.reduce((a, b) => a + b, 0) / present.length) * 100) / 100;
+          const { grade, remark } = getGradeAndRemark(annual, isSenior);
+          perSubject[sub.id] = { term1: totals[0], term2: totals[1], term3: totals[2], annual, grade, remark };
+        });
+        const annuals = Object.entries(perSubject).map(([id, v]: any) => ({
+          total: v.annual as number,
+          creditUnit: subjects.find((s) => s.id === id)?.creditUnit ?? 0,
+        }));
+        const annualTotal = Math.round(annuals.reduce((a, b) => a + b.total, 0) * 100) / 100;
+        const average = annuals.length ? Math.round((annualTotal / annuals.length) * 100) / 100 : 0;
+        const { grade, remark } = getGradeAndRemark(average, isSenior);
+        return {
+          studentId,
+          name: e.name,
+          admissionNo: e.admissionNo,
+          perSubject,
+          subjectsTaken: annuals.length,
+          termAverages: e.terms.map((r) => r?.summary.percentage ?? null),
+          annualTotal,
+          average,
+          gpa: calculateGPA(annuals),
+          grade,
+          remark,
+          position: null as number | null,
+          promotion: promotionFor(className, isSenior, average),
+        };
       });
-      const annuals = Object.entries(perSubject).map(([id, v]: any) => ({
-        total: v.annual as number,
-        creditUnit: subjects.find((s) => s.id === id)?.creditUnit ?? 0,
-      }));
-      const annualTotal = Math.round(annuals.reduce((a, b) => a + b.total, 0) * 100) / 100;
-      const average = annuals.length ? Math.round((annualTotal / annuals.length) * 100) / 100 : 0;
-      const { grade, remark } = getGradeAndRemark(average, isSenior);
-      return {
-        studentId,
-        name: e.name,
-        admissionNo: e.admissionNo,
-        perSubject,
-        subjectsTaken: annuals.length,
-        termAverages: e.terms.map((r) => r?.summary.percentage ?? null),
-        annualTotal,
-        average,
-        gpa: calculateGPA(annuals),
-        grade,
-        remark,
-        position: null as number | null,
-        promotion: promotionFor(className, isSenior, average),
-      };
-    });
+      return { className, isSenior, classSize: builds[0]?.reports[0]?.classSize ?? classRows.length, rows: classRows };
+    }
 
-    const pos = rankPositions(rows.map((r) => ({ id: r.studentId, value: isSenior ? r.gpa : r.average })));
+    const own = await annualRowsFor(classId);
+    const { className, isSenior, rows } = own;
+
+    const { data: allClasses } = await service.from("classes").select("id, name");
+    const siblingIds = ((allClasses || []) as { id: string; name: string }[])
+      .filter((c) => levelGroupName(c.name) === levelGroupName(className))
+      .map((c) => c.id)
+      .filter((id) => id !== classId);
+    const siblingRows = (await Promise.all(siblingIds.map((cid) => annualRowsFor(cid)))).flatMap((s) => s.rows);
+
+    const pos = rankPositions([...rows, ...siblingRows].map((r) => ({ id: r.studentId, value: isSenior ? r.gpa : r.average })));
     rows.forEach((r) => (r.position = pos.get(r.studentId) ?? null));
     rows.sort((a, b) => (a.position ?? 999) - (b.position ?? 999));
 
     const subjectStats: Record<string, any> = {};
     subjects.forEach((sub) => {
-      const vals = rows.map((r) => r.perSubject[sub.id]).filter(Boolean);
+      const vals = rows.map((r) => (r.perSubject[sub.id] ? { ...r.perSubject[sub.id], name: r.name } : null)).filter(Boolean) as any[];
       subjectStats[sub.id] = {
-        ...stats(vals.map((v: any) => v.annual)),
-        grades: gradeCounts(vals.map((v: any) => v.grade)),
-        passes: vals.filter((v: any) => v.grade !== "F").length,
+        ...statsWithNames(vals.map((v) => ({ name: v.name, value: v.annual }))),
+        grades: gradeCounts(vals.map((v) => v.grade)),
+        passes: vals.filter((v) => v.grade !== "F").length,
       };
     });
 
@@ -187,7 +221,7 @@ export async function GET(req: NextRequest) {
       session,
       term,
       milestone: "TR",
-      classSize: Math.max(...builds.map((b) => b.reports[0]?.classSize ?? 0), 0),
+      classSize: own.classSize,
       subjects,
       rows,
       subjectStats,

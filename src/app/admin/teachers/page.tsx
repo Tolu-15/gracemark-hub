@@ -35,6 +35,9 @@ export default function AdminTeachersPage() {
 
   // Class Teacher Tab State
   const [classAssignments, setClassAssignments] = useState<ClassTeacherAssignment[]>([]);
+  // Tags each loadAssignments() call so a slower, older request (previous session)
+  // can't resolve after a newer one and overwrite the screen with stale data.
+  const assignmentsSeqRef = useRef(0);
   const [selectedClassForHistory, setSelectedClassForHistory] = useState<ClassGroup | null>(null);
   const [classHistoryModalOpen, setClassHistoryModalOpen] = useState(false);
   const [classHistoryList, setClassHistoryList] = useState<ClassTeacherAssignment[]>([]);
@@ -191,13 +194,14 @@ export default function AdminTeachersPage() {
 
   const loadAssignments = useCallback(async () => {
     if (!selectedSession) return;
+    const seq = ++assignmentsSeqRef.current;
     try {
       const res = await fetch(`/api/admin/teachers/assignments?session=${encodeURIComponent(selectedSession)}`, {
         headers: await getAuthHeaders(),
       });
       if (res.ok) {
         const json = await res.json();
-        if (json.ok) {
+        if (json.ok && assignmentsSeqRef.current === seq) {
           setClassAssignments(json.classAssignments || []);
           setSubjectAssignments(json.subjectAssignments || []);
         }

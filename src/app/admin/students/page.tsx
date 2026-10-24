@@ -24,6 +24,7 @@ export default function AdminStudentsPage() {
     gender: "" as "" | "male" | "female",
     email: "",
     password: "",
+    guardian_email: "",
   });
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -126,7 +127,7 @@ export default function AdminStudentsPage() {
       let finalStudentsData: any[] = [];
       const resCanonical = await supabase
         .from("students")
-        .select("id, full_name, gender, admission_no, current_class_id, portal_access_status, portal_lock_reason, classes:current_class_id(id, name), users(email)")
+        .select("id, full_name, gender, admission_no, current_class_id, portal_access_status, portal_lock_reason, guardian_email, classes:current_class_id(id, name), users(email)")
         .order("full_name", { ascending: true });
 
       if (!resCanonical.error && resCanonical.data) {
@@ -139,7 +140,7 @@ export default function AdminStudentsPage() {
       } else {
         const resLegacy = await supabase
           .from("students")
-          .select("id, name, gender, admission_no, class_id, portal_access_status, portal_lock_reason, classes:class_id(id, name), users(email)")
+          .select("id, name, gender, admission_no, class_id, portal_access_status, portal_lock_reason, guardian_email, classes:class_id(id, name), users(email)")
           .order("name", { ascending: true });
         if (resLegacy.error) throw resCanonical.error || resLegacy.error;
         finalStudentsData = resLegacy.data || [];
@@ -169,6 +170,7 @@ export default function AdminStudentsPage() {
         gender: (student as any).gender === "female" ? "female" : (student as any).gender === "male" ? "male" : "",
         email: student.users?.email || "",
         password: "",
+        guardian_email: student.guardian_email || "",
       });
     } else {
       setEditingStudent(null);
@@ -179,6 +181,7 @@ export default function AdminStudentsPage() {
         gender: "",
         email: "",
         password: "gracemark",
+        guardian_email: "",
       });
     }
     setIsModalOpen(true);
@@ -189,16 +192,24 @@ export default function AdminStudentsPage() {
     setFormError("");
     setSaving(true);
 
-    const { name, admission_no, class_id, gender, email, password } = formData;
+    const { name, admission_no, class_id, gender, email, password, guardian_email } = formData;
 
     if (!name.trim() || !admission_no.trim() || !class_id || !gender) {
       setFormError("Name, Admission Number, Class and Gender are required.");
       setSaving(false);
       return;
     }
+    if (guardian_email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guardian_email.trim())) {
+      setFormError("Guardian email doesn't look like a valid email address.");
+      setSaving(false);
+      return;
+    }
 
     try {
       if (editingStudent) {
+        // A changed guardian email gets a fresh welcome from the Dev Tools bulk send.
+        const guardianWelcomeReset =
+          guardian_email.trim() !== (editingStudent.guardian_email || "") ? { guardian_welcome_sent_at: null } : {};
         // Update existing student
         const { error: updErr } = await supabase
           .from("students")
@@ -207,6 +218,8 @@ export default function AdminStudentsPage() {
             current_class_id: class_id,
             admission_no: admission_no.trim(),
             gender,
+            guardian_email: guardian_email.trim() || null,
+            ...guardianWelcomeReset,
           })
           .eq("id", editingStudent.id);
 
@@ -218,14 +231,34 @@ export default function AdminStudentsPage() {
               class_id,
               admission_no: admission_no.trim(),
               gender,
+              guardian_email: guardian_email.trim() || null,
+              ...guardianWelcomeReset,
             })
             .eq("id", editingStudent.id);
           if (legErr) throw updErr || legErr;
         }
 
+        // Keep the login email in sync with the admission number (or an explicit
+        // email edit) — previously an admission_no edit left the old email (and
+        // whichever account used to have it) attached, which could silently hand
+        // one student's login to whoever is entered next with that old number.
+        const cleanAdmEdit = admission_no.trim().replace(/[^A-Z0-9]/gi, "").toLowerCase();
+        const desiredEmail = (email.trim() || `${cleanAdmEdit}@student.gracemark.edu.ng`).toLowerCase();
+        if (desiredEmail !== (editingStudent.users?.email || "").toLowerCase()) {
+          const syncRes = await fetch("/api/admin/students/sync-login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+            body: JSON.stringify({ student_id: editingStudent.id, new_email: desiredEmail }),
+          });
+          const syncJson = await syncRes.json().catch(() => ({}));
+          if (!syncRes.ok || !syncJson.ok) {
+            throw new Error(syncJson.error || "Could not update this student's login email.");
+          }
+        }
+
         // If a new password was provided during edit, update their auth password
         if (password.trim()) {
-          const authEmail = email.trim() || `${admission_no.trim().replace(/[^A-Z0-9]/gi, "").toLowerCase()}@student.gracemark.edu.ng`;
+          const authEmail = desiredEmail;
           const { data: sessionData } = await supabase.auth.getSession();
           const token = sessionData?.session?.access_token;
           if (token) {
@@ -322,6 +355,7 @@ export default function AdminStudentsPage() {
             user_id: targetDbUserId,
             portal_access_status: "active",
             gender,
+            guardian_email: guardian_email.trim() || null,
           },
         ]);
 
@@ -847,6 +881,22 @@ export default function AdminStudentsPage() {
                     </label>
                   ))}
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-500 uppercase tracking-wider text-[10px] mb-1">
+                  Guardian Email (optional)
+                </label>
+                <input
+                  type="email"
+                  value={formData.guardian_email}
+                  onChange={(e) => setFormData({ ...formData, guardian_email: e.target.value })}
+                  placeholder="parent@example.com"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  If set, the guardian is emailed whenever this student's class result is published.
+                </p>
               </div>
 
               {!editingStudent && (

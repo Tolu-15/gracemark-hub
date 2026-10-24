@@ -66,6 +66,62 @@
 @keyframes gm-splash-spin { to { transform: rotate(360deg); } }
 @keyframes gm-splash-bar { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
 
+/* Compact first-load branded loader — sits inside a page's content area, not full-screen. */
+.gm-pageloader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  padding: 3.5rem 1rem;
+  animation: gm-reveal 0.35s ease both;
+}
+.gm-pageloader__ring {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid #eef1f6;
+  border-top-color: #c9a84c;
+  animation: gm-spin 0.9s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
+}
+.gm-pageloader__label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+}
+
+/* Refetch: existing content dims + goes inert while a filter change reloads it,
+   instead of wiping the page back to a skeleton every time. */
+.gm-refetching {
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.gm-inline-spin {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #94a3b8;
+  animation: gm-reveal 0.25s ease both;
+}
+.gm-inline-spin__ring {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid #eef1f6;
+  border-top-color: #c9a84c;
+  animation: gm-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes gm-spin { to { transform: rotate(360deg); } }
+
 @media (prefers-reduced-motion: reduce) {
   .gm-skel::after, .gm-reveal, #gm-splash *, #gm-splash { animation: none !important; transition: none !important; }
+  .gm-pageloader__ring, .gm-inline-spin__ring { animation: none !important; }
 }

@@ -5,6 +5,17 @@ import AuthGuard from "@/components/shared/AuthGuard";
 import PortalLayout, { NavItem } from "@/components/shared/PortalLayout";
 import { useAnnouncementBadge, badgeText } from "@/components/announcements/useAnnouncementBadge";
 import { usePendingActions } from "@/components/shared/usePendingActions";
+import { useIsDeveloper } from "@/components/shared/useIsDeveloper";
+import { useIsRestrictedAdmin } from "@/components/shared/useIsRestrictedAdmin";
+
+// Pages a view-only admin (e.g. the proprietress) can see in the nav.
+const RESTRICTED_ADMIN_HREFS = new Set([
+  "/admin/dashboard",
+  "/admin/historical-results",
+  "/admin/leaderboard",
+  "/admin/report-cards",
+  "/admin/settings/change-password",
+]);
 
 const adminNavItems: NavItem[] = [
   {
@@ -25,6 +36,16 @@ const adminNavItems: NavItem[] = [
     category: "Academics & Staff",
     label: "Manage Teachers",
     href: "/admin/teachers",
+  },
+  {
+    category: "Academics & Staff",
+    label: "Teacher Gradebook",
+    href: "/admin/teachers/gradebook",
+  },
+  {
+    category: "Academics & Staff",
+    label: "Teacher Mark Sheet",
+    href: "/admin/teachers/score-sheet",
   },
   {
     category: "Academics & Staff",
@@ -55,6 +76,16 @@ const adminNavItems: NavItem[] = [
     category: "Academics & Staff",
     label: "Student Results & Broadsheets",
     href: "/admin/historical-results",
+  },
+  {
+    category: "Academics & Staff",
+    label: "Leaderboard",
+    href: "/admin/leaderboard",
+  },
+  {
+    category: "Academics & Staff",
+    label: "Badges",
+    href: "/admin/badges",
   },
   {
     category: "Academics & Staff",
@@ -117,6 +148,11 @@ const adminNavItems: NavItem[] = [
     href: "/admin/admissions/applicants",
   },
   {
+    category: "Admissions & CBT",
+    label: "Admission Form Packages",
+    href: "/admin/admissions/forms",
+  },
+  {
     category: "Settings",
     label: "Portal Access Policy",
     href: "/admin/settings/portal-access",
@@ -141,11 +177,23 @@ const adminNavItems: NavItem[] = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const unread = useAnnouncementBadge();
   const { count: pendingApprovals } = usePendingActions();
-  const navItems = adminNavItems.map((i) => {
+  const isDeveloper = useIsDeveloper();
+  const isRestricted = useIsRestrictedAdmin();
+  let navItems = adminNavItems.map((i) => {
     if (i.href === "/admin/announcements") return { ...i, badge: badgeText(unread) };
     if (i.href === "/admin/approvals") return { ...i, badge: badgeText(pendingApprovals) };
     return i;
   });
+  if (isRestricted) {
+    navItems = navItems.filter((i) => RESTRICTED_ADMIN_HREFS.has(i.href));
+  }
+  if (isDeveloper) {
+    navItems.push({
+      category: "Developer",
+      label: "Dev Tools",
+      href: "/admin/dev-tools",
+    });
+  }
   return (
     <AuthGuard requiredRole="admin">
       <PortalLayout role="admin" navItems={navItems}>

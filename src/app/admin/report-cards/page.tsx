@@ -9,6 +9,7 @@ import { getAppSettings } from "@/lib/appSettings";
 import { getAcademicSessions } from "@/lib/academicSessions";
 import { printWithTitle } from "@/lib/printTitle";
 import { downloadReportsZip } from "@/lib/reportPdfZip";
+import { useIsRestrictedAdmin } from "@/components/shared/useIsRestrictedAdmin";
 
 const TERMS = [
   { value: "term1", label: "1st Term" },
@@ -33,6 +34,15 @@ export default function BulkReportCardsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [zipProgress, setZipProgress] = useState<{ done: number; total: number } | null>(null);
+  const [includeUnpublished, setIncludeUnpublished] = useState(false);
+  const [draftCount, setDraftCount] = useState(0);
+  const [notes, setNotes] = useState<string[]>([]);
+  const isRestricted = useIsRestrictedAdmin();
+
+  // The view-only proprietress account is meant to review everything, published or not.
+  useEffect(() => {
+    if (isRestricted) setIncludeUnpublished(true);
+  }, [isRestricted]);
 
   useEffect(() => {
     (async () => {
@@ -61,10 +71,13 @@ export default function BulkReportCardsPage() {
     setReports(null);
     try {
       const params = new URLSearchParams({ class_id: classId, session, term, milestone });
+      if (includeUnpublished) params.set("include_unpublished", "1");
       const res = await fetch(`/api/admin/reports/bulk?${params.toString()}`, { headers: await getAuthHeaders() });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || "Could not load report cards.");
       setReports(json.reports);
+      setDraftCount(json.draftCount || 0);
+      setNotes(json.notes || []);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -99,7 +112,7 @@ export default function BulkReportCardsPage() {
         <header className="print:hidden bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 sticky top-0 z-20">
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Bulk Report Cards</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Print or save a whole class&rsquo;s published report cards as one PDF, one student per page.
+            Print or save a whole class&rsquo;s report cards as one PDF, one student per page. Tick &ldquo;Include unpublished&rdquo; to also see students whose result hasn&rsquo;t been released yet.
           </p>
         </header>
 
@@ -109,6 +122,10 @@ export default function BulkReportCardsPage() {
             <Select label="Session" value={session} onChange={setSession} options={sessions.map((s) => ({ value: s, label: s }))} />
             <Select label="Term" value={term} onChange={setTerm} options={TERMS} />
             <Select label="Report" value={milestone} onChange={setMilestone} options={MILESTONES} />
+            <label className="flex items-center gap-1.5 pb-2 text-xs font-semibold text-slate-700 cursor-pointer">
+              <input type="checkbox" checked={includeUnpublished} onChange={(e) => setIncludeUnpublished(e.target.checked)} />
+              Include unpublished
+            </label>
             <button
               type="button"
               onClick={loadReports}
@@ -145,6 +162,19 @@ export default function BulkReportCardsPage() {
                 <strong>Download ZIP</strong> gives one PDF per student, named like{" "}
                 <em>{reports[0]?.student?.name} - {milestoneLabel}.pdf</em>. <strong>Print all</strong> sends the whole class to the printer, one student per page.
               </p>
+              {draftCount > 0 && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <strong>{draftCount}</strong> of {reports.length} card{reports.length === 1 ? " is" : "s are"} unpublished drafts built from current scores, marked
+                  &ldquo;Draft&rdquo; on the sheet. They can still change before release.
+                  {notes.length > 0 && (
+                    <ul className="mt-1 list-disc pl-5">
+                      {notes.map((n) => (
+                        <li key={n}>{n}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
               {zipProgress && (
                 <div className="h-1.5 w-full max-w-md rounded-full bg-slate-100 overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={zipProgress.total} aria-valuenow={zipProgress.done}>
                   <div className="h-full bg-emerald-500 transition-[width] duration-300" style={{ width: `${(zipProgress.done / zipProgress.total) * 100}%` }} />
@@ -169,7 +199,8 @@ export default function BulkReportCardsPage() {
 
           {reports && reports.length === 0 && !loading && (
             <div className="print:hidden rounded-xl border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">
-              No published {milestoneLabel} for {className} in {termLabel} {session}. Publish it from Approvals first.
+              No {includeUnpublished ? "" : "published "}{milestoneLabel} for {className} in {termLabel} {session}.
+              {includeUnpublished ? " No scores have been entered for this class yet." : " Publish it from Approvals first, or tick “Include unpublished”."}
             </div>
           )}
 

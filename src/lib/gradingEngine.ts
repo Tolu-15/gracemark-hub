@@ -10,8 +10,9 @@
  *
  * Classwork / homework are given weekly (weeks 1–10) or fortnightly (weeks
  * 2, 4, 6, 8, 10), set per subject on the class subject list. The divisor is
- * the number of scheduled weeks in the window (the Excel "AV RATE"), and a
- * blank score in a scheduled week counts as 0.
+ * the number of scheduled weeks the student actually has a score for (the
+ * Excel "AV RATE" counts every scheduled week; here a week nobody's entered
+ * yet is left out of the average rather than counted as 0, until it's filled in).
  *
  * Progress reports (each /30, percentage = CA × 10/3):
  * - PR1 (weeks 1–4):  CW /10 + HW /5 + Test 1 (/15)
@@ -221,17 +222,23 @@ export function detectAssessmentWeeks(rows: RawScores[]): AssessmentWeeks {
   };
 }
 
-/** Classwork or homework score for the window, using the class's given weeks. */
+/**
+ * Classwork or homework score for the window, using the class's given weeks.
+ * A scheduled week this student hasn't been given a score for yet (not
+ * reached, or simply not entered) is excluded from the average entirely
+ * rather than counted as 0 — the divisor is how many of the scheduled weeks
+ * are actually entered, not how many are scheduled.
+ */
 function windowScore(values: (number | string)[], lastWeek: number, givenWeeks: number[] | undefined, weight: number) {
   const weeks = givenWeeks
     ? givenWeeks.filter((w) => w <= lastWeek)
     : values.slice(0, lastWeek).map((v, i) => (isFilled(v) ? i + 1 : 0)).filter(Boolean);
-  if (!weeks.length) return { score: 0, given: 0, entered: 0 };
-  const sum = weeks.reduce((s, w) => s + num(values[w - 1]), 0);
-  const entered = weeks.filter((w) => isFilled(values[w - 1])).length;
+  const enteredWeeks = weeks.filter((w) => isFilled(values[w - 1]));
+  if (!enteredWeeks.length) return { score: 0, given: weeks.length, entered: 0 };
+  const sum = enteredWeeks.reduce((s, w) => s + num(values[w - 1]), 0);
   // Each entry is /10; the average is scaled to the component weight (/10 or /5).
-  const score = (sum / weeks.length) * (weight / GRADING_CONFIG.cw.itemMax);
-  return { score, given: weeks.length, entered };
+  const score = (sum / enteredWeeks.length) * (weight / GRADING_CONFIG.cw.itemMax);
+  return { score, given: weeks.length, entered: enteredWeeks.length };
 }
 
 function buildPR(

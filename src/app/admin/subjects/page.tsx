@@ -10,6 +10,7 @@ interface CatalogueSubject {
   code: string;
   lists: string[];
   teachers: string[];
+  examTitles: string[];
 }
 
 /** Short unique code for a new subject, e.g. "Basic Technology" → "BT", then "BT2" if taken. */
@@ -42,12 +43,13 @@ export default function AdminSubjectsPage() {
       let assignQuery = supabase.from("subject_teacher_assignments").select("subject_id, teacher_user_id").eq("status", "active");
       if ((settings as any)?.current_session_id) assignQuery = assignQuery.eq("academic_session_id", (settings as any).current_session_id);
 
-      const [subjectsRes, assignRes, usersRes, listRes, groupRes] = await Promise.all([
+      const [subjectsRes, assignRes, usersRes, listRes, groupRes, examsRes] = await Promise.all([
         supabase.from("subjects").select("id, name, code").order("name"),
         assignQuery,
         supabase.from("users").select("id, auth_id, display_name"),
         supabase.from("subject_group_subjects").select("group_code, subject_id"),
         supabase.from("subject_groups").select("code, name"),
+        supabase.from("cbt_exams").select("subject_id, title"),
       ]);
       if (subjectsRes.error) throw subjectsRes.error;
 
@@ -67,6 +69,11 @@ export default function AdminSubjectsPage() {
         if (!lists.has(l.subject_id)) lists.set(l.subject_id, []);
         lists.get(l.subject_id)!.push(groupName.get(l.group_code) || l.group_code);
       });
+      const exams = new Map<string, string[]>();
+      (examsRes.data || []).forEach((e: any) => {
+        if (!exams.has(e.subject_id)) exams.set(e.subject_id, []);
+        exams.get(e.subject_id)!.push(e.title || "Untitled exam");
+      });
 
       setSubjects(
         (subjectsRes.data || []).map((s: any) => ({
@@ -75,6 +82,7 @@ export default function AdminSubjectsPage() {
           code: s.code,
           lists: lists.get(s.id) || [],
           teachers: Array.from(teachers.get(s.id) || []),
+          examTitles: exams.get(s.id) || [],
         }))
       );
     } catch (err: any) {
@@ -131,6 +139,16 @@ export default function AdminSubjectsPage() {
   }
 
   async function handleDelete(subject: CatalogueSubject) {
+    if (subject.examTitles.length > 0) {
+      setBanner({
+        type: "error",
+        text: `Can't delete "${subject.name}": it still has ${subject.examTitles.length} CBT exam${subject.examTitles.length === 1 ? "" : "s"} attached (${subject.examTitles.join(
+          ", "
+        )}). Delete or reassign ${subject.examTitles.length === 1 ? "it" : "them"} in the CBT Exam Manager first.`,
+      });
+      return;
+    }
+
     const warnings = [
       subject.lists.length ? `It is on these class lists: ${subject.lists.join(", ")}.` : "",
       subject.teachers.length ? `It is assigned to: ${subject.teachers.join(", ")}.` : "",

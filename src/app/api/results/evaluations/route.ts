@@ -3,14 +3,20 @@ import { requireApiActor, ApiActor } from "@/lib/apiAuth";
 import { PERSONAL_SKILLS } from "@/lib/gradingEngine";
 import { ensureEnrollments } from "@/lib/reportBuilder";
 
+// Personal remarks/skills are one-per-student-per-term, not per subject, so only
+// the class teacher may manage them — a subject teacher of the class has no more
+// claim to them than any other teacher.
 async function canManageClass(actor: ApiActor, classId: string): Promise<boolean> {
   if (actor.role === "admin") return true;
   const ids = Array.from(new Set([actor.authId, actor.dbUserId].filter(Boolean))) as string[];
-  const [cta, sta] = await Promise.all([
-    actor.service.from("class_teacher_assignments").select("id").eq("class_id", classId).eq("status", "active").in("teacher_user_id", ids).limit(1),
-    actor.service.from("subject_teacher_assignments").select("id").eq("class_id", classId).eq("status", "active").in("teacher_user_id", ids).limit(1),
-  ]);
-  return Boolean(cta.data?.length || sta.data?.length);
+  const { data: cta } = await actor.service
+    .from("class_teacher_assignments")
+    .select("id")
+    .eq("class_id", classId)
+    .eq("status", "active")
+    .in("teacher_user_id", ids)
+    .limit(1);
+  return Boolean(cta?.length);
 }
 
 async function sessionInfo(service: any) {

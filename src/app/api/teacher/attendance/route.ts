@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor, ApiActor } from "@/lib/apiAuth";
+import { notifyAdmins } from "@/lib/notify";
 
 const DEFAULT_SCHOOL_DAYS = 120;
 
@@ -25,24 +26,65 @@ async function resolveSession(service: Service, name?: string | null) {
   return active?.id ? { id: active.id as string, name: active.name as string } : null;
 }
 
-/** Active enrollments (one per student) for a class in a session. */
+/**
+ * Active enrollments (one per student) for a class in a session.
+ *
+ * The class roster itself comes from students.class_id — the same source every
+ * other page (score entry, gradebook, etc.) uses — rather than from
+ * student_enrollments alone. Admin > Students (both "Add Student" and bulk
+ * import) only ever writes students.class_id and never creates a
+ * student_enrollments row, so a class teacher's own class could otherwise show
+ * zero students here even though every other page saw the full roster. Any
+ * student on the roster with no enrollment row yet for this session gets one
+ * created on the fly; a student with an existing but non-active row (withdrawn,
+ * transferred) is left alone and excluded, same as before.
+ */
 async function loadEnrollments(service: Service, classId: string, sessionId: string) {
-  const { data, error } = await service
-    .from("student_enrollments")
-    .select("id, student_id, students(*)")
-    .eq("class_id", classId)
-    .eq("academic_session_id", sessionId)
-    .eq("status", "active");
-  if (error) throw error;
+  const { data: classStudents, error: csErr } = await service
+    .from("students")
+    .select("id, full_name, name, admission_no")
+    .eq("class_id", classId);
+  if (csErr) throw csErr;
+  if (!classStudents?.length) return [];
 
-  return (data || [])
-    .map((e: any) => {
-      const s = Array.isArray(e.students) ? e.students[0] : e.students;
+  const studentIds = classStudents.map((s: any) => s.id);
+  const { data: existingEnrollments, error: eErr } = await service
+    .from("student_enrollments")
+    .select("id, student_id, status")
+    .eq("academic_session_id", sessionId)
+    .in("student_id", studentIds);
+  if (eErr) throw eErr;
+
+  const byStudent = new Map<string, { id: string; status: string }>(
+    (existingEnrollments || []).map((e: any) => [e.student_id, { id: e.id, status: e.status }])
+  );
+
+  const toCreate = classStudents.filter((s: any) => !byStudent.has(s.id));
+  if (toCreate.length) {
+    const { data: created, error: insErr } = await service
+      .from("student_enrollments")
+      .insert(
+        toCreate.map((s: any) => ({
+          student_id: s.id,
+          academic_session_id: sessionId,
+          class_id: classId,
+          status: "active",
+        }))
+      )
+      .select("id, student_id");
+    if (insErr) console.warn("Could not back-fill missing student_enrollments:", insErr);
+    (created || []).forEach((c: any) => byStudent.set(c.student_id, { id: c.id, status: "active" }));
+  }
+
+  return classStudents
+    .filter((s: any) => byStudent.get(s.id)?.status === "active")
+    .map((s: any) => {
+      const e = byStudent.get(s.id)!;
       return {
-        enrollmentId: e.id as string,
-        studentId: e.student_id as string,
-        name: (s?.full_name || s?.name || "") as string,
-        admissionNo: (s?.admission_no || "") as string,
+        enrollmentId: e.id,
+        studentId: s.id as string,
+        name: (s.full_name || s.name || "") as string,
+        admissionNo: (s.admission_no || "") as string,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -143,7 +185,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const authorization = await requireApiActor(req, ["admin", "teacher"]);
   if ("response" in authorization) return authorization.response;
-  const { service, dbUserId } = authorization.actor;
+  const { actor } = authorization;
+  const { service, dbUserId } = actor;
 
   let body: any;
   try {
@@ -237,6 +280,17 @@ export async function POST(req: NextRequest) {
         .upsert(summaries, { onConflict: "enrollment_id,term" });
       if (summaryErr) throw summaryErr;
 
+      if (actor.role === "teacher") {
+        const { data: cls } = await service.from("classes").select("name").eq("id", classId).maybeSingle();
+        await notifyAdmins(actor, {
+          type: "attendance.edit",
+          title: "Attendance register updated",
+          body: `${cls?.name || "A class"} (${activeTerm}): daily register edited for ${rows.length} student(s) on ${records[0]?.date || "today"}.`,
+          link: "/admin/dashboard",
+          metadata: { class_id: classId, term: activeTerm, date: records[0]?.date },
+        });
+      }
+
       return NextResponse.json({
         ok: true,
         message: `Daily register saved and synced for ${rows.length} students!`,
@@ -261,6 +315,17 @@ export async function POST(req: NextRequest) {
       .from("attendance_summaries")
       .upsert(summaries, { onConflict: "enrollment_id,term" });
     if (sumErr) throw sumErr;
+
+    if (actor.role === "teacher") {
+      const { data: cls } = await service.from("classes").select("name").eq("id", classId).maybeSingle();
+      await notifyAdmins(actor, {
+        type: "attendance.edit",
+        title: "Attendance summary updated",
+        body: `${cls?.name || "A class"} (${activeTerm}): term attendance summary edited for ${rows.length} student(s).`,
+        link: "/admin/dashboard",
+        metadata: { class_id: classId, term: activeTerm },
+      });
+    }
 
     return NextResponse.json({
       ok: true,
