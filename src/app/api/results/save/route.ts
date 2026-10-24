@@ -148,10 +148,16 @@ export async function POST(req: NextRequest) {
 
   const currentTerm = settings?.current_term || "term1";
 
+  const editableCache = new Map<string, boolean>();
   for (const r of records) {
     const rTerm = r.term || currentTerm;
     const rSession = r.session || settings?.current_session || "";
-    const canEdit = await isTermEditable(rSession, rTerm, service, currentTerm);
+    const cacheKey = `${rSession}:${rTerm}`;
+    let canEdit = editableCache.get(cacheKey);
+    if (canEdit === undefined) {
+      canEdit = await isTermEditable(rSession, rTerm, service, currentTerm);
+      editableCache.set(cacheKey, canEdit);
+    }
     if (!canEdit) {
       return NextResponse.json(
         {

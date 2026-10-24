@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
   let activeSessionId: string | null = null;
   if (service) {
     try {
-      const { data: actSess } = await service.from("academic_sessions").select("id").eq("is_active", true).maybeSingle();
+      const { data: actSess } = await service.from("academic_sessions").select("id").eq("is_current", true).maybeSingle();
       if (actSess?.id) activeSessionId = actSess.id;
     } catch {
       // table might not exist yet

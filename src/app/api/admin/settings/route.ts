@@ -102,16 +102,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: updateError.message }, { status: 400 });
     }
 
-    // 2. Keep terms table in sync: set current term open and editable
-    if (current_session) {
-      await service.from("terms").upsert(
-        {
-          session: current_session,
-          term: current_term,
-          allow_teacher_edit: true,
-          status: "open",
-        },
-        { onConflict: "session,term" }
+    // 2. Make sure the current term has an academic_terms row. The current term is always
+    // editable, so allow_teacher_edit is left alone: setting it here would leave the term
+    // unlocked after the school moves on to the next one.
+    if (current_session_id) {
+      await service.from("academic_terms").upsert(
+        { academic_session_id: current_session_id, term_code: current_term, status: "open" },
+        { onConflict: "academic_session_id,term_code", ignoreDuplicates: true }
       );
     }
 

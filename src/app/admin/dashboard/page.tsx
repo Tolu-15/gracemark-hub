@@ -124,14 +124,21 @@ export default function AdminDashboardPage() {
       const currentTermDb = overrideTermDb || appSettings?.current_term || termUiToDb(term);
       const currentSessionDb = overrideSessionDb || session || appSettings?.current_session || "";
 
-      // 1. Read terms rows directly from Supabase
-      const { data: termsRows } = await supabase
-        .from("terms")
-        .select("*")
-        .eq("session", currentSessionDb);
+      // 1. Read this session's academic_terms rows directly from Supabase
+      const { data: sessRow } = await supabase
+        .from("academic_sessions")
+        .select("id")
+        .eq("name", currentSessionDb)
+        .maybeSingle();
+      const { data: termsRows } = sessRow?.id
+        ? await supabase
+            .from("academic_terms")
+            .select("term_code, allow_teacher_edit")
+            .eq("academic_session_id", sessRow.id)
+        : { data: [] as any[] };
 
       const termMap = new Map<string, any>();
-      (termsRows || []).forEach((r) => termMap.set(r.term, r));
+      (termsRows || []).forEach((r) => termMap.set(r.term_code, r));
 
       const termKeys = [
         { term: "term1", label: "1st Term" },
@@ -142,7 +149,7 @@ export default function AdminDashboardPage() {
       const computedTerms: TermStatus[] = termKeys.map(({ term: tKey, label }) => {
         const isCurrent = tKey === currentTermDb;
         const row = termMap.get(tKey);
-        const allowEdit = isCurrent || (row ? (typeof row.allow_teacher_edit === "boolean" ? row.allow_teacher_edit : row.status === "open") : false);
+        const allowEdit = isCurrent || Boolean(row?.allow_teacher_edit);
         return {
           term: tKey,
           label,

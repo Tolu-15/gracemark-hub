@@ -1,12 +1,11 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
-// In-memory override fallback for the running instance
-const termEditOverrides = new Map<string, boolean>();
-
-export function setTermEditOverride(session: string, term: string, allow: boolean) {
-  termEditOverrides.set(`${session}:${term}`, allow);
+async function sessionIdByName(service: SupabaseClient, session: string): Promise<string | null> {
+  const { data } = await service.from("academic_sessions").select("id").eq("name", session).maybeSingle();
+  return data?.id || null;
 }
 
+/** Whether teachers may edit scores for this session/term. The current term is always editable. */
 export async function isTermEditable(
   session: string,
   term: string,
@@ -14,26 +13,36 @@ export async function isTermEditable(
   currentTerm: string
 ): Promise<boolean> {
   if (term === currentTerm) return true;
-  const key = `${session}:${term}`;
-  if (termEditOverrides.has(key)) {
-    return Boolean(termEditOverrides.get(key));
+  if (!service) return false;
+  try {
+    const sessionId = await sessionIdByName(service, session);
+    if (!sessionId) return false;
+    const { data: row } = await service
+      .from("academic_terms")
+      .select("allow_teacher_edit")
+      .eq("academic_session_id", sessionId)
+      .eq("term_code", term)
+      .maybeSingle();
+    return Boolean(row?.allow_teacher_edit);
+  } catch {
+    return false;
   }
-  if (service) {
-    try {
-      const { data: tRow } = await service
-        .from("terms")
-        .select("*")
-        .eq("session", session)
-        .eq("term", term)
-        .maybeSingle();
+}
 
-      if (tRow) {
-        if (typeof tRow.allow_teacher_edit === "boolean") return tRow.allow_teacher_edit;
-        if (tRow.status) return tRow.status === "open";
-      }
-    } catch {
-      // Table or column might not exist in some environments
-    }
-  }
-  return false;
+/** Persist the admin's lock/unlock of a non-current term. Returns an error message on failure. */
+export async function setTermEditable(
+  service: SupabaseClient,
+  session: string,
+  term: string,
+  allow: boolean
+): Promise<string | null> {
+  const sessionId = await sessionIdByName(service, session);
+  if (!sessionId) return `Session "${session}" was not found.`;
+  const { error } = await service
+    .from("academic_terms")
+    .upsert(
+      { academic_session_id: sessionId, term_code: term, allow_teacher_edit: allow },
+      { onConflict: "academic_session_id,term_code" }
+    );
+  return error ? error.message : null;
 }
