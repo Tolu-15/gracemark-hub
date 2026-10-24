@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
+import type { PendingActionItem } from "@/app/api/results/pending-actions/route";
 import ReportSheet from "@/components/results/ReportSheet";
 import { PageLoader, InlineSpinner } from "@/components/shared/PageLoader";
 
@@ -56,6 +57,9 @@ const MILESTONE_INFO: Record<Milestone, { title: string; hint: string }> = {
 const fmtDateTime = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
 
+const ageInDays = (iso: string | null) => (iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)) : 0);
+const ageClass = (days: number) => (days >= 14 ? "text-rose-600" : days >= 7 ? "text-amber-600" : "text-slate-400");
+
 async function api(path: string, init?: RequestInit) {
   const res = await fetch(path, {
     ...init,
@@ -102,6 +106,8 @@ export default function AdminApprovalsPage() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // Every class's submitted-and-waiting scores, so the admin can see where the backlog is.
+  const [pending, setPending] = useState<PendingActionItem[]>([]);
   // Tags each loadOverview() call so a slower, older request (previous class/term)
   // can't resolve after a newer one and overwrite the screen with stale data.
   const overviewSeqRef = useRef(0);
@@ -137,8 +143,35 @@ export default function AdminApprovalsPage() {
       });
   }, []);
 
+  const loadPending = useCallback(async () => {
+    try {
+      const { res, json } = await api("/api/results/pending-actions");
+      if (res.ok && json.ok) setPending(json.items || []);
+    } catch {
+      /* the backlog summary is a convenience; the grid below still works without it */
+    }
+  }, []);
+
+  const pendingByClass = useMemo(() => {
+    const map = new Map<string, { scores: number; oldest: string | null }>();
+    pending.forEach((p) => {
+      const entry = map.get(p.classId) || { scores: 0, oldest: null };
+      entry.scores += p.count;
+      if (p.oldest && (!entry.oldest || p.oldest < entry.oldest)) entry.oldest = p.oldest;
+      map.set(p.classId, entry);
+    });
+    return map;
+  }, [pending]);
+
+  const oldestBySubject = useMemo(() => {
+    const map = new Map<string, string | null>();
+    pending.filter((p) => p.classId === classId && p.term === term).forEach((p) => map.set(p.subjectId, p.oldest));
+    return map;
+  }, [pending, classId, term]);
+
   const loadOverview = useCallback(async () => {
     if (!classId) return;
+    loadPending();
     const seq = ++overviewSeqRef.current;
     setLoading(true);
     setError(null);
@@ -156,7 +189,7 @@ export default function AdminApprovalsPage() {
     } finally {
       if (overviewSeqRef.current === seq) setLoading(false);
     }
-  }, [classId, term]);
+  }, [classId, term, loadPending]);
 
   useEffect(() => {
     loadOverview();
@@ -351,11 +384,15 @@ export default function AdminApprovalsPage() {
           <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
             Class
             <select value={classId} onChange={(e) => setClassId(e.target.value)} className="mt-1 block w-44 px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-semibold text-slate-800 normal-case tracking-normal">
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
+              {classes.map((c) => {
+                const waiting = pendingByClass.get(c.id)?.scores || 0;
+                return (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                    {waiting ? ` · ${waiting} waiting` : ""}
+                  </option>
+                );
+              })}
             </select>
           </label>
           <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -370,6 +407,40 @@ export default function AdminApprovalsPage() {
           </label>
         </div>
       </div>
+
+      {/* Backlog summary */}
+      {pendingByClass.size > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2.5">
+          <p className="text-xs text-amber-900">
+            <strong>{Array.from(pendingByClass.values()).reduce((sum, c) => sum + c.scores, 0)} scores</strong> are waiting for approval across{" "}
+            {pendingByClass.size} class{pendingByClass.size === 1 ? "" : "es"}
+            {(() => {
+              const oldest = Array.from(pendingByClass.values()).reduce<string | null>((m, c) => (c.oldest && (!m || c.oldest < m) ? c.oldest : m), null);
+              return oldest ? ` — the oldest has been waiting ${ageInDays(oldest)} day(s).` : ".";
+            })()}{" "}
+            Pick a class to review it:
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {classes
+              .filter((c) => pendingByClass.has(c.id))
+              .map((c) => {
+                const entry = pendingByClass.get(c.id)!;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setClassId(c.id)}
+                    className={`px-2.5 py-1 rounded-full border text-[11px] font-semibold cursor-pointer ${
+                      c.id === classId ? "bg-amber-600 border-amber-600 text-white" : "bg-white border-amber-300 text-amber-900 hover:bg-amber-100"
+                    }`}
+                  >
+                    {c.name} · {entry.scores}
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div role="tablist" className="inline-flex rounded-xl bg-slate-100 p-1">
@@ -469,7 +540,14 @@ export default function AdminApprovalsPage() {
                           <div className="text-[11px] text-slate-500">{row.teachers.length ? row.teachers.join(", ") : "No teacher assigned"}</div>
                           {row.returnReason && <div className="text-[11px] text-rose-600 mt-0.5">Returned: {row.returnReason}</div>}
                         </td>
-                        <td className="px-2 py-2.5 text-center font-bold text-sky-700">{submitted || "—"}</td>
+                        <td className="px-2 py-2.5 text-center font-bold text-sky-700">
+                          {submitted || "—"}
+                          {submitted > 0 && oldestBySubject.get(row.subjectId) && (
+                            <span className={`block text-[10px] font-semibold ${ageClass(ageInDays(oldestBySubject.get(row.subjectId)!))}`}>
+                              {ageInDays(oldestBySubject.get(row.subjectId)!)}d waiting
+                            </span>
+                          )}
+                        </td>
                         <td className="px-2 py-2.5 text-center font-bold text-emerald-700">{approved || "—"}</td>
                         <td className="px-2 py-2.5 text-center text-slate-600">{row.counts.draft || "—"}</td>
                         <td className="px-2 py-2.5 text-center text-rose-600">{row.counts.returned || "—"}</td>

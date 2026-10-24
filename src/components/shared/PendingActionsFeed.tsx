@@ -26,6 +26,8 @@ export default function PendingActionsFeed({ role }: { role: "admin" | "teacher"
   if (isAdmin) {
     const classCount = new Set(items.map((i) => i.classId)).size;
     const studentCount = items.reduce((sum, i) => sum + i.count, 0);
+    const oldest = items.reduce<string | null>((m, i) => (i.oldest && (!m || i.oldest < m) ? i.oldest : m), null);
+    const oldestDays = oldest ? Math.max(0, Math.floor((Date.now() - new Date(oldest).getTime()) / 86_400_000)) : 0;
     return (
       <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -33,6 +35,7 @@ export default function PendingActionsFeed({ role }: { role: "admin" | "teacher"
           <p className="text-xs text-rose-800 mt-0.5">
             Teachers have submitted these for approval — {studentCount} student record{studentCount === 1 ? "" : "s"} across {classCount}{" "}
             class{classCount === 1 ? "" : "es"}.
+            {oldestDays >= 1 && ` The oldest has been waiting ${oldestDays} day${oldestDays === 1 ? "" : "s"}.`}
           </p>
         </div>
         <Link

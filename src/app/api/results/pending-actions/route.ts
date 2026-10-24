@@ -9,6 +9,8 @@ export interface PendingActionItem {
   term: string;
   reason: string;
   count: number;
+  /** Oldest updated_at in the group, so the UI can show how long it has been waiting. */
+  oldest: string | null;
 }
 
 /**
@@ -32,7 +34,7 @@ export async function GET(req: NextRequest) {
   if (role === "admin") {
     const { data: rows, error } = await service
       .from("results")
-      .select("class_id, subject_id, term, classes(name), subjects(name)")
+      .select("class_id, subject_id, term, updated_at, classes(name), subjects(name)")
       .eq("status", "submitted")
       .eq("session", session);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -73,6 +75,7 @@ function groupResults(rows: any[], reasonField: string): PendingActionItem[] {
     const existing = grouped.get(key);
     if (existing) {
       existing.count += 1;
+      if (r.updated_at && (!existing.oldest || r.updated_at < existing.oldest)) existing.oldest = r.updated_at;
       continue;
     }
     grouped.set(key, {
@@ -83,6 +86,7 @@ function groupResults(rows: any[], reasonField: string): PendingActionItem[] {
       term: r.term,
       reason: reasonField ? r[reasonField] || "" : "",
       count: 1,
+      oldest: r.updated_at || null,
     });
   }
   return Array.from(grouped.values());
