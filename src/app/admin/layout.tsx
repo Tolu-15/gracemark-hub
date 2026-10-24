@@ -64,6 +64,11 @@ const adminNavItems: NavItem[] = [
   },
   {
     category: "Academics & Staff",
+    label: "Late Score Sheets",
+    href: "/admin/late-sheets",
+  },
+  {
+    category: "Academics & Staff",
     label: "Student Remarks",
     href: "/admin/remarks",
   },
