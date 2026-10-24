@@ -123,6 +123,11 @@ const adminNavItems: NavItem[] = [
     href: "/admin/students/access",
   },
   {
+    category: "Students & Portal",
+    label: "Student Logins",
+    href: "/admin/students/logins",
+  },
+  {
     category: "Finance & Fees",
     label: "Fee Structure",
     href: "/admin/finance/fees",
