@@ -5,6 +5,8 @@ import { useRouter, usePathname } from "next/navigation";
 import { verifyRoleAccess, GuardResult } from "@/lib/guard";
 import { UserRole } from "@/types/database";
 import TdevLoader from "./TdevLoader";
+import MaintenancePage from "./MaintenancePage";
+import { getAuthHeaders } from "@/lib/supabase/client";
 
 const SEEN_KEY = "gm_tdev_intro_seen";
 const MIN_MS = 1300;
@@ -50,6 +52,25 @@ function GuardRoot({ requiredRole, allowedRoles, children }: AuthGuardProps) {
     return () => clearTimeout(t);
   }, []);
 
+  // Maintenance mode: re-checked every minute so the page appears (and goes away) without a reload.
+  // `bypass` is true for the developer, who still sees the app with a reminder banner.
+  const [maintenance, setMaintenance] = useState<{ enabled: boolean; message?: string; backAt?: string | null; bypass: boolean } | null>(null);
+  const loadMaintenance = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/maintenance", { headers: await getAuthHeaders(), cache: "no-store" });
+      if (res.ok) setMaintenance(await res.json());
+    } catch {
+      /* if the check fails, never lock people out */
+    }
+  }, []);
+  useEffect(() => {
+    if (!authorized) return;
+    loadMaintenance();
+    const t = setInterval(loadMaintenance, 60_000);
+    return () => clearInterval(t);
+  }, [authorized, loadMaintenance]);
+  const blocked = Boolean(maintenance?.enabled && !maintenance.bypass);
+
   const ready = authorized && minDone;
 
   useEffect(() => {
@@ -82,7 +103,17 @@ function GuardRoot({ requiredRole, allowedRoles, children }: AuthGuardProps) {
 
   return (
     <>
-      {authorized && <GuardContext.Provider value={true}>{children}</GuardContext.Provider>}
+      {authorized && blocked && <MaintenancePage message={maintenance?.message} backAt={maintenance?.backAt} onRetry={loadMaintenance} />}
+      {authorized && !blocked && (
+        <GuardContext.Provider value={true}>
+          {maintenance?.enabled && maintenance.bypass && (
+            <div className="print:hidden bg-amber-100 border-b border-amber-300 text-amber-900 text-xs font-semibold text-center px-3 py-1.5">
+              Maintenance mode is ON: other users see the &ldquo;under construction&rdquo; page. Only you can see the app. Turn it off in Dev Tools → App Settings.
+            </div>
+          )}
+          {children}
+        </GuardContext.Provider>
+      )}
       {!loaderGone && <TdevLoader leaving={ready} />}
     </>
   );

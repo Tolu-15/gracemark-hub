@@ -3,7 +3,8 @@ import { requireApiActor } from "@/lib/apiAuth";
 import { logAudit } from "@/lib/audit";
 import { getCurrentSessionAndTerm } from "@/lib/financeServer";
 import { isTermCode } from "@/lib/serverContext";
-import { CARD_PRICE_NAIRA, CARD_VIEWS_ALLOWED, generatePin, generateSerial, hashPin, isCardIssuer } from "@/lib/scratchCards";
+import { getCardSettings } from "@/lib/systemSettings";
+import { generatePin, generateSerial, hashPin, isCardIssuer } from "@/lib/scratchCards";
 
 const one = <T,>(v: T | T[] | null | undefined): T | undefined => (Array.isArray(v) ? v[0] : v ?? undefined);
 
@@ -78,7 +79,10 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     canIssue: isCardIssuer(actor),
-    price: CARD_PRICE_NAIRA,
+    ...(await (async () => {
+      const s = await getCardSettings(service);
+      return { price: s.price, viewsAllowed: s.viewsAllowed };
+    })()),
     cards,
     revenue: Array.from(revenue.values()),
     needsAttention: (purchases || []).map((p: any) => ({
@@ -126,7 +130,8 @@ export async function POST(req: NextRequest) {
   if (!enrollment) return NextResponse.json({ ok: false, error: "This student is not enrolled in that session." }, { status: 400 });
 
   // Offline cards record the cash received (the card price unless the admin enters otherwise).
-  const amountPaid = source === "complimentary" ? 0 : Number(body.amount_received ?? CARD_PRICE_NAIRA);
+  const cardSettings = await getCardSettings(service);
+  const amountPaid = source === "complimentary" ? 0 : Number(body.amount_received ?? cardSettings.price);
   if (!Number.isFinite(amountPaid) || amountPaid < 0) {
     return NextResponse.json({ ok: false, error: "Amount received is not valid." }, { status: 400 });
   }
@@ -141,7 +146,7 @@ export async function POST(req: NextRequest) {
         student_id: studentId,
         academic_session_id: sessionId,
         term_code: term,
-        views_allowed: CARD_VIEWS_ALLOWED,
+        views_allowed: cardSettings.viewsAllowed,
         source,
         status: "issued",
         amount_paid: amountPaid,

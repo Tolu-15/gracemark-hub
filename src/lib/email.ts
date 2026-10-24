@@ -741,6 +741,73 @@ export function buildAssignmentUpdateEmail(params: AssignmentUpdateParams): Emai
   };
 }
 
+export function isEmailConfigured(): boolean {
+  return Boolean(process.env.BREVO_API_KEY);
+}
+
+const escapeHtml = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+interface CustomEmailParams {
+  toEmail: string;
+  /** Greeting name; omit for "Dear Guardian". */
+  toName?: string;
+  subject: string;
+  /** Plain text. Escaped, then line breaks are kept. */
+  message: string;
+}
+
+export function buildCustomEmail(params: Pick<CustomEmailParams, "toName" | "subject" | "message">): EmailContent {
+  const loginUrl = "https://www.gracemarkportal.com.ng/";
+  const body = escapeHtml(params.message).replace(/\r?\n/g, "<br />");
+  return {
+    subject: params.subject,
+    htmlContent: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+      <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:36px 16px;">
+          <tr><td align="center">
+            <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;">
+              <tr><td style="height:4px;background:#c9a84c;font-size:0;line-height:0;">&nbsp;</td></tr>
+              <tr>
+                <td style="padding:26px 36px;background:#0f172a;">
+                  <p style="margin:0;font-size:12px;font-weight:700;color:#c9a84c;letter-spacing:2px;text-transform:uppercase;">GraceMark Academy</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:30px 36px;">
+                  <p style="margin:0 0 16px;font-size:15px;color:#0f172a;">Dear <strong>${params.toName ? escapeHtml(params.toName) : "Guardian"}</strong>,</p>
+                  <p style="margin:0;font-size:14px;color:#334155;line-height:1.7;">${body}</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:20px 36px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
+                  <p style="margin:0;font-size:11px;color:#64748b;">GraceMark Academic Portal &bull; <a href="${loginUrl}" style="color:#2563eb;text-decoration:none;">www.gracemarkportal.com.ng</a></p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+}
+
+/**
+ * Sends one free-text message. Unlike the transactional helpers this throws when email isn't
+ * configured, so a developer never thinks a message went out when it didn't.
+ */
+export async function sendCustomEmail(params: CustomEmailParams): Promise<void> {
+  if (!isEmailConfigured()) throw new Error("Email is not configured (BREVO_API_KEY is missing).");
+  await sendEmail({
+    sender: { name: SENDER_NAME, email: SENDER_EMAIL },
+    to: [{ email: params.toEmail, ...(params.toName ? { name: params.toName } : {}) }],
+    ...buildCustomEmail(params),
+  });
+}
+
 export interface EmailTemplatePreview {
   id: string;
   name: string;

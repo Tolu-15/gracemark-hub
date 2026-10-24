@@ -18,10 +18,10 @@ import { applyCardPayment, onlineCardSalesEnabled } from "@/lib/scratchCards";
  * switched off is acknowledged and ignored, so Paystack stops retrying and nothing is recorded.
  */
 export async function POST(req: NextRequest) {
-  const cardsOn = onlineCardSalesEnabled();
-  if (!PAYMENTS_ENABLED && !cardsOn) return NextResponse.json({ ok: true, ignored: true });
   const secret = process.env.PAYSTACK_SECRET_KEY;
   const service = getServiceClient();
+  const cardsOn = service ? await onlineCardSalesEnabled(service) : false;
+  if (!PAYMENTS_ENABLED && !cardsOn) return NextResponse.json({ ok: true, ignored: true });
   if (!secret || !service) return NextResponse.json({ error: "Not configured." }, { status: 503 });
 
   const raw = await req.text();

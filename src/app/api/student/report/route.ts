@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
+import { getCardSettings } from "@/lib/systemSettings";
 import {
-  CARD_PRICE_NAIRA,
-  CARD_VIEWS_ALLOWED,
   getCardState,
   onlineCardSalesEnabled,
   recoverPendingPurchases,
@@ -80,9 +79,10 @@ export async function GET(req: NextRequest) {
     if (published && enrollment) {
       await recoverPendingPurchases(service, student.id);
       tr.card = await getCardState(service, student.id, enrollment.sessionId, term);
-      tr.price = CARD_PRICE_NAIRA;
-      tr.viewsAllowed = CARD_VIEWS_ALLOWED;
-      tr.onlineEnabled = onlineCardSalesEnabled();
+      const cardSettings = await getCardSettings(service);
+      tr.price = cardSettings.price;
+      tr.viewsAllowed = cardSettings.viewsAllowed;
+      tr.onlineEnabled = await onlineCardSalesEnabled(service);
     }
   }
 

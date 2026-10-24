@@ -75,6 +75,7 @@ export default function AdminScratchCardsPage() {
   const [attention, setAttention] = useState<Attention[]>([]);
   const [canIssue, setCanIssue] = useState(false);
   const [price, setPrice] = useState(1000);
+  const [viewsAllowed, setViewsAllowed] = useState(5);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -106,6 +107,7 @@ export default function AdminScratchCardsPage() {
       setAttention(json.needsAttention || []);
       setCanIssue(Boolean(json.canIssue));
       setPrice(json.price || 1000);
+      setViewsAllowed(json.viewsAllowed || 5);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -186,7 +188,7 @@ export default function AdminScratchCardsPage() {
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">Scratch Cards</h2>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Terminal Result cards: {naira(price)} each, 5 views per term, tied to one student. Online sales appear here automatically; cash sales are issued below.
+            Terminal Result cards: {naira(price)} each, {viewsAllowed} views per term, tied to one student (the developer sets the price in Dev Tools). Online sales appear here automatically; cash sales are issued below.
           </p>
         </div>
 
@@ -449,7 +451,7 @@ export default function AdminScratchCardsPage() {
               {issued.studentName} ({issued.admissionNo})
             </div>
             <div className="text-xs">
-              {termLabel(issued.term)} {issued.session} · Terminal Result · 5 views
+              {termLabel(issued.term)} {issued.session} · Terminal Result · {viewsAllowed} views
             </div>
             <div className="text-2xl font-mono font-bold tracking-widest py-3">{issued.pin}</div>
             <div className="text-[10px]">Serial {issued.serial} · Log in to the student portal, open Results, and enter this PIN.</div>

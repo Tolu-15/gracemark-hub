@@ -1,6 +1,7 @@
 import { createHash, randomInt } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ApiActor } from "@/lib/apiAuth";
+import { getCardSettings } from "@/lib/systemSettings";
 import {
   REF_PREFIX,
   newReference,
@@ -14,8 +15,8 @@ import {
  * Everything here runs with the service-role client; browsers never touch these tables.
  */
 
-export const CARD_PRICE_NAIRA = 1000;
-export const CARD_VIEWS_ALLOWED = 5;
+// Price, views per card and the online-sales switch are developer settings: see getCardSettings()
+// in src/lib/systemSettings.ts (Dev Tools -> App Settings).
 /** Minutes after a charged view in which re-opening with the same card is free. 0 = every open counts. */
 export const GRACE_MINUTES = 0;
 export const MAX_FAILED_PINS = 5;
@@ -181,26 +182,32 @@ export async function withinGrace(service: SupabaseClient, cardId: string, viewe
 /* ----------------------------- Payments --------------------------------- */
 
 /**
- * Online card sales have their own switch (SCRATCH_CARD_ONLINE_ENABLED=true) so they can run while
- * school-fee payments and the fee-based portal lock (NEXT_PUBLIC_PAYMENTS_ENABLED) stay off.
+ * Online card sales have their own switch (Dev Tools -> App Settings, falling back to the
+ * SCRATCH_CARD_ONLINE_ENABLED env flag) so they can run while school-fee payments and the
+ * fee-based portal lock (NEXT_PUBLIC_PAYMENTS_ENABLED) stay off. Also needs the Paystack secret key.
  */
-export const onlineCardSalesEnabled = () => process.env.SCRATCH_CARD_ONLINE_ENABLED === "true" && Boolean(process.env.PAYSTACK_SECRET_KEY);
+export async function onlineCardSalesEnabled(service: SupabaseClient) {
+  if (!process.env.PAYSTACK_SECRET_KEY) return false;
+  return (await getCardSettings(service)).onlineEnabled;
+}
 
+/** Records the order at today's price. The order keeps that price even if the setting changes later. */
 export async function createPurchase(
   service: SupabaseClient,
   p: { studentId: string; sessionId: string; termCode: string }
 ) {
   const reference = newReference(REF_PREFIX.card);
+  const { price } = await getCardSettings(service);
   const { error } = await service.from("scratch_card_purchases").insert({
     reference,
     student_id: p.studentId,
     academic_session_id: p.sessionId,
     term_code: p.termCode,
-    amount: CARD_PRICE_NAIRA,
+    amount: price,
     status: "pending",
   });
   if (error) throw error;
-  return reference;
+  return { reference, amount: price };
 }
 
 /**
@@ -230,6 +237,7 @@ export async function applyCardPayment(
     return { ok: false, status: 422, error: "The amount paid does not match the scratch card price." };
   }
 
+  const { viewsAllowed } = await getCardSettings(service);
   const { data: card, error } = await service
     .from("scratch_cards")
     .insert({
@@ -237,7 +245,7 @@ export async function applyCardPayment(
       student_id: purchase.student_id,
       academic_session_id: purchase.academic_session_id,
       term_code: purchase.term_code,
-      views_allowed: CARD_VIEWS_ALLOWED,
+      views_allowed: viewsAllowed,
       source: "online",
       status: "active",
       payment_reference: reference,
@@ -273,7 +281,7 @@ export async function applyCardPayment(
 
 /** Re-checks the student's unfinished checkouts with Paystack so a payment never goes missing. */
 export async function recoverPendingPurchases(service: SupabaseClient, studentId: string) {
-  if (!onlineCardSalesEnabled()) return;
+  if (!(await onlineCardSalesEnabled(service))) return;
   const olderThan = new Date(Date.now() - 30_000).toISOString();
   const { data } = await service
     .from("scratch_card_purchases")

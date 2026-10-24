@@ -3,7 +3,6 @@ import { requireApiActor } from "@/lib/apiAuth";
 import { findStudentForActor, getPaystackPublicKey } from "@/lib/financeServer";
 import { isTermCode } from "@/lib/serverContext";
 import {
-  CARD_PRICE_NAIRA,
   createPurchase,
   findEnrollment,
   getCardState,
@@ -18,15 +17,15 @@ import {
  * (browser callback, webhook or recovery), never from this request.
  */
 export async function POST(req: NextRequest) {
-  if (!onlineCardSalesEnabled()) {
+  const authorization = await requireApiActor(req, ["student"]);
+  if ("response" in authorization) return authorization.response;
+  const { service, authId, dbUserId, email } = authorization.actor;
+  if (!(await onlineCardSalesEnabled(service))) {
     return NextResponse.json(
       { ok: false, error: "Online payment is not available yet. Please buy a card from the school office." },
       { status: 503 }
     );
   }
-  const authorization = await requireApiActor(req, ["student"]);
-  if ("response" in authorization) return authorization.response;
-  const { service, authId, dbUserId, email } = authorization.actor;
 
   let body: { session?: string; term?: string };
   try {
@@ -52,11 +51,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "You already have a scratch card for this term." }, { status: 409 });
     }
 
-    const reference = await createPurchase(service, { studentId: student.id, sessionId: enrollment.sessionId, termCode: term });
+    const { reference, amount } = await createPurchase(service, { studentId: student.id, sessionId: enrollment.sessionId, termCode: term });
     return NextResponse.json({
       ok: true,
       reference,
-      amountKobo: CARD_PRICE_NAIRA * 100,
+      amountKobo: Math.round(amount * 100),
       publicKey: await getPaystackPublicKey(service),
       email: email || "",
     });

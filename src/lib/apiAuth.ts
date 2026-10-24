@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase/server";
+import { getMaintenance } from "@/lib/systemSettings";
 
 export type ApiRole = "admin" | "teacher" | "student";
 
@@ -41,13 +42,29 @@ export async function requireApiActor(
 
   const { data: profile, error: profileError } = await service
     .from("users")
-    .select("id, role")
+    .select("id, role, is_developer")
     .eq("auth_id", userData.user.id)
     .maybeSingle();
   const role = profile?.role as ApiRole | undefined;
 
   if (profileError || !role || !allowedRoles.includes(role)) {
     return { response: NextResponse.json({ error: "You are not allowed to perform this action." }, { status: 403 }) };
+  }
+
+  // Maintenance mode: every API route that signs a user in passes through here, so one check covers
+  // them all. The developer always gets through (so they can switch it off); admins only if allowed.
+  const maintenance = await getMaintenance(service);
+  if (maintenance.enabled && !profile?.is_developer && !(maintenance.allowAdmins && role === "admin")) {
+    return {
+      response: NextResponse.json(
+        {
+          error: maintenance.message || "The portal is undergoing maintenance. Please check back shortly.",
+          maintenance: true,
+          backAt: maintenance.backAt,
+        },
+        { status: 503 }
+      ),
+    };
   }
 
   // Server-side enforcement of the fee lock: a locked student may only reach routes

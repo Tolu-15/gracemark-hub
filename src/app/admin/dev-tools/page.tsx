@@ -6,6 +6,8 @@ import { getAuthHeaders } from "@/lib/supabase/client";
 import { PageLoader } from "@/components/shared/PageLoader";
 import UsageAnalytics from "@/components/admin/UsageAnalytics";
 import TestSandbox from "@/components/admin/TestSandbox";
+import AppSettingsPanel from "@/components/admin/AppSettingsPanel";
+import EmailComposer from "@/components/admin/EmailComposer";
 
 interface ScanIssue {
   type: string;
@@ -247,6 +249,10 @@ export default function AdminDevToolsPage() {
               </div>
 
               <UsageAnalytics />
+
+              <AppSettingsPanel />
+
+              <EmailComposer />
 
               <TestSandbox />
 
