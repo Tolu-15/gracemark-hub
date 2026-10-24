@@ -188,6 +188,27 @@ export default function AdminStudentsPage() {
     setIsModalOpen(true);
   }
 
+  /**
+   * Puts the student in `classId` for the current session (creating the enrollment if needed and
+   * moving this session's scores with them). Enrollment is per session, not per term, so a student
+   * who joins in term 2 or 3 is enrolled for the year. Returns an error message, or "" on success.
+   */
+  async function enrollInCurrentSession(studentId: string, classId: string): Promise<string> {
+    try {
+      const currentSession = (await getAppSettings())?.current_session;
+      if (!currentSession) return "No current session is set.";
+      const res = await fetch("/api/admin/enrollments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+        body: JSON.stringify({ studentId, session: currentSession, classId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      return !res.ok || !json.ok ? json.error || `status ${res.status}` : "";
+    } catch (err: any) {
+      return err?.message || "network error";
+    }
+  }
+
   async function handleSaveStudent(e: React.FormEvent) {
     e.preventDefault();
     setFormError("");
@@ -208,6 +229,19 @@ export default function AdminStudentsPage() {
 
     try {
       if (editingStudent) {
+        // Moving a student to another class also moves their enrollment and this session's scores.
+        const previousClassId = (editingStudent as any).class_id || (editingStudent as any).current_class_id || "";
+        const classChanged = Boolean(previousClassId) && previousClassId !== class_id;
+        if (
+          classChanged &&
+          !window.confirm(
+            `Move ${editingStudent.name || "this student"} to the new class? Their enrollment and any scores already entered this session will move with them.`
+          )
+        ) {
+          setSaving(false);
+          return;
+        }
+
         // A changed guardian email gets a fresh welcome from the Dev Tools bulk send.
         const guardianWelcomeReset =
           guardian_email.trim() !== (editingStudent.guardian_email || "") ? { guardian_welcome_sent_at: null } : {};
@@ -276,6 +310,17 @@ export default function AdminStudentsPage() {
                 role: "student",
               }),
             });
+          }
+        }
+
+        // Keep the enrollment (and this session's scores) in step with the new class.
+        if (classChanged) {
+          const moveFailure = await enrollInCurrentSession(editingStudent.id, class_id);
+          if (moveFailure) {
+            alert(
+              `The class was changed on the student record, but their enrollment and scores could not be moved (${moveFailure}). ` +
+                "Edit the student again to retry, otherwise results may still show under the old class."
+            );
           }
         }
       } else {
@@ -368,26 +413,8 @@ export default function AdminStudentsPage() {
           throw insErr;
         }
 
-        // Results, attendance, report cards and scratch cards all hang off the student's enrollment
-        // in the current session. It is per session, not per term, so a student who joins in
-        // term 2 or 3 is enrolled for the year and just has no earlier scores.
-        let enrollFailure = "";
-        try {
-          const currentSession = (await getAppSettings())?.current_session;
-          if (!currentSession) {
-            enrollFailure = "No current session is set.";
-          } else {
-            const enrollRes = await fetch("/api/admin/enrollments", {
-              method: "POST",
-              headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
-              body: JSON.stringify({ studentId: insertedStudent.id, session: currentSession, classId: class_id }),
-            });
-            const enrollJson = await enrollRes.json().catch(() => ({}));
-            if (!enrollRes.ok || !enrollJson.ok) enrollFailure = enrollJson.error || `status ${enrollRes.status}`;
-          }
-        } catch (enrollErr: any) {
-          enrollFailure = enrollErr?.message || "network error";
-        }
+        // Results, attendance, report cards and scratch cards all hang off the student's enrollment.
+        const enrollFailure = await enrollInCurrentSession(insertedStudent.id, class_id);
         if (enrollFailure) {
           alert(
             `${name.trim()} was added, but could not be enrolled in the current session (${enrollFailure}). ` +

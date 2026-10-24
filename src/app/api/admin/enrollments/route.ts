@@ -97,7 +97,16 @@ export async function POST(req: NextRequest) {
     // Update students.class_id cache for the active session
     await service.from("students").update({ class_id: classId }).eq("id", studentId);
 
-    return NextResponse.json({ ok: true, enrollment });
+    // Score rows carry their own class_id (the teacher gradebook filters on it), so a class change
+    // must move this session's scores with the student. A new enrollment has none to move.
+    const { data: moved } = await service
+      .from("results")
+      .update({ class_id: classId })
+      .eq("enrollment_id", enrollment.id)
+      .neq("class_id", classId)
+      .select("id");
+
+    return NextResponse.json({ ok: true, enrollment, resultsMoved: (moved || []).length });
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
