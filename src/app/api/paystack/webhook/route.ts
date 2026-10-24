@@ -8,6 +8,7 @@ import {
   applySchoolFeePayment,
   verifyPaystackReference,
 } from "@/lib/financeServer";
+import { applyCardPayment } from "@/lib/scratchCards";
 
 /**
  * Paystack webhook. Records payments even when the payer closes the tab before the
@@ -45,6 +46,7 @@ export async function POST(req: NextRequest) {
 
     if (reference.startsWith(`${REF_PREFIX.fees}-`)) await applySchoolFeePayment(service, txn);
     else if (reference.startsWith(`${REF_PREFIX.admission}-`)) await applyAdmissionPayment(service, txn);
+    else if (reference.startsWith(`${REF_PREFIX.card}-`)) await applyCardPayment(service, txn);
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("Paystack webhook error:", err);

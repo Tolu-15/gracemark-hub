@@ -13,7 +13,7 @@ import { calculatePaymentStatus, formatCurrency, formatPaymentStatus } from "./s
  */
 
 /** Reference prefixes keep the payment flows from being replayed against each other. */
-export const REF_PREFIX = { fees: "GMF", admission: "GMA" } as const;
+export const REF_PREFIX = { fees: "GMF", admission: "GMA", card: "GMC" } as const;
 
 export function newReference(prefix: (typeof REF_PREFIX)[keyof typeof REF_PREFIX]) {
   return `${prefix}-${Date.now()}-${randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`;

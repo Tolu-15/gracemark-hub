@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
+import { PAYMENTS_ENABLED } from "@/lib/features";
+import {
+  CARD_PRICE_NAIRA,
+  CARD_VIEWS_ALLOWED,
+  getCardState,
+  onlinePaymentsConfigured,
+  recoverPendingPurchases,
+} from "@/lib/scratchCards";
 
 /**
  * GET ?session=&term=   (admins may add &student_id=)
  * Returns ONLY published (frozen) reports: the snapshots saved when the admin
  * published each milestone. Nothing is computed from live scores here.
+ *
+ * The Terminal Result (TR) is never returned to a student here: it needs a scratch card and is
+ * served by /api/student/scratch-card/view. Students get `tr` instead, describing whether a TR
+ * is published and the state of their card. Admins still see TR for previewing.
  */
 export async function GET(req: NextRequest) {
   const authorization = await requireApiActor(req, ["student", "admin"]);
@@ -33,7 +45,12 @@ export async function GET(req: NextRequest) {
   ]);
 
   const sessions = (enrollments || [])
-    .map((e: any) => ({ enrollmentId: e.id, name: e.academic_sessions?.name as string, start: e.academic_sessions?.start_date || "" }))
+    .map((e: any) => ({
+      enrollmentId: e.id,
+      sessionId: e.academic_session_id as string,
+      name: e.academic_sessions?.name as string,
+      start: e.academic_sessions?.start_date || "",
+    }))
     .filter((s) => s.name)
     .sort((a, b) => (a.start || a.name).localeCompare(b.start || b.name));
 
@@ -52,8 +69,22 @@ export async function GET(req: NextRequest) {
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     (snaps || []).forEach((s: any) => {
       (availableTerms[s.term] ||= []).push(s.report_type);
+      if (s.report_type === "TR" && role !== "admin") return; // TR only through a scratch card view
       if (s.term === term) reports[s.report_type] = { ...s.snapshot_data, publishedAt: s.published_at };
     });
+  }
+
+  let tr: Record<string, any> | null = null;
+  if (role !== "admin") {
+    const published = Boolean(enrollment && (availableTerms[term] || []).includes("TR"));
+    tr = { published };
+    if (published && enrollment) {
+      await recoverPendingPurchases(service, student.id);
+      tr.card = await getCardState(service, student.id, enrollment.sessionId, term);
+      tr.price = CARD_PRICE_NAIRA;
+      tr.viewsAllowed = CARD_VIEWS_ALLOWED;
+      tr.onlineEnabled = PAYMENTS_ENABLED && onlinePaymentsConfigured();
+    }
   }
 
   return NextResponse.json({
@@ -69,5 +100,6 @@ export async function GET(req: NextRequest) {
     term,
     reports,
     availableTerms,
+    tr,
   });
 }
