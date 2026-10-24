@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
+import { getAppSettings } from "@/lib/appSettings";
 import { StudentRecord, ClassRecord } from "@/types/database";
 
 export default function AdminStudentsPage() {
@@ -345,22 +346,53 @@ export default function AdminStudentsPage() {
           throw new Error("Could not provision or link student user account in users table. Please ensure admin session is active.");
         }
 
-        const { error: insErr } = await supabase.from("students").insert([
-          {
-            full_name: name.trim(),
-            name: name.trim(),
-            admission_no: admission_no.trim(),
-            current_class_id: class_id,
-            class_id: class_id,
-            user_id: targetDbUserId,
-            portal_access_status: "active",
-            gender,
-            guardian_email: guardian_email.trim() || null,
-          },
-        ]);
+        const { data: insertedStudent, error: insErr } = await supabase
+          .from("students")
+          .insert([
+            {
+              full_name: name.trim(),
+              name: name.trim(),
+              admission_no: admission_no.trim(),
+              current_class_id: class_id,
+              class_id: class_id,
+              user_id: targetDbUserId,
+              portal_access_status: "active",
+              gender,
+              guardian_email: guardian_email.trim() || null,
+            },
+          ])
+          .select("id")
+          .single();
 
         if (insErr) {
           throw insErr;
+        }
+
+        // Results, attendance, report cards and scratch cards all hang off the student's enrollment
+        // in the current session. It is per session, not per term, so a student who joins in
+        // term 2 or 3 is enrolled for the year and just has no earlier scores.
+        let enrollFailure = "";
+        try {
+          const currentSession = (await getAppSettings())?.current_session;
+          if (!currentSession) {
+            enrollFailure = "No current session is set.";
+          } else {
+            const enrollRes = await fetch("/api/admin/enrollments", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+              body: JSON.stringify({ studentId: insertedStudent.id, session: currentSession, classId: class_id }),
+            });
+            const enrollJson = await enrollRes.json().catch(() => ({}));
+            if (!enrollRes.ok || !enrollJson.ok) enrollFailure = enrollJson.error || `status ${enrollRes.status}`;
+          }
+        } catch (enrollErr: any) {
+          enrollFailure = enrollErr?.message || "network error";
+        }
+        if (enrollFailure) {
+          alert(
+            `${name.trim()} was added, but could not be enrolled in the current session (${enrollFailure}). ` +
+              "Without an enrollment they will not get results or scratch cards. Re-import them from the bulk upload or contact support."
+          );
         }
       }
 

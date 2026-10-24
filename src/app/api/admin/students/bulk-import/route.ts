@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
+import { getCurrentSessionAndTerm } from "@/lib/financeServer";
 
 interface ImportRow {
   name: string;
@@ -53,6 +54,22 @@ export async function POST(req: NextRequest) {
   const updated: string[] = [];
   const failed: { row: string; reason: string }[] = [];
 
+  // Results, attendance, report cards and scratch cards all hang off the student's enrollment in
+  // the current session, so every imported student needs one. It is per session, not per term:
+  // a student who joins in term 2 or 3 is enrolled for the year and simply has no earlier scores.
+  const { sessionId: currentSessionId } = await getCurrentSessionAndTerm(service);
+  const ensureEnrollment = async (studentId: string, classId: string) => {
+    if (!currentSessionId) return null;
+    // ignoreDuplicates: an existing enrollment (and its class) is left exactly as it is.
+    const { error } = await service
+      .from("student_enrollments")
+      .upsert(
+        { student_id: studentId, academic_session_id: currentSessionId, class_id: classId },
+        { onConflict: "student_id,academic_session_id", ignoreDuplicates: true }
+      );
+    return error ? error.message : null;
+  };
+
   for (const r of rows) {
     const name = String(r.name || "").trim();
     const admissionNo = String(r.admission_no || "").trim();
@@ -68,7 +85,13 @@ export async function POST(req: NextRequest) {
         .from("students")
         .update({ full_name: name, name, class_id: r.class_id, current_class_id: r.class_id, gender: r.gender })
         .eq("id", studentId);
-      if (error) failed.push({ row: label, reason: error.message });
+      if (error) {
+        failed.push({ row: label, reason: error.message });
+        continue;
+      }
+      // Fixes students added earlier without an enrollment; never changes an existing one.
+      const enrollErr = await ensureEnrollment(studentId, r.class_id);
+      if (enrollErr) failed.push({ row: label, reason: `Updated, but could not enrol in the current session: ${enrollErr}` });
       else updated.push(label);
       continue;
     }
@@ -115,7 +138,9 @@ export async function POST(req: NextRequest) {
       if (insErr) throw new Error(insErr.message);
 
       byAdmission.set(admissionNo.toLowerCase(), inserted.id);
-      created.push(label);
+      const enrollErr = await ensureEnrollment(inserted.id, r.class_id);
+      if (enrollErr) failed.push({ row: label, reason: `Created, but could not enrol in the current session: ${enrollErr}. Re-run the import to retry.` });
+      else created.push(label);
     } catch (err: any) {
       failed.push({ row: label, reason: err.message || "Unknown error." });
     }
