@@ -5,6 +5,7 @@ import AuthGuard from "@/components/shared/AuthGuard";
 import { getAuthHeaders } from "@/lib/supabase/client";
 import { PageLoader } from "@/components/shared/PageLoader";
 import UsageAnalytics from "@/components/admin/UsageAnalytics";
+import TestSandbox from "@/components/admin/TestSandbox";
 
 interface ScanIssue {
   type: string;
@@ -246,6 +247,8 @@ export default function AdminDevToolsPage() {
               </div>
 
               <UsageAnalytics />
+
+              <TestSandbox />
 
               {/* Integrity scanner */}
               <div>
