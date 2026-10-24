@@ -32,14 +32,23 @@ export async function GET(req: NextRequest) {
   const session = settings?.current_session || "";
 
   if (role === "admin") {
-    const { data: rows, error } = await service
-      .from("results")
-      .select("class_id, subject_id, term, updated_at, classes(name), subjects(name)")
-      .eq("status", "submitted")
-      .eq("session", session);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // The API returns at most 1,000 rows per request, so read the submitted scores in pages;
+    // otherwise a big backlog would be undercounted without any error.
+    const rows: any[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data: page, error } = await service
+        .from("results")
+        .select("class_id, subject_id, term, updated_at, classes(name), subjects(name)")
+        .eq("status", "submitted")
+        .eq("session", session)
+        .order("id")
+        .range(from, from + 999);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      rows.push(...(page || []));
+      if ((page || []).length < 1000) break;
+    }
 
-    const items = groupResults(rows || [], "");
+    const items = groupResults(rows, "");
     return NextResponse.json({ ok: true, role, count: items.length, items });
   }
 

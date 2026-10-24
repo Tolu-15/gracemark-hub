@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
 
-/** GET — how many result rows are in each status for the current term/session, for the dashboard's term-progress widget and the Approvals sidebar badge. */
+const STATUSES = ["draft", "submitted", "approved", "returned"] as const;
+
+/**
+ * GET — how many score rows are in each status for the current term/session, for the dashboard's
+ * term-progress widget.
+ *
+ * Each status is counted by the database (exact count, no rows downloaded). The previous version
+ * downloaded every row and counted them here, but the API hands back at most 1,000 rows at a time,
+ * so with more scores than that the Approved/Draft numbers came out short. Throwaway "ZZ Test"
+ * classes from Dev Tools are left out so sample scores never inflate the school's real numbers.
+ */
 export async function GET(req: NextRequest) {
   const authorization = await requireApiActor(req, ["admin"]);
   if ("response" in authorization) return authorization.response;
@@ -15,16 +25,23 @@ export async function GET(req: NextRequest) {
   const term = settings?.current_term || "term1";
   const session = settings?.current_session || "";
 
-  let query = service.from("results").select("status").eq("term", term);
-  if (session) query = query.eq("session", session);
+  const { data: testClasses } = await service.from("classes").select("id").like("name", "ZZ Test%");
+  const testIds = (testClasses || []).map((c: any) => c.id);
 
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  const countFor = async (status: (typeof STATUSES)[number]) => {
+    let q = service.from("results").select("id", { count: "exact", head: true }).eq("term", term).eq("status", status);
+    if (session) q = q.eq("session", session);
+    if (testIds.length) q = q.not("class_id", "in", `(${testIds.join(",")})`);
+    const { count, error } = await q;
+    if (error) throw error;
+    return count || 0;
+  };
 
-  const counts = { draft: 0, submitted: 0, approved: 0, returned: 0 };
-  (data || []).forEach((r: any) => {
-    if (r.status in counts) counts[r.status as keyof typeof counts]++;
-  });
-
-  return NextResponse.json({ ok: true, term, session, counts, total: data?.length || 0 });
+  try {
+    const [draft, submitted, approved, returned] = await Promise.all(STATUSES.map(countFor));
+    const counts = { draft, submitted, approved, returned };
+    return NextResponse.json({ ok: true, term, session, counts, total: draft + submitted + approved + returned });
+  } catch (err: any) {
+    return NextResponse.json({ ok: false, error: err?.message || "Could not count scores." }, { status: 500 });
+  }
 }
