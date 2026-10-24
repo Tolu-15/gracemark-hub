@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
-import { PAYMENTS_ENABLED } from "@/lib/features";
 import {
   CARD_PRICE_NAIRA,
   CARD_VIEWS_ALLOWED,
   getCardState,
-  onlinePaymentsConfigured,
+  onlineCardSalesEnabled,
   recoverPendingPurchases,
 } from "@/lib/scratchCards";
 
@@ -83,7 +82,7 @@ export async function GET(req: NextRequest) {
       tr.card = await getCardState(service, student.id, enrollment.sessionId, term);
       tr.price = CARD_PRICE_NAIRA;
       tr.viewsAllowed = CARD_VIEWS_ALLOWED;
-      tr.onlineEnabled = PAYMENTS_ENABLED && onlinePaymentsConfigured();
+      tr.onlineEnabled = onlineCardSalesEnabled();
     }
   }
 

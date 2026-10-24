@@ -180,7 +180,11 @@ export async function withinGrace(service: SupabaseClient, cardId: string, viewe
 
 /* ----------------------------- Payments --------------------------------- */
 
-export const onlinePaymentsConfigured = () => Boolean(process.env.PAYSTACK_SECRET_KEY);
+/**
+ * Online card sales have their own switch (SCRATCH_CARD_ONLINE_ENABLED=true) so they can run while
+ * school-fee payments and the fee-based portal lock (NEXT_PUBLIC_PAYMENTS_ENABLED) stay off.
+ */
+export const onlineCardSalesEnabled = () => process.env.SCRATCH_CARD_ONLINE_ENABLED === "true" && Boolean(process.env.PAYSTACK_SECRET_KEY);
 
 export async function createPurchase(
   service: SupabaseClient,
@@ -269,7 +273,7 @@ export async function applyCardPayment(
 
 /** Re-checks the student's unfinished checkouts with Paystack so a payment never goes missing. */
 export async function recoverPendingPurchases(service: SupabaseClient, studentId: string) {
-  if (!onlinePaymentsConfigured()) return;
+  if (!onlineCardSalesEnabled()) return;
   const olderThan = new Date(Date.now() - 30_000).toISOString();
   const { data } = await service
     .from("scratch_card_purchases")

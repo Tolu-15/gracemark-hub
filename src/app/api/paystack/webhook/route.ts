@@ -8,15 +8,18 @@ import {
   applySchoolFeePayment,
   verifyPaystackReference,
 } from "@/lib/financeServer";
-import { applyCardPayment } from "@/lib/scratchCards";
+import { applyCardPayment, onlineCardSalesEnabled } from "@/lib/scratchCards";
 
 /**
  * Paystack webhook. Records payments even when the payer closes the tab before the
  * browser callback runs. Set the URL in Paystack: https://<your-domain>/api/paystack/webhook
+ *
+ * Scratch card sales and school-fee/admission payments have separate switches. Whatever is
+ * switched off is acknowledged and ignored, so Paystack stops retrying and nothing is recorded.
  */
 export async function POST(req: NextRequest) {
-  // Payments are switched off: acknowledge so Paystack stops retrying, record nothing.
-  if (!PAYMENTS_ENABLED) return NextResponse.json({ ok: true, ignored: true });
+  const cardsOn = onlineCardSalesEnabled();
+  if (!PAYMENTS_ENABLED && !cardsOn) return NextResponse.json({ ok: true, ignored: true });
   const secret = process.env.PAYSTACK_SECRET_KEY;
   const service = getServiceClient();
   if (!secret || !service) return NextResponse.json({ error: "Not configured." }, { status: 503 });
@@ -44,9 +47,12 @@ export async function POST(req: NextRequest) {
     const txn = await verifyPaystackReference(reference);
     if (!txn) return NextResponse.json({ ok: true, ignored: true });
 
-    if (reference.startsWith(`${REF_PREFIX.fees}-`)) await applySchoolFeePayment(service, txn);
-    else if (reference.startsWith(`${REF_PREFIX.admission}-`)) await applyAdmissionPayment(service, txn);
-    else if (reference.startsWith(`${REF_PREFIX.card}-`)) await applyCardPayment(service, txn);
+    if (reference.startsWith(`${REF_PREFIX.card}-`)) {
+      if (cardsOn) await applyCardPayment(service, txn);
+    } else if (PAYMENTS_ENABLED) {
+      if (reference.startsWith(`${REF_PREFIX.fees}-`)) await applySchoolFeePayment(service, txn);
+      else if (reference.startsWith(`${REF_PREFIX.admission}-`)) await applyAdmissionPayment(service, txn);
+    }
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("Paystack webhook error:", err);

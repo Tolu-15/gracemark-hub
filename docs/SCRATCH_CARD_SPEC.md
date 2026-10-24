@@ -10,8 +10,10 @@ Decisions made while building:
 - Grace window: **off** (every open counts). One constant, `GRACE_MINUTES` in `src/lib/scratchCards.ts`.
 - Offline issuers: `toluwanimibabalola2707@gmail.com` and `gracemarkacademy@gmail.com`
   (override with env `SCRATCH_CARD_ISSUER_EMAILS`). Other admins can view sales only.
-- Online payment reuses `NEXT_PUBLIC_PAYMENTS_ENABLED=true` + `PAYSTACK_SECRET_KEY`; with either
-  missing, only office-issued cards work. No Paystack split payment yet.
+- Online card sales have their own switch: `SCRATCH_CARD_ONLINE_ENABLED=true` + `PAYSTACK_SECRET_KEY`
+  (server-side env; restart after changing). It is independent of `NEXT_PUBLIC_PAYMENTS_ENABLED`, so
+  school-fee payments and the fee-based portal lock stay off. With it off, only office-issued cards
+  work. No Paystack split payment yet.
 - Offline/complimentary cards start `issued` and become `active` when the parent enters the PIN;
   online cards are `active` as soon as Paystack confirms the payment.
 

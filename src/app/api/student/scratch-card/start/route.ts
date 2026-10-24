@@ -1,4 +1,3 @@
-import { PAYMENTS_ENABLED } from "@/lib/features";
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
 import { findStudentForActor, getPaystackPublicKey } from "@/lib/financeServer";
@@ -9,7 +8,7 @@ import {
   findEnrollment,
   getCardState,
   getPublishedTr,
-  onlinePaymentsConfigured,
+  onlineCardSalesEnabled,
 } from "@/lib/scratchCards";
 
 /**
@@ -19,7 +18,7 @@ import {
  * (browser callback, webhook or recovery), never from this request.
  */
 export async function POST(req: NextRequest) {
-  if (!PAYMENTS_ENABLED || !onlinePaymentsConfigured()) {
+  if (!onlineCardSalesEnabled()) {
     return NextResponse.json(
       { ok: false, error: "Online payment is not available yet. Please buy a card from the school office." },
       { status: 503 }
