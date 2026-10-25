@@ -70,3 +70,6 @@ out/
 # Database backup dumps (generated locally by scripts/backup_database.js)
 scripts/backup/
 scripts/baseline_counts.json
+
+# compiled test output
+.test-build/

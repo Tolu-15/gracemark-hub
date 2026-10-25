@@ -31,6 +31,11 @@ export const MAINTENANCE_DEFAULTS: MaintenanceSettings = { enabled: false, messa
 const CACHE_MS = 10_000;
 const cache = new Map<string, { at: number; value: unknown }>();
 
+/** Forget cached settings (tests, and anything that must see a fresh read). */
+export function clearSettingsCache() {
+  cache.clear();
+}
+
 async function readRaw(service: SupabaseClient, key: string): Promise<Record<string, any> | null> {
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value as Record<string, any> | null;
