@@ -7,7 +7,7 @@ import { PageLoader, InlineSpinner } from "@/components/shared/PageLoader";
 import { printWithTitle } from "@/lib/printTitle";
 import { trackEvent } from "@/lib/activity";
 import TerminalResultGate, { type TrCardInfo, type TrInfo } from "@/components/student/TerminalResultGate";
-import PerformanceSummary from "@/components/student/PerformanceSummary";
+import { getOpenedTr, openedTrKey, rememberOpenedTr } from "@/lib/openedTrCache";
 
 const TERMS = [
   { value: "term1", label: "1st Term" },
@@ -99,26 +99,13 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
   // A student's Terminal Result is not in `reports`: it only appears after a scratch card view.
   const isStudentView = !studentId;
   const trPublished = Boolean(isStudentView && data?.tr?.published);
-  const openedKey = `${session}|${term}`;
-  const openedTr = opened[openedKey] || null;
+  // Shared with the Performance Summary page in this browser tab, so seeing both costs one view.
+  const openedKey = openedTrKey(data?.student.id, session, term);
+  const openedTr = opened[openedKey] || getOpenedTr(openedKey);
   const published = data ? MILESTONE_TABS.filter((m) => data.reports[m.key] || (m.key === "TR" && trPublished)) : [];
   const current = tab && data ? (tab === "TR" && isStudentView ? openedTr?.report || null : data.reports[tab]) : null;
   const showGate = Boolean(data && tab === "TR" && trPublished && !openedTr);
   const termLabel = TERMS.find((t) => t.value === term)?.label || "";
-
-  // Reports the summary and charts may use: only what this viewer can already see. A student's Terminal
-  // Result is included only once it has been opened with a card view.
-  const chartReports: Partial<Record<MilestoneKey, any>> = { ...(data?.reports || {}) };
-  if (isStudentView) chartReports.TR = openedTr?.report || null;
-  const milestoneOrder: MilestoneKey[] = ["PR1", "PR2", "PR3", "TR"];
-  const previousReport =
-    current && tab
-      ? milestoneOrder
-          .slice(0, milestoneOrder.indexOf(tab))
-          .reverse()
-          .map((k) => chartReports[k])
-          .find(Boolean) || null
-      : null;
 
   // A student's own report sheet appearing on screen counts as a view (once per
   // milestone/term/session per visit). Admins previewing a student are not counted.
@@ -236,7 +223,10 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
               termLabel={termLabel}
               studentName={data.student.name}
               tr={data.tr}
-              onOpened={(report, card) => setOpened((prev) => ({ ...prev, [openedKey]: { report, card } }))}
+              onOpened={(report, card) => {
+                rememberOpenedTr(openedKey, { report, card });
+                setOpened((prev) => ({ ...prev, [openedKey]: { report, card } }));
+              }}
               onRefresh={load}
             />
           ) : !current ? (
@@ -251,15 +241,10 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
               {tab === "TR" && isStudentView && openedTr && (
                 <div className="no-print print:hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
                   Scratch card: <strong>{openedTr.card.viewsLeft}</strong> of {openedTr.card.viewsAllowed} views left. Print from this page as often as you like.
-                  Leaving or refreshing it means opening the result again will use another view.
+                  Refreshing or closing the page means opening the result again will use another view.
                 </div>
               )}
               <ReportSheet report={current} />
-              {tab && (
-                <div className="mt-8">
-                  <PerformanceSummary report={current} previous={previousReport} reports={chartReports} />
-                </div>
-              )}
             </>
           )}
         </div>

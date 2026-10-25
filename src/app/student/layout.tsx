@@ -51,6 +51,15 @@ const studentNavItems: NavItem[] = [
     ),
   },
   {
+    label: "Performance Summary",
+    href: "/student/summary",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16l4-4 3 3 5-6M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  {
     label: "My Badges",
     href: "/student/badges",
     icon: (

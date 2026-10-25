@@ -54,8 +54,12 @@ const GUIDES: Record<Role, Guide[]> = {
       a: "Open the report and press Print. Choose “Save as PDF” as the printer to keep a copy on your phone or computer.",
     },
     {
-      q: "What is the Performance summary?",
-      a: "Under each report there is a written summary built from your own marks: subjects where you are strongest and weakest, how you compare with the class, your position (on the terminal result), attendance, personal skills, and what to work on next. Read it with your parent or class teacher.",
+      q: "What is the Performance Summary?",
+      a: (
+        <>
+          Open <strong>Performance Summary</strong> in the menu. For each published report it writes up your own marks: the subjects you are strongest and weakest in, how you compare with the class, your position (terminal result), attendance, personal skills, and what to work on next. The terminal summary needs the same scratch card as the terminal result. Read it with your parent or class teacher.
+        </>
+      ),
     },
   ],
   teacher: [

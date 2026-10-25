@@ -31,7 +31,7 @@ export default function PerformanceSummary({ report, previous, reports }: Props)
   const series = useMemo(() => progressSeries({ ...reports, [report.milestone]: report }), [reports, report]);
 
   return (
-    <section className="no-print print:hidden space-y-4" aria-label="Performance summary">
+    <section className="space-y-4" aria-label="Performance summary">
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-base font-bold text-slate-900">Performance summary</h3>
         <span className="text-[11px] text-slate-400">
