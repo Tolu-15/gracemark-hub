@@ -7,6 +7,7 @@ import { PageLoader, InlineSpinner } from "@/components/shared/PageLoader";
 import { printWithTitle } from "@/lib/printTitle";
 import { trackEvent } from "@/lib/activity";
 import TerminalResultGate, { type TrCardInfo, type TrInfo } from "@/components/student/TerminalResultGate";
+import PerformanceSummary from "@/components/student/PerformanceSummary";
 
 const TERMS = [
   { value: "term1", label: "1st Term" },
@@ -104,6 +105,20 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
   const current = tab && data ? (tab === "TR" && isStudentView ? openedTr?.report || null : data.reports[tab]) : null;
   const showGate = Boolean(data && tab === "TR" && trPublished && !openedTr);
   const termLabel = TERMS.find((t) => t.value === term)?.label || "";
+
+  // Reports the summary and charts may use: only what this viewer can already see. A student's Terminal
+  // Result is included only once it has been opened with a card view.
+  const chartReports: Partial<Record<MilestoneKey, any>> = { ...(data?.reports || {}) };
+  if (isStudentView) chartReports.TR = openedTr?.report || null;
+  const milestoneOrder: MilestoneKey[] = ["PR1", "PR2", "PR3", "TR"];
+  const previousReport =
+    current && tab
+      ? milestoneOrder
+          .slice(0, milestoneOrder.indexOf(tab))
+          .reverse()
+          .map((k) => chartReports[k])
+          .find(Boolean) || null
+      : null;
 
   // A student's own report sheet appearing on screen counts as a view (once per
   // milestone/term/session per visit). Admins previewing a student are not counted.
@@ -240,6 +255,11 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
                 </div>
               )}
               <ReportSheet report={current} />
+              {tab && (
+                <div className="mt-8">
+                  <PerformanceSummary report={current} previous={previousReport} reports={chartReports} />
+                </div>
+              )}
             </>
           )}
         </div>

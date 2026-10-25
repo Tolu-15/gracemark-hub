@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth";
 import PoweredBy from "./PoweredBy";
 import NotificationBell from "./NotificationBell";
+import HelpButton from "./HelpButton";
 import PwaAndPushPrompt from "./PwaAndPushPrompt";
 import { trackEvent } from "@/lib/activity";
 
@@ -338,6 +339,7 @@ export default function PortalLayout({
           </div>
 
           <div className="flex items-center gap-1 shrink-0" style={{ color: "#c5d8f0" }}>
+            <HelpButton role={role} />
             <NotificationBell />
             <button
               type="button"
@@ -373,11 +375,13 @@ export default function PortalLayout({
             </div>
             <div className="portal-header-actions flex items-center gap-3">
               {headerActions}
+              <HelpButton role={role} />
               <NotificationBell />
             </div>
           </header>
         ) : (
-          <div className="hidden lg:flex justify-end px-4 sm:px-6 lg:px-8 pt-3 pb-1 sticky top-0 z-20 bg-transparent">
+          <div className="hidden lg:flex items-center justify-end gap-2 px-4 sm:px-6 lg:px-8 pt-3 pb-1 sticky top-0 z-20 bg-transparent text-slate-500">
+            <HelpButton role={role} />
             <NotificationBell />
           </div>
         )}
