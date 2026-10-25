@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { PAYMENTS_ENABLED } from "./features";
+import { announceNewApplication } from "./admissionAlerts";
 import { calculatePaymentStatus, formatCurrency, formatPaymentStatus } from "./schoolFinance";
 
 /**
@@ -396,8 +397,11 @@ export async function applyAdmissionPayment(service: SupabaseClient, txn: Paysta
   if (!admission) return { ok: false as const, status: 404, error: "No application matches this payment." };
 
   if (admission.status === "draft") {
-    const { error } = await service.from("admissions").update({ status: "submitted" }).eq("id", admission.id);
+    // Only the call that actually moves draft -> submitted announces it, so a repeated browser
+    // callback or webhook for the same payment never alerts the admins twice.
+    const { data: moved, error } = await service.from("admissions").update({ status: "submitted" }).eq("id", admission.id).eq("status", "draft").select("id");
     if (error) throw error;
+    if (moved?.length) await announceNewApplication(service, admission.id);
   }
   return { ok: true as const, application_number: admission.application_number as string };
 }

@@ -14,6 +14,7 @@ import { SkeletonValue } from "@/components/shared/Skeleton";
 import AnnouncementsPreview from "@/components/announcements/AnnouncementsPreview";
 import TermProgressWidget from "@/components/admin/TermProgressWidget";
 import PendingActionsFeed from "@/components/shared/PendingActionsFeed";
+import NewApplicationsCard from "@/components/admin/NewApplicationsCard";
 
 interface TermStatus {
   term: string;
@@ -300,6 +301,8 @@ export default function AdminDashboardPage() {
           Monitor academy metrics, academic cycles, and continuous assessment workflow.
         </p>
       </div>
+
+        <NewApplicationsCard />
 
         <PendingActionsFeed role="admin" />
 

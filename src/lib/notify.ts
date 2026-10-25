@@ -44,15 +44,15 @@ async function pushOne(service: Service, sub: { id: string; endpoint: string; p2
  * subscribed browsers. Never throws: a notification failure must not undo or
  * block the action that triggered it (same contract as logAudit).
  */
-async function insertAndPush(service: Service, actor: ApiActor, recipientIds: string[], entry: NotifyEntry): Promise<void> {
+async function insertAndPush(service: Service, actor: ApiActor | null, recipientIds: string[], entry: NotifyEntry): Promise<void> {
   const ids = Array.from(new Set(recipientIds.filter(Boolean)));
   if (!ids.length) return;
 
   try {
     const rows = ids.map((recipient_user_id) => ({
       recipient_user_id,
-      actor_user_id: actor.dbUserId ?? null,
-      actor_role: actor.role,
+      actor_user_id: actor?.dbUserId ?? null,
+      actor_role: actor?.role ?? null,
       type: entry.type,
       title: entry.title,
       body: entry.body,
@@ -101,3 +101,20 @@ export async function notifyRole(actor: ApiActor, role: "admin" | "teacher" | "s
 }
 
 export const notifyAdmins = (actor: ApiActor, entry: NotifyEntry) => notifyRole(actor, "admin", entry);
+
+/**
+ * Notifies every admin about something nobody signed in caused (for example a parent's paid admission
+ * application). There is no actor, so the notification shows no sender. Never throws.
+ */
+export async function notifyAdminsFromSystem(service: Service, entry: NotifyEntry): Promise<void> {
+  try {
+    const { data, error } = await service.from("users").select("id").eq("role", "admin");
+    if (error) {
+      console.warn("notifyAdminsFromSystem lookup failed:", error.message);
+      return;
+    }
+    await insertAndPush(service, null, (data || []).map((u: any) => u.id as string), entry);
+  } catch (err) {
+    console.warn("notifyAdminsFromSystem failed:", err);
+  }
+}
