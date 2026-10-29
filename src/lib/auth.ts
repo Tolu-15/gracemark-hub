@@ -213,7 +213,7 @@ export function friendlyAuthError(error: any): string {
     return "Database table not found. Please verify schema setup.";
   }
   if (/failed to fetch|network/i.test(message)) {
-    return "Network error: Cannot reach Supabase server. Please check your internet connection.";
+    return "No internet connection, connect to the internet and try and again";
   }
 
   const map: Record<string, string> = {
