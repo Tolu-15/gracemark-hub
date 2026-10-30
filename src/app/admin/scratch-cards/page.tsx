@@ -317,7 +317,7 @@ export default function AdminScratchCardsPage() {
                   Type
                   <select value={source} onChange={(e) => setSource(e.target.value as any)} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg text-sm normal-case tracking-normal text-slate-800">
                     <option value="offline">Paid at the office ({naira(price)})</option>
-                    <option value="complimentary">Free (staff child / hardship)</option>
+                    <option value="complimentary">Free</option>
                   </select>
                 </label>
               </div>
