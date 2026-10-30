@@ -366,6 +366,10 @@ export default function LoginPage() {
             >
               Apply for Admission
             </a>
+            <span className="hidden sm:inline">|</span>
+            <Link href="/feedback" className="font-semibold underline underline-offset-2" style={{ color: "#171717" }}>
+              Feedback
+            </Link>
           </div>
         </div>
       </main>
