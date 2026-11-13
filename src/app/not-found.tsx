@@ -16,9 +16,9 @@ export default function NotFound() {
         <div>
           <Link
             href="/"
-            className="inline-flex items-center justify-center px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm rounded-xl transition shadow-lg shadow-amber-500/10"
+            className="inline-flex items-center justify-center px-6 py-2.5  text-white font-bold text-sm rounded-xl transition shadow-lg border-white/20"
           >
-            Return to Portal Login
+            Go back home
           </Link>
         </div>
       </div>
