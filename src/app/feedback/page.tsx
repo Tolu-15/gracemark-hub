@@ -8,6 +8,7 @@ import Script from "next/script";
 declare global {
   interface Window {
     onFeedbackTurnstileSuccess?: (token: string) => void;
+    onFeedbackTurnstileError?: (errorCode: string | number) => boolean;
     turnstile?: { reset: () => void };
   }
 }
@@ -25,7 +26,15 @@ export default function FeedbackPage() {
 
   useEffect(() => {
     window.onFeedbackTurnstileSuccess = setToken;
-    return () => { delete window.onFeedbackTurnstileSuccess; };
+    window.onFeedbackTurnstileError = () => {
+      setToken("");
+      setError("Human verification could not load. Refresh the page or try a standard browser without an ad blocker.");
+      return true;
+    };
+    return () => {
+      delete window.onFeedbackTurnstileSuccess;
+      delete window.onFeedbackTurnstileError;
+    };
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -89,7 +98,7 @@ export default function FeedbackPage() {
                 <textarea value={message} onChange={(event) => setMessage(event.target.value)} minLength={10} maxLength={3000} required rows={6} placeholder="Tell us what you would like improved or what went wrong." className="mt-1.5 w-full resize-y rounded-lg border border-neutral-300 px-3 py-2.5 outline-none focus:border-neutral-900" />
               </label>
               <div className="absolute -left-[10000px] top-auto h-px w-px overflow-hidden" aria-hidden="true"><label>Website<input name="website" tabIndex={-1} autoComplete="off" /></label></div>
-              {siteKey ? <div className="cf-turnstile" data-sitekey={siteKey} data-callback="onFeedbackTurnstileSuccess" /> : <p className="rounded-lg border border-neutral-300 p-3 text-xs text-neutral-600">Feedback verification is being configured. Please return shortly.</p>}
+              {siteKey ? <div className="cf-turnstile" data-sitekey={siteKey} data-callback="onFeedbackTurnstileSuccess" data-error-callback="onFeedbackTurnstileError" /> : <p className="rounded-lg border border-neutral-300 p-3 text-xs text-neutral-600">Feedback verification is being configured. Please return shortly.</p>}
               {error && <p role="alert" className="text-sm text-neutral-800">{error}</p>}
               <button type="submit" disabled={status === "sending" || !siteKey} className="w-full rounded-lg bg-neutral-900 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{status === "sending" ? "Sending..." : "Send feedback"}</button>
             </div>

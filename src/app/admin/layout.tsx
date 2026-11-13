@@ -213,6 +213,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       label: "Dev Tools",
       href: "/admin/dev-tools",
     });
+    navItems.push({
+      category: "Developer",
+      label: "Feedback Inbox",
+      href: "/admin/dev-tools/feedback",
+    });
   }
   return (
     <AuthGuard requiredRole="admin">
