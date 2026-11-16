@@ -104,7 +104,7 @@ export default function PwaAndPushPrompt() {
             <div className="pwa-install-copy">
               <strong>Install GraceMark Portal</strong>
               {iosOnlyRef.current ? (
-                <span>Tap the Share icon, then "Add to Home Screen" for one-tap access.</span>
+                <span>Tap the Share icon, then &quot;Add to Home Screen&quot; for one-tap access.</span>
               ) : (
                 <span>Add the portal to your home screen for faster, app-like access.</span>
               )}
@@ -124,7 +124,7 @@ export default function PwaAndPushPrompt() {
           <>
             <div className="pwa-install-copy">
               <strong>Turn on notifications</strong>
-              <span>Get alerted the moment there's an update for you — no need to keep checking.</span>
+              <span>Get alerted the moment there&apos;s an update for you — no need to keep checking.</span>
             </div>
             <div className="pwa-install-actions">
               <button type="button" className="pwa-install-btn pwa-install-btn--primary" onClick={handleEnableNotifications} disabled={busy}>

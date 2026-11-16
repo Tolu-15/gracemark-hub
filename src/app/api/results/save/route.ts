@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isTermEditable } from "@/lib/termPermissions";
 import { requireApiActor, requireTeacherAssignment } from "@/lib/apiAuth";
-import { validateRawScores } from "@/lib/gradingEngine";
+import { calculateTR, isFilled, isSeniorClass, normalizeBreakdown, validateRawScores, weeksForFrequency } from "@/lib/gradingEngine";
 import { logAudit } from "@/lib/audit";
 import { notifyAdmins } from "@/lib/notify";
+import { isTermCode } from "@/lib/serverContext";
 
 export async function POST(req: NextRequest) {
   const authorization = await requireApiActor(req, ["admin", "teacher"]);
@@ -17,8 +18,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const records = body.records || (Array.isArray(body) ? body : []);
-  const deletedResultIds: string[] = Array.isArray(body.deletedResultIds) ? body.deletedResultIds : [];
+  const records = Array.isArray(body) ? body : body?.records ?? [];
+  const requestedIds = body?.deletedResultIds ?? [];
+  if (!Array.isArray(records) || !Array.isArray(requestedIds) ||
+      records.length + requestedIds.length > 500 ||
+      requestedIds.some((id: unknown) => typeof id !== "string" || !id) ||
+      records.some(r => !r?.student_id || !r.class_id || !r.subject_id || !r.session || !isTermCode(r.term))) {
+    return NextResponse.json({ error: "Invalid score sheet or batch size." }, { status: 400 });
+  }
+  let deletedResultIds: string[] = Array.from(new Set<string>(requestedIds));
 
   if (!records.length && !deletedResultIds.length) {
     return NextResponse.json({ error: "No records or deletions provided." }, { status: 400 });
@@ -26,62 +34,62 @@ export async function POST(req: NextRequest) {
 
   const service = actor.service;
 
-  for (const record of records) {
-    const assigned = await requireTeacherAssignment(
-      actor,
-      String(record.class_id || ""),
-      String(record.subject_id || ""),
-      record.academic_session_id
-    );
-    if (!assigned) {
-      return NextResponse.json({ error: "You are not assigned to this class and subject." }, { status: 403 });
-    }
+  const { data: deletions, error: lookupError } = deletedResultIds.length
+    ? await service.from("results").select("id, class_id, subject_id, session, term, academic_session_id, pr1_status, pr2_status, pr3_status, tr_status, score_breakdown").in("id", deletedResultIds)
+    : { data: [], error: null };
+  if (lookupError) return NextResponse.json({ error: "Could not check records for deletion." }, { status: 503 });
+  deletedResultIds = (deletions || []).map(r => r.id);
+  const targets = [...records, ...(deletions || [])];
+  if (!targets.length) return NextResponse.json({ ok: true, count: 0, deleted: 0 });
+  const sheet = targets[0];
+  if (targets.some(r => r.class_id !== sheet.class_id || r.subject_id !== sheet.subject_id || r.term !== sheet.term || r.session !== sheet.session)) {
+    return NextResponse.json({ error: "Submit one class, subject, session and term at a time." }, { status: 400 });
   }
-
-  const studentClassPairs = new Map<string, string>();
-  for (const record of records) {
-    if (record.student_id && record.class_id) studentClassPairs.set(String(record.student_id), String(record.class_id));
+  const [sessionRow, settings] = await Promise.all([
+    service.from("academic_sessions").select("id").eq("name", sheet.session).maybeSingle(),
+    service.from("app_settings").select("current_session, current_term").limit(1).maybeSingle(),
+  ]);
+  if (sessionRow.error || settings.error || !settings.data?.current_session) {
+    return NextResponse.json({ error: "Cannot verify the school session." }, { status: 503 });
   }
-  if (studentClassPairs.size) {
-    const { data: students } = await service
-      .from("students")
-      .select("id, class_id")
-      .in("id", Array.from(studentClassPairs.keys()));
-    if (!students || students.length !== studentClassPairs.size || students.some((student) => student.class_id !== studentClassPairs.get(student.id))) {
-      return NextResponse.json({ error: "A score can only be saved for a student in the selected class." }, { status: 403 });
+  const sessionId = sessionRow.data?.id;
+  if (!sessionId || targets.some(r => r.academic_session_id && r.academic_session_id !== sessionId)) {
+    return NextResponse.json({ error: "Academic session mismatch." }, { status: 400 });
+  }
+  if (!(await requireTeacherAssignment(actor, sheet.class_id, sheet.subject_id, sessionId)) ||
+      !(await isTermEditable(sheet.session, sheet.term, service, settings.data.current_term, settings.data.current_session))) {
+    return NextResponse.json({ error: "This sheet is outside your assignment or its term is locked." }, { status: 403 });
+  }
+  if (deletions?.some(r => [r.pr1_status, r.pr2_status, r.pr3_status, r.tr_status].includes("published"))) {
+    return NextResponse.json({ error: "Recall published results before removing scores." }, { status: 409 });
+  }
+  if (records.length) {
+    const ids = [...new Set(records.map(r => r.student_id))];
+    const historical = sheet.session !== settings.data.current_session;
+    const roster = historical
+      ? await service.from("student_enrollments").select("student_id").eq("academic_session_id", sessionId).eq("class_id", sheet.class_id).in("student_id", ids)
+      : await service.from("students").select("id").eq("class_id", sheet.class_id).in("id", ids);
+    if (roster.error || roster.data?.length !== ids.length) {
+      return NextResponse.json({ error: "Student outside the selected class roster." }, { status: 403 });
     }
   }
 
   // Validate score bounds for all records to guarantee data integrity
+  if (deletions?.some(r => !r.score_breakdown)) {
+    return NextResponse.json({ error: "A legacy result without an itemized score sheet cannot be cleared here." }, { status: 409 });
+  }
   for (const record of records) {
-    if (record.cw !== undefined && record.cw !== null && (Number(record.cw) < 0 || Number(record.cw) > 10)) {
-      return NextResponse.json({ error: `Classwork score (${record.cw}) exceeds the maximum allowed score of 10.` }, { status: 400 });
+    const raw = record.score_breakdown;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw) ||
+        (["cw", "hw", "tests"] as const).some(k => !Array.isArray(raw[k]) || raw[k].length > (k === "tests" ? 3 : 10)) ||
+        [...raw.cw, ...raw.hw, ...raw.tests, raw.exam, raw.project].some(v =>
+          v != null && typeof v !== "number" && typeof v !== "string")) {
+      return NextResponse.json({ error: "Provide an itemized score sheet." }, { status: 400 });
     }
-    if (record.hw !== undefined && record.hw !== null && (Number(record.hw) < 0 || Number(record.hw) > 5)) {
-      return NextResponse.json({ error: `Homework score (${record.hw}) exceeds the maximum allowed score of 5.` }, { status: 400 });
-    }
-    if (record.test !== undefined && record.test !== null && (Number(record.test) < 0 || Number(record.test) > 10)) {
-      return NextResponse.json({ error: `Test score (${record.test}) exceeds the maximum allowed score of 10.` }, { status: 400 });
-    }
-    if (record.project !== undefined && record.project !== null && (Number(record.project) < 0 || Number(record.project) > 5)) {
-      return NextResponse.json({ error: `Project score (${record.project}) exceeds the maximum allowed score of 5.` }, { status: 400 });
-    }
-    if (record.exam !== undefined && record.exam !== null && (Number(record.exam) < 0 || Number(record.exam) > 70)) {
-      return NextResponse.json({ error: `Exam score (${record.exam}) exceeds the maximum allowed score of 70.` }, { status: 400 });
-    }
-    if (record.total !== undefined && record.total !== null && (Number(record.total) < 0 || Number(record.total) > 100)) {
-      return NextResponse.json({ error: `Total score (${record.total}) exceeds the maximum allowed score of 100.` }, { status: 400 });
-    }
-
-    if (record.score_breakdown && typeof record.score_breakdown === "object") {
-      const { valid, issues } = validateRawScores(record.score_breakdown);
-      if (!valid && issues.length > 0) {
-        const first = issues[0];
-        return NextResponse.json(
-          { error: `Score for ${first.field.toUpperCase()} item ${first.index + 1} (${first.value}) exceeds the maximum allowed score of ${first.max}.` },
-          { status: 400 }
-        );
-      }
+    const { valid } = validateRawScores(raw);
+    if (!valid) return NextResponse.json({ error: "A score is outside its allowed range." }, { status: 400 });
+    if (![...raw.cw, ...raw.hw, ...raw.tests, raw.exam, raw.project].some(isFilled)) {
+      return NextResponse.json({ error: "Enter a score before saving this row." }, { status: 400 });
     }
   }
 
@@ -89,6 +97,19 @@ export async function POST(req: NextRequest) {
   // Admin edits leave the existing teacher in place rather than overwriting it. It is added to
   // every record in the request alike, so the batch has one consistent shape.
   const enteredBy = actor.role === "teacher" && actor.dbUserId ? { teacher_id: actor.dbUserId } : {};
+
+  const cls = records.length ? await service.from("classes").select("name,subject_group_code").eq("id", sheet.class_id).single() : null;
+  if (cls?.error) return NextResponse.json({ error: "Could not load the class." }, { status: 503 });
+  const schedule = cls?.data?.subject_group_code ? await service.from("subject_group_subjects").select("frequency")
+    .eq("group_code", cls.data.subject_group_code).eq("subject_id", sheet.subject_id).maybeSingle() : null;
+  if (schedule?.error) return NextResponse.json({ error: "Could not load the assessment schedule." }, { status: 503 });
+  const weeks = schedule?.data ? weeksForFrequency(schedule.data.frequency || "fortnightly") : undefined;
+
+  function calculatedComponents(row: any) {
+    const result = calculateTR(normalizeBreakdown(row), { weeks, isSenior: isSeniorClass(cls?.data?.name) });
+    return { cw: result.scaled.cw, hw: result.scaled.hw, test: result.scaled.tests,
+      project: result.scaled.project, exam: result.scaled.exam, grade: result.grade };
+  }
 
   // Only score fields are accepted from the client. Approval and publishing
   // status can only be changed by the admin endpoints.
@@ -99,14 +120,8 @@ export async function POST(req: NextRequest) {
     class_id: r.class_id,
     term: r.term,
     session: r.session,
-    ...(r.academic_session_id ? { academic_session_id: r.academic_session_id } : {}),
-    cw: r.cw,
-    hw: r.hw,
-    test: r.test,
-    project: r.project,
-    exam: r.exam,
-    // total is calculated by the database (cw + hw + test + project + exam)
-    grade: r.grade,
+    academic_session_id: sessionId,
+    ...calculatedComponents(r),
     score_breakdown: r.score_breakdown,
     status: r.status === "submitted" ? "submitted" : "draft",
     ...(r.status === "submitted" ? { return_reason: null } : {}),
@@ -120,7 +135,8 @@ export async function POST(req: NextRequest) {
       .select("student_id, subject_id, session")
       .in("student_id", cleanRecords.map((r: any) => r.student_id))
       .in("session", sessions.length ? sessions : [""]);
-    if (!optErr && optouts?.length) {
+    if (optErr) return NextResponse.json({ error: "Could not verify subject enrollment." }, { status: 503 });
+    if (optouts?.length) {
       const blocked = new Set(optouts.map((o: any) => `${o.student_id}:${o.subject_id}:${o.session}`));
       if (cleanRecords.some((r: any) => blocked.has(`${r.student_id}:${r.subject_id}:${r.session}`))) {
         return NextResponse.json(
@@ -131,63 +147,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // IDs already removed by an earlier request (e.g. a prior autosave) are simply
-  // dropped rather than treated as an error — the client's local state can lag
-  // behind the last successful delete, and retrying it is harmless.
-  if (deletedResultIds.length && actor.role !== "admin") {
-    const { data: deletable } = await service
-      .from("results")
-      .select("id, class_id, subject_id, academic_session_id")
-      .in("id", deletedResultIds);
-    const stillExisting = new Set((deletable || []).map((d) => d.id));
-    for (const record of deletable || []) {
-      if (!(await requireTeacherAssignment(actor, record.class_id, record.subject_id, record.academic_session_id))) {
-        return NextResponse.json({ error: "You cannot delete results outside your assignment." }, { status: 403 });
-      }
-    }
-    for (let i = deletedResultIds.length - 1; i >= 0; i--) {
-      if (!stillExisting.has(deletedResultIds[i])) deletedResultIds.splice(i, 1);
-    }
-  }
-
-  // Check if term being saved is permitted for score editing
-  const { data: settings } = await service
-    .from("app_settings")
-    .select("current_term, current_session")
-    .limit(1)
-    .maybeSingle();
-
-  const currentTerm = settings?.current_term || "term1";
-
-  const editableCache = new Map<string, boolean>();
-  for (const r of records) {
-    const rTerm = r.term || currentTerm;
-    const rSession = r.session || settings?.current_session || "";
-    const cacheKey = `${rSession}:${rTerm}`;
-    let canEdit = editableCache.get(cacheKey);
-    if (canEdit === undefined) {
-      canEdit = await isTermEditable(rSession, rTerm, service, currentTerm);
-      editableCache.set(cacheKey, canEdit);
-    }
-    if (!canEdit) {
-      return NextResponse.json(
-        {
-          error: `Editing scores for ${rTerm} is locked. Administration permission is required to edit non-current terms.`,
-        },
-        { status: 403 }
-      );
-    }
-  }
 
   try {
-    if (deletedResultIds.length > 0) {
-      const { error: delErr } = await service
-        .from("results")
-        .delete()
-        .in("id", deletedResultIds);
-      if (delErr) {
-        console.warn("Could not delete dropped result IDs:", delErr);
-      }
+    const { error } = await service.rpc("save_score_sheet", {
+      p_records: cleanRecords, p_delete_ids: deletedResultIds,
+      p_class: sheet.class_id, p_subject: sheet.subject_id, p_session: sheet.session, p_term: sheet.term,
+    });
+    if (error) {
+      const conflict = error.code === "P0001";
+      return NextResponse.json({ error: conflict ? "Score sheet changed. Reload before saving." : "Score sheet could not be saved." },
+        { status: conflict ? 409 : 503 });
     }
 
     if (!cleanRecords.length) {
@@ -200,15 +169,6 @@ export async function POST(req: NextRequest) {
         });
       }
       return NextResponse.json({ ok: true, count: 0, deleted: deletedResultIds.length });
-    }
-
-    const { error } = await service
-      .from("results")
-      .upsert(cleanRecords, { onConflict: "student_id,subject_id,term,session" });
-
-    if (error) {
-      console.error("Save results DB error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     // Draft autosaves are not logged; submissions, admin edits and removals are.

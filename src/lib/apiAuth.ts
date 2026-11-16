@@ -71,11 +71,14 @@ export async function requireApiActor(
   // that opt in with allowLockedStudent (payments, password change, app settings).
   if (role === "student" && !options.allowLockedStudent) {
     const ids = [userData.user.id, profile?.id].filter(Boolean) as string[];
-    const { data: student } = await service
+    const { data: student, error: lockError } = await service
       .from("students")
       .select("portal_access_status")
       .in("user_id", ids)
       .maybeSingle();
+    if (lockError || !student) {
+      return { response: NextResponse.json({ error: "Unable to verify student access." }, { status: lockError ? 503 : 403 }) };
+    }
     if (String(student?.portal_access_status || "").toLowerCase() === "locked") {
       return {
         response: NextResponse.json(
@@ -109,13 +112,26 @@ export async function requireTeacherAssignment(
     .eq("status", "active");
 
   if (academicSessionId) {
-    const { data: sessMatch } = await assignment.eq("academic_session_id", academicSessionId).limit(1);
-    if (sessMatch && sessMatch.length > 0) return true;
+    assignment = assignment.eq("academic_session_id", academicSessionId);
   }
 
-  // Fallback to active assignment across sessions if not explicitly constrained
   const { data } = await assignment.limit(1);
   return Boolean(data?.length);
+}
+
+/** Only a form teacher for this session can manage class-wide records. Legacy direct
+ * class assignments describe the current class, so they cannot grant historical access. */
+export async function canManageClass(actor: ApiActor, classId: string, sessionId: string) {
+  if (actor.role === "admin") return true;
+  if (actor.role !== "teacher" || !classId || !sessionId) return false;
+  const ids = [actor.authId, actor.dbUserId].filter(Boolean) as string[];
+  const [assigned, session, direct] = await Promise.all([
+    actor.service.from("class_teacher_assignments").select("id").eq("class_id", classId)
+      .eq("academic_session_id", sessionId).eq("status", "active").in("teacher_user_id", ids).limit(1),
+    actor.service.from("academic_sessions").select("is_current").eq("id", sessionId).maybeSingle(),
+    actor.service.from("classes").select("class_teacher_id").eq("id", classId).maybeSingle(),
+  ]);
+  return Boolean(assigned.data?.length || (session.data?.is_current && ids.includes(direct.data?.class_teacher_id)));
 }
 
 /**

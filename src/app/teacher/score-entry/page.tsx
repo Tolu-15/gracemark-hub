@@ -30,6 +30,7 @@ interface StudentScoreRow {
   admission_no: string;
   raw: RawScores;
   resultId?: string;
+  hasItemizedScores?: boolean;
   status?: string;
   return_reason?: string | null;
 }
@@ -64,8 +65,10 @@ export default function TeacherScoreEntryPage() {
   const [savingAction, setSavingAction] = useState<"none" | "draft" | "submit">("none");
   const saving = savingAction !== "none";
   const [statusMsg, setStatusMsg] = useState("");
-  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "unsaved" | "saving" | "saved">("idle");
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "unsaved" | "saving" | "pending" | "saved">("idle");
   const isDirtyRef = React.useRef(false);
+  const editVersionRef = React.useRef(0);
+  const [saveRetry, setSaveRetry] = useState(0);
   const isInitialLoadRef = React.useRef(true);
   // Tracks whether admins have already been pinged that this teacher started
   // editing this class/subject/term, so we notify once per editing session
@@ -77,6 +80,24 @@ export default function TeacherScoreEntryPage() {
   // Tags each loadScores() call so a slower, older request can't overwrite the
   // screen after a newer filter change has already resolved.
   const loadSeqRef = React.useRef(0);
+
+  useEffect(() => {
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      if (!isDirtyRef.current && !savingInFlightRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, []);
+
+  function canSwitchSheet() {
+    if (savingInFlightRef.current) {
+      setStatusMsg("Please wait for the current score save to finish.");
+      return false;
+    }
+    return !isDirtyRef.current || window.confirm("Some scores are not saved on the server. Leave this sheet and discard those changes?");
+  }
 
   const selectedClassName = classes.find((c) => c.id === selectedClass)?.name || "";
   const isSenior = isSeniorClass(selectedClassName);
@@ -274,6 +295,7 @@ export default function TeacherScoreEntryPage() {
     // discarding any that are no longer the latest fixes that "filter changed but the
     // old data is still showing" bug.
     const seq = ++loadSeqRef.current;
+    const editVersionAtLoad = editVersionRef.current;
     setLoading(true);
     setStatusMsg("");
 
@@ -303,7 +325,7 @@ export default function TeacherScoreEntryPage() {
       );
 
       if (!studentList.length) {
-        if (loadSeqRef.current === seq) setRows([]);
+        if (loadSeqRef.current === seq && editVersionRef.current === editVersionAtLoad) setRows([]);
         return;
       }
 
@@ -311,7 +333,7 @@ export default function TeacherScoreEntryPage() {
 
       // 2. Students marked "Not offering" this session
       const optRes = await fetch(
-        `/api/results/optouts?subject_id=${encodeURIComponent(selectedSubject)}&session=${encodeURIComponent(currentSession)}`,
+        `/api/results/optouts?class_id=${encodeURIComponent(selectedClass)}&subject_id=${encodeURIComponent(selectedSubject)}&session=${encodeURIComponent(currentSession)}`,
         { headers: await getAuthHeaders() }
       );
       const optJson = await optRes.json().catch(() => ({}));
@@ -330,7 +352,7 @@ export default function TeacherScoreEntryPage() {
 
       // A newer loadScores() call (from switching filters again) has already taken
       // over — drop this one instead of clobbering the screen with stale data.
-      if (loadSeqRef.current !== seq) return;
+      if (loadSeqRef.current !== seq || editVersionRef.current !== editVersionAtLoad) return;
 
       setNotOffering(new Set(optRes.ok && optJson.ok ? optJson.studentIds : []));
 
@@ -346,6 +368,7 @@ export default function TeacherScoreEntryPage() {
           admission_no: s.admission_no,
           raw,
           resultId: existing?.id,
+          hasItemizedScores: Boolean(existing?.score_breakdown),
           status: existing?.status || "draft",
           return_reason: existing?.return_reason,
         };
@@ -382,6 +405,10 @@ export default function TeacherScoreEntryPage() {
     () => (frequency ? weeksForFrequency(frequency) : detectAssessmentWeeks(offeringRows.map((r) => r.raw))),
     [frequency, offeringRows]
   );
+  const hasClearedSavedScores = useMemo(
+    () => offeringRows.some((r) => r.resultId && r.hasItemizedScores && !calculateTR(r.raw, { isSenior, weeks }).hasData),
+    [offeringRows, isSenior, weeks]
+  );
   const windowEnd = viewMode === "pr1" ? PR_WINDOWS.pr1 : viewMode === "pr2" ? PR_WINDOWS.pr2 : PR_WINDOWS.pr3;
   const visibleCw = (frequency ? weeks.cw : Array.from({ length: 10 }, (_, i) => i + 1)).filter((w) => w <= windowEnd);
   const visibleHw = (frequency ? weeks.hw : Array.from({ length: 10 }, (_, i) => i + 1)).filter((w) => w <= windowEnd);
@@ -401,13 +428,13 @@ export default function TeacherScoreEntryPage() {
     return parts.length ? `${parts.join(" and ")} ${empty.cw.length + empty.hw.length > 1 ? "are" : "is"} empty for every student. If that work was actually given, enter the scores — until then it's left out of each student's average rather than counted as 0.` : "";
   }, [frequency, offeringRows, weeks]);
 
-  function buildRecords(submit: boolean) {
+  function buildRecords(submit: boolean, allowDeletions = false) {
     const recordsToSave: any[] = [];
     const deletedResultIds: string[] = [];
     offeringRows.forEach((r) => {
       const tr = calculateTR(r.raw, { isSenior, weeks });
       if (!tr.hasData) {
-        if (r.resultId) deletedResultIds.push(r.resultId);
+        if (allowDeletions && r.resultId && r.hasItemizedScores) deletedResultIds.push(r.resultId);
         return;
       }
       recordsToSave.push({
@@ -482,6 +509,7 @@ export default function TeacherScoreEntryPage() {
     const timer = setTimeout(async () => {
       if (!isDirtyRef.current || savingInFlightRef.current) return;
       savingInFlightRef.current = true;
+      const saveVersion = editVersionRef.current;
       setAutoSaveStatus("saving");
       try {
         // Guard: check if any student has an invalid score exceeding max before auto-saving
@@ -494,21 +522,22 @@ export default function TeacherScoreEntryPage() {
         }
 
         const { recordsToSave, deletedResultIds } = buildRecords(false);
+        const hasClearedScores = hasClearedSavedScores;
 
         if (recordsToSave.length > 0 || deletedResultIds.length > 0) {
           const notifyEditStart = !editNotifiedRef.current;
           const body = JSON.stringify({ records: recordsToSave, deletedResultIds, notifyEditStart });
+          const { data: sessionData } = await supabase.auth.getSession();
           try {
-            const { data: sessionData } = await supabase.auth.getSession();
             const res = await fetch("/api/results/save", {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
               body,
             });
             if (res.ok) {
-              isDirtyRef.current = false;
+              isDirtyRef.current = hasClearedScores || editVersionRef.current !== saveVersion;
               editNotifiedRef.current = true;
-              setAutoSaveStatus("saved");
+              setAutoSaveStatus(isDirtyRef.current ? "unsaved" : "saved");
               // Deleted rows may still be re-evaluated on the next autosave pass
               // (e.g. the student's scores stay empty); clear their stale resultId
               // now so we don't try to delete the same already-gone row again.
@@ -521,27 +550,28 @@ export default function TeacherScoreEntryPage() {
             }
           } catch (fetchErr) {
             if (isNetworkFailure(fetchErr)) {
-              enqueue({ url: "/api/results/save", method: "POST", body, label: `Grade sheet — ${selectedTerm}` });
-              isDirtyRef.current = false;
+              enqueue(sessionData.session?.user.id, { url: "/api/results/save", method: "POST", body, label: `Grade sheet — ${selectedTerm}` });
+              isDirtyRef.current = hasClearedScores || editVersionRef.current !== saveVersion;
               editNotifiedRef.current = true;
-              setAutoSaveStatus("saved");
+              setAutoSaveStatus(isDirtyRef.current ? "unsaved" : "pending");
             } else {
               throw fetchErr;
             }
           }
         } else {
-          setAutoSaveStatus("idle");
+          setAutoSaveStatus(hasClearedScores ? "unsaved" : "idle");
         }
       } catch (e) {
         console.warn("Auto-save draft error:", e);
         setAutoSaveStatus("unsaved");
       } finally {
         savingInFlightRef.current = false;
+        if (editVersionRef.current !== saveVersion) setSaveRetry((value) => value + 1);
       }
     }, 1800);
 
     return () => clearTimeout(timer);
-  }, [rows, notOffering, isEditable, selectedSubject, selectedClass, selectedTerm, currentSession, currentSessionId, isSenior]);
+  }, [rows, notOffering, isEditable, selectedSubject, selectedClass, selectedTerm, currentSession, currentSessionId, isSenior, hasClearedSavedScores, saveRetry]);
 
   // Maximum allowed score helper per component
   function getMaxScore(field: "cw" | "hw" | "tests" | "project" | "exam", subIndex: number): number {
@@ -602,6 +632,7 @@ export default function TeacherScoreEntryPage() {
       }
     }
 
+    editVersionRef.current += 1;
     isDirtyRef.current = true;
     setAutoSaveStatus("unsaved");
     setRows((prev) => {
@@ -625,6 +656,7 @@ export default function TeacherScoreEntryPage() {
   async function handleSave(submit = false) {
     if (!rows.length || savingInFlightRef.current) return;
     savingInFlightRef.current = true;
+    const saveVersion = editVersionRef.current;
     setSavingAction(submit ? "submit" : "draft");
     setStatusMsg("");
 
@@ -641,7 +673,8 @@ export default function TeacherScoreEntryPage() {
         }
       }
 
-      const { recordsToSave, deletedResultIds } = buildRecords(submit);
+      const { recordsToSave, deletedResultIds } = buildRecords(submit, true);
+      if (deletedResultIds.length && !window.confirm(`Clear saved scores for ${deletedResultIds.length} student${deletedResultIds.length === 1 ? "" : "s"}? This removes their stored result for this subject and term.`)) return;
 
       if (!recordsToSave.length && !deletedResultIds.length) {
         setStatusMsg("No scores have been entered for this subject yet. Please enter at least one score before saving.");
@@ -652,8 +685,8 @@ export default function TeacherScoreEntryPage() {
       const notifyEditStart = !editNotifiedRef.current;
       const body = JSON.stringify({ records: recordsToSave, deletedResultIds, notifyEditStart });
 
+      const { data: sessionData } = await supabase.auth.getSession();
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
         const res = await fetch("/api/results/save", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
@@ -665,25 +698,27 @@ export default function TeacherScoreEntryPage() {
           throw new Error(resJson.error || "Failed to save results.");
         }
 
-        isDirtyRef.current = false;
+        isDirtyRef.current = editVersionRef.current !== saveVersion;
         editNotifiedRef.current = true;
-        setAutoSaveStatus(submit ? "idle" : "saved");
+        setAutoSaveStatus(isDirtyRef.current ? "unsaved" : submit ? "idle" : "saved");
         setStatusMsg(
-          submit
+          isDirtyRef.current
+            ? "Earlier scores saved. Newer edits are still unsaved and will be saved next."
+            : submit
             ? "Scores submitted to administration for review and approval!"
             : "✓ Draft scores saved successfully! (Scores remain in draft and are NOT submitted to admin)"
         );
-        loadScores();
+        if (!isDirtyRef.current) loadScores();
       } catch (fetchErr: any) {
         if (isNetworkFailure(fetchErr)) {
-          enqueue({ url: "/api/results/save", method: "POST", body, label: `Grade sheet — ${selectedTerm}` });
-          isDirtyRef.current = false;
+          enqueue(sessionData.session?.user.id, { url: "/api/results/save", method: "POST", body, label: `Grade sheet — ${selectedTerm}` });
+          isDirtyRef.current = editVersionRef.current !== saveVersion;
           editNotifiedRef.current = true;
-          setAutoSaveStatus("saved");
+          setAutoSaveStatus(isDirtyRef.current ? "unsaved" : "pending");
           setStatusMsg(
             submit
-              ? "You're offline — this submission was saved and will go to administration automatically once you're back online."
-              : "You're offline — this draft was saved and will sync automatically once you're back online."
+              ? "Submission pending sync on this device. It has not reached administration yet."
+              : "Draft pending sync on this device. It has not reached the server yet."
           );
         } else {
           throw fetchErr;
@@ -695,6 +730,7 @@ export default function TeacherScoreEntryPage() {
     } finally {
       savingInFlightRef.current = false;
       setSavingAction("none");
+      if (editVersionRef.current !== saveVersion) setSaveRetry((value) => value + 1);
       setTimeout(() => setStatusMsg(""), 5000);
     }
   }
@@ -718,7 +754,7 @@ export default function TeacherScoreEntryPage() {
           {autoSaveStatus === "unsaved" && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-              Unsaved changes…
+              {hasClearedSavedScores ? "Unsaved changes — use Save Draft to confirm cleared scores." : "Unsaved changes…"}
             </span>
           )}
           {autoSaveStatus === "saving" && (
@@ -733,6 +769,11 @@ export default function TeacherScoreEntryPage() {
           {autoSaveStatus === "saved" && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
               <span>✓</span> Auto-saved
+            </span>
+          )}
+          {autoSaveStatus === "pending" && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs">
+              Pending sync — on this device only
             </span>
           )}
 
@@ -815,7 +856,7 @@ export default function TeacherScoreEntryPage() {
             </label>
             <select
               value={selectedClass}
-              onChange={(e) => setSelectedClass(e.target.value)}
+              onChange={(e) => { if (canSwitchSheet()) setSelectedClass(e.target.value); }}
               className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
             >
               {classes.map((c) => (
@@ -833,7 +874,7 @@ export default function TeacherScoreEntryPage() {
             </label>
             <select
               value={selectedSubject}
-              onChange={(e) => setSelectedSubject(e.target.value)}
+              onChange={(e) => { if (canSwitchSheet()) setSelectedSubject(e.target.value); }}
               className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
             >
               {subjects.map((s: { id: string; name: string }) => (
@@ -851,7 +892,7 @@ export default function TeacherScoreEntryPage() {
             </label>
             <select
               value={selectedTerm}
-              onChange={(e) => setSelectedTerm(e.target.value)}
+              onChange={(e) => { if (canSwitchSheet()) setSelectedTerm(e.target.value); }}
               className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
             >
               {termList.length > 0 ? (

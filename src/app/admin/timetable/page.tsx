@@ -358,7 +358,7 @@ function CellModal({
   return (
     <Modal title={`${dayName} · ${cell.period.label}`} onClose={onClose}>
       <p className="text-xs text-slate-500">
-        Only teachers assigned to this class this session are listed. Picking one already teaching another class at this time still saves — it's flagged red as a clash so it can be fixed later.
+        Only teachers assigned to this class this session are listed. Picking one already teaching another class at this time still saves — it&apos;s flagged red as a clash so it can be fixed later.
       </p>
       {error && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
       {options.length === 0 ? (

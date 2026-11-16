@@ -69,7 +69,7 @@ export default function StudentChangePasswordPage() {
       <div>
         <h2 className="text-xl font-black text-slate-900 tracking-tight">Change Password</h2>
         <p className="text-sm text-slate-500 mt-1">
-          Update your student portal password. You'll need your current password to confirm.
+          Update your student portal password. You&apos;ll need your current password to confirm.
         </p>
       </div>
 

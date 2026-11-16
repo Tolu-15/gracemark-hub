@@ -158,15 +158,6 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        <div id="gm-splash" aria-hidden="true">
-          <div className="gm-splash__mark">
-            <span className="gm-splash__ring" />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/assets/icons/logo.jpg" alt="" />
-          </div>
-          <span className="gm-splash__name">GraceMark Academy</span>
-          <span className="gm-splash__bar" />
-        </div>
         <SplashRemover />
         {children}
       </body>

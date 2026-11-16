@@ -2,13 +2,18 @@
   "name": "gracemark",
   "version": "1.0.0",
   "private": true,
+  "overrides": {
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
+    }
+  },
   "main": "server.js",
   "description": "Gracemark school portal with extensionless routes",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "node scripts/run-tests.js"
   },
   "dependencies": {
@@ -34,6 +39,8 @@
     "@types/react-dom": "^18.3.7",
     "@types/web-push": "^3.6.4",
     "autoprefixer": "^10.4.20",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.4.1",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
     "typescript": "^5.9.3"

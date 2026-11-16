@@ -67,7 +67,7 @@ export default function AdminChangePasswordPage() {
       <div>
         <h2 className="text-xl font-black text-slate-900 tracking-tight">Change Password</h2>
         <p className="text-sm text-slate-500 mt-1">
-          Update your admin account password. You'll need to enter your current password to confirm.
+          Update your admin account password. You&apos;ll need to enter your current password to confirm.
         </p>
       </div>
 

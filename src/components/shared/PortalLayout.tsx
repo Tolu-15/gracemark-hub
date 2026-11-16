@@ -63,7 +63,7 @@ export default function PortalLayout({
       if (e.key === "Escape") setNavOpen(false);
     }
     function handleResize() {
-      if (window.innerWidth >= 768) setNavOpen(false);
+      if (window.innerWidth >= 1024) setNavOpen(false);
     }
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("resize", handleResize);
@@ -118,7 +118,7 @@ export default function PortalLayout({
       <aside
         id="portalSidebar"
         className={`portal-sidebar fixed lg:static inset-y-0 left-0 z-50 w-72 lg:w-64 flex flex-col shrink-0 transition-transform duration-200 ease-in-out ${
-          navOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full lg:translate-x-0"
+          navOpen ? "visible translate-x-0 shadow-2xl" : "invisible -translate-x-full lg:visible lg:translate-x-0"
         }`}
         style={{ backgroundColor: "#071120", color: "#c5d8f0" }}
       >
@@ -204,6 +204,7 @@ export default function PortalLayout({
                   <Link
                     key={item.href}
                     href={item.href}
+                    aria-current={isActive ? "page" : undefined}
                     onClick={() => setNavOpen(false)}
                     className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150"
                     style={
@@ -296,6 +297,8 @@ export default function PortalLayout({
               id="portalMobileHamburgerBtn"
               onClick={() => setNavOpen(true)}
               aria-label="Open navigation menu"
+              aria-expanded={navOpen}
+              aria-controls="portalSidebar"
               className="p-2 rounded-xl transition shrink-0 cursor-pointer active:scale-95"
               style={{ backgroundColor: "rgba(255,255,255,0.08)", color: "#c5d8f0" }}
             >

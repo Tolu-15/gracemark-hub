@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApiActor, ApiActor } from "@/lib/apiAuth";
+import { canManageClass, requireApiActor, ApiActor } from "@/lib/apiAuth";
 
 const DEFAULT_SCHOOL_DAYS = 120;
 
@@ -10,19 +10,19 @@ async function resolveSession(service: Service, name?: string | null) {
   if (name) {
     const { data } = await service
       .from("academic_sessions")
-      .select("id, name")
+      .select("id, name, is_current")
       .eq("name", name)
       .limit(1)
       .maybeSingle();
-    if (data?.id) return { id: data.id as string, name: data.name as string };
+    return data?.id ? data : null;
   }
   const { data: active } = await service
     .from("academic_sessions")
-    .select("id, name")
-    .eq("status", "active")
+    .select("id, name, is_current")
+    .eq("is_current", true)
     .limit(1)
     .maybeSingle();
-  return active?.id ? { id: active.id as string, name: active.name as string } : null;
+  return active?.id ? active : null;
 }
 
 /**
@@ -38,7 +38,16 @@ async function resolveSession(service: Service, name?: string | null) {
  * created on the fly; a student with an existing but non-active row (withdrawn,
  * transferred) is left alone and excluded, same as before.
  */
-async function loadEnrollments(service: Service, classId: string, sessionId: string) {
+async function loadEnrollments(service: Service, classId: string, sessionId: string, current: boolean) {
+  if (!current) {
+    const { data, error } = await service.from("student_enrollments")
+      .select("id, student_id, students(name, full_name, admission_no)")
+      .eq("class_id", classId).eq("academic_session_id", sessionId);
+    if (error) throw error;
+    return (data || []).map((e: any) => ({ enrollmentId: e.id as string, studentId: e.student_id as string,
+      name: String(e.students?.full_name || e.students?.name || ""), admissionNo: String(e.students?.admission_no || "") }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
   const { data: classStudents, error: csErr } = await service
     .from("students")
     .select("id, full_name, name, admission_no")
@@ -49,13 +58,13 @@ async function loadEnrollments(service: Service, classId: string, sessionId: str
   const studentIds = classStudents.map((s: any) => s.id);
   const { data: existingEnrollments, error: eErr } = await service
     .from("student_enrollments")
-    .select("id, student_id, status")
+    .select("id, student_id, status, class_id")
     .eq("academic_session_id", sessionId)
     .in("student_id", studentIds);
   if (eErr) throw eErr;
 
   const byStudent = new Map<string, { id: string; status: string }>(
-    (existingEnrollments || []).map((e: any) => [e.student_id, { id: e.id, status: e.status }])
+    (existingEnrollments || []).map((e: any) => [e.student_id, { id: e.id, status: e.class_id === classId ? e.status : "other class" }])
   );
 
   const toCreate = classStudents.filter((s: any) => !byStudent.has(s.id));
@@ -109,7 +118,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, students: [] });
     }
 
-    const roster = await loadEnrollments(service, classId, session.id);
+    if (!(await canManageClass(authorization.actor, classId, session.id))) {
+      return NextResponse.json({ error: "Class teacher access required." }, { status: 403 });
+    }
+    const roster = await loadEnrollments(service, classId, session.id, session.is_current);
     if (!roster.length) {
       return NextResponse.json({ ok: true, students: [] });
     }
@@ -218,15 +230,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No academic session found." }, { status: 400 });
     }
 
-    const roster = await loadEnrollments(service, classId, sess.id);
+    if (!(await canManageClass(authorization.actor, classId, sess.id))) {
+      return NextResponse.json({ error: "Class teacher access required." }, { status: 403 });
+    }
+    const roster = await loadEnrollments(service, classId, sess.id, sess.is_current);
     const enrollmentByStudent = new Map(roster.map((r) => [r.studentId, r.enrollmentId]));
 
     const rows = records
       .map((r: any) => ({ record: r, enrollmentId: enrollmentByStudent.get(r.student_id) }))
       .filter((r: any) => r.enrollmentId);
-    if (!rows.length) {
+    if (rows.length !== records.length) {
       return NextResponse.json(
-        { error: "None of these students are enrolled in this class for the selected session." },
+        { error: "Every student must belong to this class for the selected session." },
         { status: 400 }
       );
     }

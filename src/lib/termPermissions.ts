@@ -10,9 +10,10 @@ export async function isTermEditable(
   session: string,
   term: string,
   service: SupabaseClient | null,
-  currentTerm: string
+  currentTerm: string,
+  currentSession: string
 ): Promise<boolean> {
-  if (term === currentTerm) return true;
+  if (session && session === currentSession && term === currentTerm) return true;
   if (!service) return false;
   try {
     const sessionId = await sessionIdByName(service, session);

@@ -126,6 +126,13 @@ export function isFilled(val: unknown): boolean {
   return val !== null && val !== undefined && String(val).trim() !== "";
 }
 
+/** Missing components stay blank; zero is an entered score. */
+export function recordedScore(value: unknown): number | null {
+  if ((typeof value !== "number" && typeof value !== "string") || !isFilled(value)) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function toNumber(val: unknown): number {
   const n = Number(val);
   return Number.isFinite(n) ? n : NaN;
@@ -364,8 +371,11 @@ export function calculateGPA(rows: { total: number; creditUnit: number }[]): num
 export function rankPositions(entries: { id: string; value: number | null }[]): Map<string, number> {
   const ranked = entries.filter((e) => e.value !== null) as { id: string; value: number }[];
   const map = new Map<string, number>();
-  ranked.forEach((e) => {
-    map.set(e.id, 1 + ranked.filter((o) => o.value > e.value).length);
+  ranked.sort((a, b) => b.value - a.value);
+  let position = 0;
+  ranked.forEach((e, index) => {
+    if (index === 0 || e.value !== ranked[index - 1].value) position = index + 1;
+    map.set(e.id, position);
   });
   return map;
 }

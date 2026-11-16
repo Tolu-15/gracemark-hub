@@ -954,7 +954,7 @@ export default function AdminStudentsPage() {
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white"
                 />
                 <p className="text-[10px] text-slate-500 mt-1">
-                  If set, the guardian is emailed whenever this student's class result is published.
+                  If set, the guardian is emailed whenever this student&apos;s class result is published.
                 </p>
               </div>
 

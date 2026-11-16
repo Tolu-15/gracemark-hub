@@ -49,6 +49,7 @@ export default function AdminFinancePaymentsPage() {
     notes: "",
   });
   const [saving, setSaving] = useState(false);
+  const pendingPayment = React.useRef<{ body: string; key: string } | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -115,19 +116,20 @@ export default function AdminFinancePaymentsPage() {
 
     setSaving(true);
     try {
+      const body = JSON.stringify({ student_id: formData.student_id, amount: Number(formData.amount),
+        method: formData.payment_gateway, notes: formData.notes });
+      if (pendingPayment.current?.body !== body) {
+        pendingPayment.current = { body, key: crypto.randomUUID() };
+      }
       // The server finds/creates the invoice, records the payment and applies the fee-lock policy.
       const res = await fetch("/api/admin/finance/manual-payment", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
-        body: JSON.stringify({
-          student_id: formData.student_id,
-          amount: Number(formData.amount),
-          method: formData.payment_gateway,
-          notes: formData.notes,
-        }),
+        headers: { "Content-Type": "application/json", "Idempotency-Key": pendingPayment.current.key, ...(await getAuthHeaders()) },
+        body,
       });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || "Could not record payment.");
+      pendingPayment.current = null;
 
       setIsModalOpen(false);
       setFormData({ student_id: "", amount: "", payment_gateway: "cash", notes: "" });

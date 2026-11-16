@@ -2,6 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   trailingSlash: false,
+  async headers() {
+    return [{ source: "/api/:path*", headers: [{ key: "Cache-Control", value: "private, no-store" }] }];
+  },
   transpilePackages: [
     "@supabase/supabase-js",
     "@supabase/auth-js",

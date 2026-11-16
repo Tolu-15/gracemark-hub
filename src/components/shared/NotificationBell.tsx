@@ -168,7 +168,7 @@ export default function NotificationBell() {
             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
               {pushState === "denied" ? (
                 <p className="text-xs text-slate-500">
-                  Push notifications are blocked for this site. Allow them in your browser's site settings to get alerts here.
+                  Push notifications are blocked for this site. Allow them in your browser&apos;s site settings to get alerts here.
                 </p>
               ) : (
                 <>

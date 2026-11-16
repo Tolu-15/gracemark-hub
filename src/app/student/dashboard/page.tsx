@@ -467,7 +467,7 @@ export default function StudentDashboardPage() {
           <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
             <h3 className="text-lg font-bold text-slate-900">Add a parent/guardian email?</h3>
             <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-              We'll email your parent or guardian whenever a new result is published, so they stay in the loop. This is optional and you can add it later from your profile.
+              We&apos;ll email your parent or guardian whenever a new result is published, so they stay in the loop. This is optional and you can add it later from your profile.
             </p>
             <form onSubmit={saveGuardianEmail} className="mt-4 space-y-3">
               <input

@@ -12,6 +12,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const studentId = String(body?.student_id || "");
   const amount = Number(body?.amount);
+  const key = req.headers.get("Idempotency-Key");
+  if (key !== null && !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(key)) {
+    return NextResponse.json({ ok: false, error: "Invalid payment request identifier." }, { status: 400 });
+  }
   if (!studentId || !Number.isFinite(amount) || amount <= 0) {
     return NextResponse.json({ ok: false, error: "A student and a positive amount are required." }, { status: 400 });
   }
@@ -29,10 +33,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "This invoice is cancelled." }, { status: 409 });
     }
 
-    const receipt = newReceiptNumber();
+    let receipt = newReceiptNumber();
+    const reference = `MAN-${key || randomUUID()}`;
     const { error } = await service.from("payment_transactions").insert({
       invoice_id: fin.invoice.id,
-      payment_reference: `MAN-${Date.now()}-${randomUUID().slice(0, 6).toUpperCase()}`,
+      payment_reference: reference,
       receipt_number: receipt,
       amount,
       gateway: "manual",
@@ -41,7 +46,19 @@ export async function POST(req: NextRequest) {
       paid_at: new Date().toISOString(),
       verified_by: dbUserId || null,
     });
-    if (error) throw error;
+    if (error) {
+      if (!key || error.code !== "23505") throw error;
+      const { data: prior } = await service.from("payment_transactions")
+        .select("invoice_id, amount, receipt_number, verified_by, gateway, status, gateway_response")
+        .eq("payment_reference", reference).maybeSingle();
+      if (!prior || prior.invoice_id !== fin.invoice.id || Number(prior.amount) !== amount ||
+          prior.verified_by !== dbUserId || prior.gateway !== "manual" || prior.status !== "success" ||
+          prior.gateway_response?.method !== String(body?.method || "cash") ||
+          prior.gateway_response?.notes !== String(body?.notes || "").slice(0, 500)) {
+        return NextResponse.json({ ok: false, error: "Payment request conflicts with an existing receipt." }, { status: 409 });
+      }
+      receipt = prior.receipt_number;
+    }
 
     await evaluatePortalAccess(service, studentId);
     const after = await buildStudentFinance(service, studentId);

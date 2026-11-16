@@ -1,24 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApiActor, ApiActor } from "@/lib/apiAuth";
+import { canManageClass, requireApiActor } from "@/lib/apiAuth";
 import { PERSONAL_SKILLS } from "@/lib/gradingEngine";
 import { ensureEnrollments } from "@/lib/reportBuilder";
 
 // Personal remarks/skills are one-per-student-per-term, not per subject, so only
 // the class teacher may manage them — a subject teacher of the class has no more
 // claim to them than any other teacher.
-async function canManageClass(actor: ApiActor, classId: string): Promise<boolean> {
-  if (actor.role === "admin") return true;
-  const ids = Array.from(new Set([actor.authId, actor.dbUserId].filter(Boolean))) as string[];
-  const { data: cta } = await actor.service
-    .from("class_teacher_assignments")
-    .select("id")
-    .eq("class_id", classId)
-    .eq("status", "active")
-    .in("teacher_user_id", ids)
-    .limit(1);
-  return Boolean(cta?.length);
-}
-
 async function sessionInfo(service: any) {
   const { data: settings } = await service.from("app_settings").select("current_session").limit(1).maybeSingle();
   const session = settings?.current_session || "";
@@ -36,11 +23,11 @@ export async function GET(req: NextRequest) {
   const classId = req.nextUrl.searchParams.get("class_id") || "";
   const term = req.nextUrl.searchParams.get("term") || "";
   if (!classId || !term) return NextResponse.json({ ok: false, error: "class_id and term are required." }, { status: 400 });
-  if (!(await canManageClass(actor, classId))) {
+  const { session, sessionId } = await sessionInfo(service);
+  if (!sessionId || !(await canManageClass(actor, classId, sessionId))) {
     return NextResponse.json({ ok: false, error: "You are not assigned to this class." }, { status: 403 });
   }
 
-  const { session, sessionId } = await sessionInfo(service);
   const { data: students, error } = await service
     .from("students")
     .select("id, name, admission_no")
@@ -102,13 +89,11 @@ export async function POST(req: NextRequest) {
   if (!class_id || !["term1", "term2", "term3"].includes(term)) {
     return NextResponse.json({ ok: false, error: "class_id and a valid term are required." }, { status: 400 });
   }
-  if (!(await canManageClass(actor, class_id))) {
+  const { sessionId } = await sessionInfo(service);
+  if (!sessionId || !(await canManageClass(actor, class_id, sessionId))) {
     return NextResponse.json({ ok: false, error: "You are not assigned to this class." }, { status: 403 });
   }
   if (!actor.dbUserId) return NextResponse.json({ ok: false, error: "Your account has no user profile." }, { status: 400 });
-
-  const { sessionId } = await sessionInfo(service);
-  if (!sessionId) return NextResponse.json({ ok: false, error: "No current session is set." }, { status: 400 });
 
   const { data: classStudents } = await service.from("students").select("id").eq("class_id", class_id);
   const inClass = new Set((classStudents || []).map((s: any) => s.id));

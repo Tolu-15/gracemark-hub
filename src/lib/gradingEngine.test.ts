@@ -6,6 +6,7 @@ import {
   calculateTR,
   emptyRawScores,
   getGradeAndRemark,
+  rankPositions,
   isSeniorClass,
   validateRawScores,
   weeksForFrequency,
@@ -108,6 +109,12 @@ describe("score validation", () => {
 });
 
 describe("helpers", () => {
+  it("preserves tied positions, explicit zero and missing scores", () => {
+    const ranked = rankPositions([{ id: "first", value: 80 }, { id: "missing", value: null },
+      { id: "zero", value: 0 }, { id: "tie", value: 80 }]);
+    assert.deepEqual(Object.fromEntries(ranked), { first: 1, tie: 1, zero: 3 });
+    assert.equal(calculateTR({ ...emptyRawScores(), exam: "0" }).hasData, true);
+  });
   it("recognises senior classes", () => {
     assert.equal(isSeniorClass("SSS 1 Arts"), true);
     assert.equal(isSeniorClass("JSS 1"), false);

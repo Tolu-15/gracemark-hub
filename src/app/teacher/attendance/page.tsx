@@ -243,7 +243,12 @@ export default function TeacherAttendancePage() {
     } catch (err: any) {
       console.error("Save daily attendance error:", err);
       if (isNetworkFailure(err)) {
-        enqueue({ url: "/api/teacher/attendance", method: "POST", body, label: `Daily attendance — ${selectedDate}` });
+        try {
+          enqueue(userId, { url: "/api/teacher/attendance", method: "POST", body, label: `Daily attendance — ${selectedDate}` });
+        } catch {
+          setSaveStatus({ type: "error", text: "The offline register could not be saved on this device. Keep this page open and retry." });
+          return;
+        }
         setSaveStatus({
           type: "success",
           text: `You're offline — the daily register for ${selectedDate} was saved and will sync automatically once you're back online.`,
@@ -312,7 +317,12 @@ export default function TeacherAttendancePage() {
     } catch (err: any) {
       console.error("Save summary attendance error:", err);
       if (isNetworkFailure(err)) {
-        enqueue({ url: "/api/teacher/attendance", method: "POST", body, label: `Term attendance summary — ${currentTerm}` });
+        try {
+          enqueue(userId, { url: "/api/teacher/attendance", method: "POST", body, label: `Term attendance summary — ${currentTerm}` });
+        } catch {
+          setSaveStatus({ type: "error", text: "The offline summary could not be saved on this device. Keep this page open and retry." });
+          return;
+        }
         setSaveStatus({
           type: "success",
           text: `You're offline — the term attendance summary was saved and will sync automatically once you're back online.`,

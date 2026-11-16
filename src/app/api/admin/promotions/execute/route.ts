@@ -78,6 +78,9 @@ export async function POST(req: NextRequest) {
       gateSessionId = gs?.id;
     }
     const verdictByStudent = new Map<string, { status: string; pct: number | null }>();
+    if (!gateSessionId || !effectiveNextSessionId || gateSessionId === effectiveNextSessionId) {
+      return NextResponse.json({ ok: false, error: "Choose distinct source and destination sessions." }, { status: 400 });
+    }
     if (gateSessionId) {
       const ids = promotions.map((p: any) => p.studentId).filter(Boolean);
       const { data: enr } = await service
@@ -122,7 +125,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Process each student atomically
+    // The per-student writes below still require a database transaction for atomic rollback.
     for (const item of effective) {
       const { studentId, studentName, fromClassId, toClassId, action = "promote" } = item;
       const fromClass = await getClass(fromClassId);
@@ -257,7 +260,7 @@ export async function POST(req: NextRequest) {
       .select("id")
       .single();
 
-    if (pErr) console.warn("Promotion history log warning:", pErr);
+    if (pErr) return NextResponse.json({ ok: false, error: "Promotion history could not be saved. Review the affected enrollments before retrying." }, { status: 500 });
 
     await logAudit(actor, {
       action: "promotion.execute",

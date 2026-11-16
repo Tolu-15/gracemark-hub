@@ -67,7 +67,7 @@ export default function TeacherChangePasswordPage() {
       <div>
         <h2 className="text-xl font-black text-slate-900 tracking-tight">Change Password</h2>
         <p className="text-sm text-slate-500 mt-1">
-          Update your teacher account password. You'll need your current password to confirm.
+          Update your teacher account password. You&apos;ll need your current password to confirm.
         </p>
       </div>
 

@@ -164,12 +164,13 @@ export async function ensureEnrollments(service: any, classId: string, sessionId
   // Keep the session's enrollment on the student's current class (e.g. after a track change)
   const present = studentIds.filter((id) => have.has(id));
   if (present.length) {
-    await service
+    const { error: syncError } = await service
       .from("student_enrollments")
       .update({ class_id: classId })
       .eq("academic_session_id", sessionId)
       .in("student_id", present)
       .neq("class_id", classId);
+    if (syncError) throw syncError;
   }
   if (missing.length) {
     const { error: insErr } = await service.from("student_enrollments").insert(
@@ -223,7 +224,8 @@ export async function buildClassReports(
 
   // Class list: the current session uses each student's current class; past
   // sessions use the class the student was enrolled in for that session.
-  const { data: appSettings } = await service.from("app_settings").select("current_session").limit(1).maybeSingle();
+  const { data: appSettings, error: settingsError } = await service.from("app_settings").select("current_session").limit(1).maybeSingle();
+  if (settingsError || !appSettings?.current_session) throw new Error("Could not verify the school's current session.");
   let studentQuery = service.from("students").select("id, name, admission_no").order("name");
   if (session && appSettings?.current_session && session !== appSettings.current_session) {
     const { data: enrolled } = sessionId
@@ -270,6 +272,7 @@ export async function buildClassReports(
       : Promise.resolve({ data: [] }),
   ]);
   if (resultsRes.error) throw resultsRes.error;
+  if ("error" in enrollRes && enrollRes.error) throw enrollRes.error;
 
   const resultByKey = new Map<string, any>();
   (resultsRes.data || []).forEach((r: any) => resultByKey.set(`${r.student_id}:${r.subject_id}`, r));
@@ -301,7 +304,9 @@ export async function buildClassReports(
       (snaps || []).forEach((snap: any) => {
         const sid = studentByEnrollment.get(snap.enrollment_id);
         (snap.snapshot_data?.subjects || []).forEach((line: SubjectLine) => {
-          earlierTotals.set(`${sid}:${line.subjectId}:${snap.term}`, Number(line.total));
+          if (line.total != null && Number.isFinite(Number(line.total))) {
+            earlierTotals.set(`${sid}:${line.subjectId}:${snap.term}`, Number(line.total));
+          }
         });
       });
     }
@@ -333,7 +338,7 @@ export async function buildClassReports(
         issues.push({
           level: "warn",
           code: "empty_weeks",
-          message: `${subj.subject_name}: ${parts.join(" and ")} ${parts.length > 1 || empty.cw.length + empty.hw.length > 1 ? "are" : "is"} empty for the whole class and will count as 0.`,
+          message: `${subj.subject_name}: No entries for ${parts.join(" and ")}. Blank weeks are excluded from weekly averages.`,
           details: [],
         });
       }

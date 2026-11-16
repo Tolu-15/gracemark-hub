@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
+import { fetchAll } from "@/lib/fetchAll";
 
 export const dynamic = "force-dynamic";
 
@@ -50,25 +51,12 @@ export async function GET(req: NextRequest) {
     const tableCounts: Record<string, number> = {};
 
     for (const tbl of tablesToExport) {
-      try {
-        let query = service.from(tbl).select("*");
-        // Sanitize sensitive auth fields if users table
-        if (tbl === "users") {
-          query = service.from(tbl).select("id, auth_id, email, display_name, role, status, staff_id, personal_email, phone, created_at");
-        }
-
-        const { data, error } = await query;
-        if (!error && Array.isArray(data)) {
-          backupData[tbl] = data;
-          tableCounts[tbl] = data.length;
-        } else {
-          backupData[tbl] = [];
-          tableCounts[tbl] = 0;
-        }
-      } catch {
-        backupData[tbl] = [];
-        tableCounts[tbl] = 0;
-      }
+      const columns = tbl === "users"
+        ? "id, auth_id, email, display_name, role, status, staff_id, personal_email, phone, created_at" : "*";
+      const key = tbl === "subject_groups" ? "code" : "id";
+      const rows = await fetchAll((from, to) => service.from(tbl).select(columns).order(key).range(from, to));
+      backupData[tbl] = rows;
+      tableCounts[tbl] = rows.length;
     }
 
     const payload = {

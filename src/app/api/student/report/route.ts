@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   const [{ data: enrollments }, { data: settings }] = await Promise.all([
     service
       .from("student_enrollments")
-      .select("id, academic_session_id, academic_sessions(name, start_date)")
+      .select("id, academic_session_id, classes:class_id(name), academic_sessions(name, start_date)")
       .eq("student_id", student.id),
     service.from("app_settings").select("current_session, current_term").limit(1).maybeSingle(),
   ]);
@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
   const sessions = (enrollments || [])
     .map((e: any) => ({
       enrollmentId: e.id,
+      className: e.classes?.name as string | undefined,
       sessionId: e.academic_session_id as string,
       name: e.academic_sessions?.name as string,
       start: e.academic_sessions?.start_date || "",
@@ -60,15 +61,18 @@ export async function GET(req: NextRequest) {
   const availableTerms: Record<string, string[]> = {};
 
   if (enrollment) {
-    const { data: snaps, error } = await service
-      .from("result_snapshots")
-      .select("term, report_type, snapshot_data, published_at")
-      .eq("enrollment_id", enrollment.enrollmentId);
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-    (snaps || []).forEach((s: any) => {
+    const allowed = role === "admin" ? ["PR1", "PR2", "PR3", "TR"] : ["PR1", "PR2", "PR3"];
+    const [index, selected] = await Promise.all([
+      service.from("result_snapshots").select("term, report_type").eq("enrollment_id", enrollment.enrollmentId),
+      service.from("result_snapshots").select("report_type, snapshot_data, published_at")
+        .eq("enrollment_id", enrollment.enrollmentId).eq("term", term).in("report_type", allowed),
+    ]);
+    if (index.error || selected.error) return NextResponse.json({ ok: false, error: "Could not load published reports." }, { status: 503 });
+    (index.data || []).forEach((s: any) => {
       (availableTerms[s.term] ||= []).push(s.report_type);
-      if (s.report_type === "TR" && role !== "admin") return; // TR only through a scratch card view
-      if (s.term === term) reports[s.report_type] = { ...s.snapshot_data, publishedAt: s.published_at };
+    });
+    (selected.data || []).forEach((s: any) => {
+      reports[s.report_type] = { ...s.snapshot_data, publishedAt: s.published_at };
     });
   }
 
@@ -92,7 +96,7 @@ export async function GET(req: NextRequest) {
       id: student.id,
       name: student.name,
       admissionNo: student.admission_no,
-      className: (student as any).classes?.name || "",
+      className: enrollment?.className || (session === settings?.current_session ? (student as any).classes?.name || "" : ""),
     },
     sessions: sessions.map((s) => s.name),
     session,

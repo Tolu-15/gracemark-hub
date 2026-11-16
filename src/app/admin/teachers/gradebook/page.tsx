@@ -1,4 +1,5 @@
 "use client";
+import { recordedScore } from "@/lib/gradingEngine";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
@@ -113,14 +114,14 @@ export default function AdminTeacherGradebookPage() {
     loadResults();
   }, [loadResults]);
 
-  const scores = results.map((r) => Number(r.total) || 0).filter((n) => n > 0);
-  const avg = scores.length ? +(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : 0;
+  const scores = results.map(r => recordedScore(r.total)).filter((n): n is number => n !== null);
+  const avg = scores.length ? +(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";
 
   const subjectHighLow = useMemo(() => {
     const bySubject = new Map<string, { name: string; rows: { name: string; total: number }[] }>();
     results.forEach((r) => {
-      const total = Number(r.total) || 0;
-      if (total <= 0) return;
+      const total = recordedScore(r.total);
+      if (total === null) return;
       const key = r.subject_id || r.subjects?.name || "subject";
       const entry = bySubject.get(key) || { name: r.subjects?.name || "Subject", rows: [] as { name: string; total: number }[] };
       entry.rows.push({ name: r.students?.name || "Student", total });
@@ -286,12 +287,12 @@ export default function AdminTeacherGradebookPage() {
                     <td className="px-6 py-3.5 font-bold text-slate-900">{r.students?.name || "Student"}</td>
                     <td className="px-4 py-3.5 font-mono text-slate-600">{r.students?.admission_no || "—"}</td>
                     {!selectedSubject && <td className="px-4 py-3.5 font-medium text-slate-800">{r.subjects?.name || "Subject"}</td>}
-                    <td className="px-3 py-3.5 text-center">{r.cw ?? 0}</td>
-                    <td className="px-3 py-3.5 text-center">{r.hw ?? 0}</td>
-                    <td className="px-3 py-3.5 text-center">{r.test ?? 0}</td>
-                    <td className="px-3 py-3.5 text-center">{r.project ?? 0}</td>
-                    <td className="px-3 py-3.5 text-center">{r.exam ?? 0}</td>
-                    <td className="px-4 py-3.5 text-center font-bold text-slate-900">{r.total ?? 0}</td>
+                    <td className="px-3 py-3.5 text-center">{r.cw ?? "—"}</td>
+                    <td className="px-3 py-3.5 text-center">{r.hw ?? "—"}</td>
+                    <td className="px-3 py-3.5 text-center">{r.test ?? "—"}</td>
+                    <td className="px-3 py-3.5 text-center">{r.project ?? "—"}</td>
+                    <td className="px-3 py-3.5 text-center">{r.exam ?? "—"}</td>
+                    <td className="px-4 py-3.5 text-center font-bold text-slate-900">{r.total ?? "—"}</td>
                     <td className="px-4 py-3.5 text-center font-bold text-emerald-700">{r.grade || "—"}</td>
                     <td className="px-4 py-3.5 text-center">
                       <span

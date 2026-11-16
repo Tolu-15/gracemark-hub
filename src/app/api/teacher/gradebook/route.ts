@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApiActor } from "@/lib/apiAuth";
+import { canManageClass, requireApiActor } from "@/lib/apiAuth";
+import { getCurrentContext, resolveSession } from "@/lib/serverContext";
+import { recordedScore } from "@/lib/gradingEngine";
 
 function getGradeRemark(total: number, grade?: string): string {
   if (grade === "A" || total >= 75) return "Excellent";
@@ -20,7 +22,10 @@ export async function GET(req: NextRequest) {
   const classId = searchParams.get("class_id");
   const subjectId = searchParams.get("subject_id");
   const term = searchParams.get("term") || "term1";
-  const session = searchParams.get("session");
+  const current = await getCurrentContext(service);
+  const selected = await resolveSession(service, searchParams.get("session") || current?.sessionName);
+  if (!selected) return NextResponse.json({ error: "Academic session not found." }, { status: 400 });
+  const session = selected.name;
 
   if (!classId) {
     return NextResponse.json({ error: "class_id is required." }, { status: 400 });
@@ -34,13 +39,11 @@ export async function GET(req: NextRequest) {
   if (actor.role === "teacher") {
     const idList = Array.from(new Set([actor.authId, actor.dbUserId].filter(Boolean))) as string[];
 
-    const [{ data: classRow }, { data: ctaRows }, { data: staRows }] = await Promise.all([
-      service.from("classes").select("class_teacher_id").eq("id", classId).maybeSingle(),
-      service.from("class_teacher_assignments").select("id").eq("class_id", classId).in("teacher_user_id", idList).eq("status", "active"),
-      service.from("subject_teacher_assignments").select("subject_id").eq("class_id", classId).in("teacher_user_id", idList).eq("status", "active"),
+    const [isClassTeacher, { data: staRows }] = await Promise.all([
+      canManageClass(actor, classId, selected.id),
+      service.from("subject_teacher_assignments").select("subject_id").eq("class_id", classId).eq("academic_session_id", selected.id).in("teacher_user_id", idList).eq("status", "active"),
     ]);
 
-    const isClassTeacher = (classRow?.class_teacher_id && idList.includes(classRow.class_teacher_id)) || Boolean(ctaRows?.length);
     const assignedSubjectIds = (staRows || []).map((r: any) => r.subject_id).filter(Boolean);
 
     if (!isClassTeacher) {
@@ -61,11 +64,11 @@ export async function GET(req: NextRequest) {
         .from("student_enrollments")
         .select("student_id, students(id, name, admission_no)")
         .eq("class_id", classId)
-        .eq("status", "active"),
-      service
+        .eq("academic_session_id", selected.id),
+      selected.id === current?.sessionId ? service
         .from("students")
         .select("id, name, admission_no")
-        .eq("class_id", classId),
+        .eq("class_id", classId) : Promise.resolve({ data: [] }),
     ]);
 
     const studentMap = new Map<string, { id: string; name: string; admission_no: string }>();
@@ -125,22 +128,6 @@ export async function GET(req: NextRequest) {
 
     let { data: resData, error: resErr } = await resultsQuery;
 
-    // Fallback 1: If no results found with strict session, search without session filter
-    if ((!resData || resData.length === 0) && session) {
-      const fallbackQuery = applySubjectFilter(
-        service
-          .from("results")
-          .select("id, student_id, class_id, subject_id, cw, hw, test, project, exam, total, grade, status, session, term")
-          .eq("class_id", classId)
-          .eq("term", term)
-      );
-
-      const fbResult = await fallbackQuery;
-      if (fbResult.data && fbResult.data.length > 0) {
-        resData = fbResult.data;
-      }
-    }
-
     // Fallback 2: If results table doesn't have class_id set on older rows, query by student_id list
     if ((!resData || resData.length === 0) && studentIds.length > 0) {
       const byStudentQuery = applySubjectFilter(
@@ -148,6 +135,8 @@ export async function GET(req: NextRequest) {
           .from("results")
           .select("id, student_id, class_id, subject_id, cw, hw, test, project, exam, total, grade, status, session, term")
           .in("student_id", studentIds)
+          .eq("session", session)
+          .is("class_id", null)
           .eq("term", term)
       );
 
@@ -168,19 +157,19 @@ export async function GET(req: NextRequest) {
       enrichedResults = resData.map((r: any) => {
         const student = studentMap.get(r.student_id);
         const subjectName = subjectMap.get(r.subject_id) || "Subject";
-        const tot = Number(r.total) || 0;
+        const tot = recordedScore(r.total);
         return {
           id: r.id,
           student_id: r.student_id,
           subject_id: r.subject_id,
-          cw: r.cw ?? 0,
-          hw: r.hw ?? 0,
-          test: r.test ?? 0,
-          project: r.project ?? 0,
-          exam: r.exam ?? 0,
+          cw: recordedScore(r.cw),
+          hw: recordedScore(r.hw),
+          test: recordedScore(r.test),
+          project: recordedScore(r.project),
+          exam: recordedScore(r.exam),
           total: tot,
           grade: r.grade || "—",
-          remark: getGradeRemark(tot, r.grade),
+          remark: (tot === null ? "—" : getGradeRemark(tot, r.grade)),
           status: r.status || "draft",
           session: r.session,
           term: r.term,
@@ -195,6 +184,7 @@ export async function GET(req: NextRequest) {
       const { data: snapshots } = await service
         .from("published_snapshots")
         .select("id, student_id, class_id, term, session, report_type, snapshot_data")
+        .eq("session", session)
         .eq("class_id", classId)
         .eq("term", term)
         .order("published_at", { ascending: false });
@@ -222,19 +212,19 @@ export async function GET(req: NextRequest) {
             if (seen.has(key)) continue;
             seen.add(key);
 
-            const tot = Number(sub.total) || 0;
+            const tot = recordedScore(sub.total);
             enrichedResults.push({
               id: `${snap.id}-${subName}`,
               student_id: snap.student_id,
               subject_id: subjectId || "",
-              cw: sub.cw ?? 0,
-              hw: sub.hw ?? 0,
-              test: sub.test ?? 0,
-              project: sub.project ?? 0,
-              exam: sub.exam ?? 0,
+              cw: recordedScore(sub.cw),
+              hw: recordedScore(sub.hw),
+              test: recordedScore(sub.test),
+              project: recordedScore(sub.project),
+              exam: recordedScore(sub.exam),
               total: tot,
               grade: sub.grade || "—",
-              remark: sub.remark || getGradeRemark(tot, sub.grade),
+              remark: sub.remark || (tot === null ? "—" : getGradeRemark(tot, sub.grade)),
               status: "published",
               session: snap.session,
               term: snap.term,

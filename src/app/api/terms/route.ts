@@ -24,8 +24,8 @@ export async function GET(req: NextRequest) {
 
   const resultTerms = await Promise.all(
     termKeys.map(async ({ term, label }) => {
-      const isCurrent = term === currentTerm;
-      const canEdit = await isTermEditable(currentSession, term, service, currentTerm);
+      const isCurrent = term === currentTerm && currentSession === settings?.current_session;
+      const canEdit = await isTermEditable(currentSession, term, service, currentTerm, settings?.current_session || "");
       return {
         term,
         label,

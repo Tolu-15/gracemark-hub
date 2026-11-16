@@ -19,6 +19,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Bots tend to populate every field. Real visitors never see this field.
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Invalid form submission." }, { status: 400 });
+  }
   if (cleanText(body.website, 200)) {
     return NextResponse.json({ ok: true });
   }
