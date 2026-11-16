@@ -17,8 +17,9 @@ async function loadEditable(req: NextRequest, id: string) {
 }
 
 /** PATCH { title?, body?, pinned?, expires_at? } — admins any; teachers only their own. */
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const loaded = await loadEditable(req, params.id);
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const loaded = await loadEditable(req, id);
   if ("response" in loaded && loaded.response) return loaded.response;
   const { actor, row } = loaded as { actor: any; row: any };
 
@@ -44,28 +45,29 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
   }
 
-  const { error } = await actor.service.from("announcements").update(patch).eq("id", params.id);
+  const { error } = await actor.service.from("announcements").update(patch).eq("id", id);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   await logAudit(actor, {
     action: "announcement.edit",
     entityType: "announcement",
-    entityId: params.id,
+    entityId: id,
     summary: `Edited announcement "${patch.title || row.title}"`,
   });
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  const loaded = await loadEditable(req, params.id);
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const loaded = await loadEditable(req, id);
   if ("response" in loaded && loaded.response) return loaded.response;
   const { actor, row } = loaded as { actor: any; row: any };
 
-  const { error } = await actor.service.from("announcements").delete().eq("id", params.id);
+  const { error } = await actor.service.from("announcements").delete().eq("id", id);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   await logAudit(actor, {
     action: "announcement.delete",
     entityType: "announcement",
-    entityId: params.id,
+    entityId: id,
     summary: `Deleted announcement "${row.title}"`,
   });
   return NextResponse.json({ ok: true });
