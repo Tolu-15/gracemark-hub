@@ -809,11 +809,10 @@ BEGIN
   v_term := COALESCE(NEW.term, OLD.term);
 
   -- Count present days strictly where BOTH AM and PM attendance were true (one half missing means 0)
-  SELECT count(*) INTO v_present
+  SELECT count(*) FILTER (WHERE am_present) + count(*) FILTER (WHERE pm_present) INTO v_present
   FROM public.attendance_records
   WHERE enrollment_id = v_enrollment_id 
-    AND term = v_term 
-    AND (am_present = true AND pm_present = true);
+    AND term = v_term;
 
   -- Fetch default term school days
   SELECT COALESCE(t.school_days, 120) INTO v_opened

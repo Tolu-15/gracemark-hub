@@ -147,7 +147,7 @@ export async function GET(req: NextRequest) {
       dates.add(r.date);
       const c = (counts[r.enrollment_id] ||= { present: 0, recorded: 0 });
       c.recorded += 1;
-      if (r.am_present && r.pm_present) c.present += 1;
+      c.present += Number(Boolean(r.am_present)) + Number(Boolean(r.pm_present));
       if (date && r.date === date) {
         dayMap[r.enrollment_id] = { am: r.am_present ?? true, pm: r.pm_present ?? true };
       }
@@ -168,7 +168,7 @@ export async function GET(req: NextRequest) {
       const summary = summaryMap[r.enrollmentId];
       const agg = counts[r.enrollmentId];
 
-      const timesOpened = managedDays ?? (summary?.times_opened || termConfig?.school_days || dates.size || DEFAULT_SCHOOL_DAYS);
+      const timesOpened = managedDays ?? (summary?.times_opened || termConfig?.school_days || dates.size * 2 || DEFAULT_SCHOOL_DAYS);
       const timesPresent = summary?.times_present ?? (agg?.recorded ? agg.present : 0);
 
       return {

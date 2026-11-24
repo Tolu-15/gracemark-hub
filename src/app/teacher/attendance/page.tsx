@@ -458,7 +458,7 @@ export default function TeacherAttendancePage() {
           ) : (
             <div className="flex flex-col gap-1">
               <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                School Days Opened (Term Total)
+                School Sessions Opened (Term Total)
               </label>
               <div className="flex items-center gap-2">
                 <input
@@ -529,14 +529,14 @@ export default function TeacherAttendancePage() {
                     <th className="px-6 py-4 text-center min-w-[130px]">Morning (AM)</th>
                     <th className="px-6 py-4 text-center min-w-[130px]">Afternoon (PM)</th>
                     <th className="px-6 py-4 text-center min-w-[150px]">Today&apos;s Count</th>
-                    <th className="px-6 py-4 text-center">Term Present (Days)</th>
+                    <th className="px-6 py-4 text-center">Term Present (Sessions)</th>
                     <th className="px-6 py-4 text-center">Term Opened</th>
                   </>
                 ) : (
                   <>
-                    <th className="px-4 py-4 text-center">Days Opened</th>
-                    <th className="px-4 py-4 text-center">Days Present</th>
-                    <th className="px-4 py-4 text-center">Days Absent</th>
+                    <th className="px-4 py-4 text-center">Sessions Opened</th>
+                    <th className="px-4 py-4 text-center">Sessions Present</th>
+                    <th className="px-4 py-4 text-center">Sessions Absent</th>
                     <th className="px-6 py-4 text-center">Attendance %</th>
                     <th className="px-4 py-4 text-center">Quick Adjust</th>
                   </>
@@ -560,7 +560,7 @@ export default function TeacherAttendancePage() {
                 students.map((s, idx) => {
                   const pct = s.timesOpened > 0 ? Math.round((s.timesPresent / s.timesOpened) * 100) : 100;
                   const absent = Math.max(0, s.timesOpened - s.timesPresent);
-                  const isDayPresent = s.am && s.pm;
+                  const sessionsPresent = Number(s.am) + Number(s.pm);
 
                   return (
                     <tr key={s.student_id} className="hover:bg-slate-50/70 transition-colors">
@@ -615,15 +615,7 @@ export default function TeacherAttendancePage() {
                             </label>
                           </td>
                           <td className="px-6 py-4 text-center">
-                            {isDayPresent ? (
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <span>✓</span> 1 Day Present
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200" title={!s.am && !s.pm ? "Absent all day" : !s.am ? "Missed morning session" : "Missed afternoon session"}>
-                                <span>✕</span> 0 (Absent)
-                              </span>
-                            )}
+                            {sessionsPresent} / 2 sessions present
                           </td>
                           <td className="px-6 py-4 text-center font-bold text-slate-900 text-sm">
                             {s.timesPresent}

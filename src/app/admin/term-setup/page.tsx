@@ -84,11 +84,11 @@ function TermSetupPage({ onChange }: { onChange: () => void }) {
     try {
       const { res, json } = await api("/api/admin/term-setup", { method: "PATCH",
         body: JSON.stringify({ session: data.session, term: data.term, school_days: Number(currentDays) }) });
-      if (!res.ok) throw new Error(json.error || "Could not save school days.");
+      if (!res.ok) throw new Error(json.error || "Could not save attendance sessions.");
       await load();
-      setDone(`School days opened for ${data.termLabel} saved as ${currentDays}.`);
+      setDone(`Attendance sessions opened (AM + PM) for ${data.termLabel} saved as ${currentDays}.`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save school days.");
+      setError(e instanceof Error ? e.message : "Could not save attendance sessions.");
     } finally { setBusy(false); }
   }
 
@@ -122,12 +122,12 @@ function TermSetupPage({ onChange }: { onChange: () => void }) {
       </div>
 
       <form onSubmit={saveCurrentDays} className="rounded-2xl border bg-white p-5">
-        <label htmlFor="current-school-days" className="block text-sm font-bold">School days opened</label>
+        <label htmlFor="current-school-days" className="block text-sm font-bold">Attendance sessions opened (AM + PM)</label>
         <p className="my-2 text-sm text-slate-600">{data.termLabel}, {data.session} · Applies to every class this term.</p>
         <div className="flex items-center gap-3">
           <input id="current-school-days" type="number" required min={1} max={250} step={1} value={currentDays}
             onChange={e => setCurrentDays(e.target.value)} className="w-24 rounded-lg border px-3 py-2" />
-          <button type="submit" disabled={busy} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50">Save school days</button>
+          <button type="submit" disabled={busy} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50">Save attendance sessions</button>
         </div>
       </form>
 
@@ -183,7 +183,7 @@ function TermSetupPage({ onChange }: { onChange: () => void }) {
               <input type="date" value={begins} onChange={(e) => setBegins(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg text-sm normal-case tracking-normal text-slate-800" />
             </label>
             <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              School days in {data.next!.label}
+              Attendance sessions in {data.next!.label}
               <input type="number" min={1} max={250} value={days} onChange={(e) => setDays(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg text-sm normal-case tracking-normal text-slate-800" />
             </label>
           </div>
@@ -194,7 +194,7 @@ function TermSetupPage({ onChange }: { onChange: () => void }) {
             <li>
               <strong>{data.termLabel}</strong> is locked for teachers. Admins can unlock it later in Academic Setup if a correction is needed.
             </li>
-            <li>The resumption date and school days above are saved.</li>
+            <li>The resumption date and attendance sessions above are saved.</li>
           </ul>
 
           {open > 0 && (
@@ -221,7 +221,7 @@ function TermSetupPage({ onChange }: { onChange: () => void }) {
               <div className="font-bold text-slate-900">
                 {t.label} {t.term === data.term && <span className="text-emerald-700">(current)</span>}
               </div>
-              <div className="text-slate-600 mt-1">School days: {t.schoolDays ?? "not set"}</div>
+              <div className="text-slate-600 mt-1">Attendance sessions: {t.schoolDays ?? "not set"}</div>
               <div className="text-slate-600">Next term begins: {t.nextTermBegins || "not set"}</div>
               <div className="text-slate-600">{t.term === data.term ? "Open for teachers" : t.teachersCanEdit ? "Unlocked for teachers" : "Locked for teachers"}</div>
             </div>
