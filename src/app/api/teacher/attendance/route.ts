@@ -121,6 +121,10 @@ export async function GET(req: NextRequest) {
     if (!(await canManageClass(authorization.actor, classId, session.id))) {
       return NextResponse.json({ error: "Class teacher access required." }, { status: 403 });
     }
+    const { data: termConfig, error: termError } = await service.from("academic_terms")
+      .select("school_days,school_days_managed").eq("academic_session_id", session.id).eq("term_code", term).maybeSingle();
+    if (termError) throw termError;
+    const managedDays = termConfig?.school_days_managed ? Number(termConfig.school_days) : null;
     const roster = await loadEnrollments(service, classId, session.id, session.is_current);
     if (!roster.length) {
       return NextResponse.json({ ok: true, students: [] });
@@ -164,7 +168,7 @@ export async function GET(req: NextRequest) {
       const summary = summaryMap[r.enrollmentId];
       const agg = counts[r.enrollmentId];
 
-      const timesOpened = summary?.times_opened || (dates.size > 0 ? dates.size : DEFAULT_SCHOOL_DAYS);
+      const timesOpened = managedDays ?? (summary?.times_opened || termConfig?.school_days || dates.size || DEFAULT_SCHOOL_DAYS);
       const timesPresent = summary?.times_present ?? (agg?.recorded ? agg.present : 0);
 
       return {
@@ -184,6 +188,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       students,
+      managedDays,
       totalSessionsRecorded: dates.size,
       datesCount: dates.size,
     });
@@ -245,7 +250,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const enrollmentIds: string[] = rows.map((r: any) => r.enrollmentId);
+
 
     if (action === "save_daily") {
       const daily = rows.map(({ record, enrollmentId }: any) => ({
@@ -262,38 +267,7 @@ export async function POST(req: NextRequest) {
         .upsert(daily, { onConflict: "enrollment_id,date" });
       if (dailyErr) throw dailyErr;
 
-      // Keep the term summary in step with the daily register.
-      const { data: allRecords, error: allErr } = await service
-        .from("attendance_records")
-        .select("enrollment_id, am_present, pm_present, date")
-        .in("enrollment_id", enrollmentIds)
-        .eq("term", activeTerm);
-      if (allErr) throw allErr;
-
-      const presentBy: Record<string, number> = {};
-      const dates = new Set<string>();
-      (allRecords || []).forEach((r: any) => {
-        dates.add(r.date);
-        if (r.am_present && r.pm_present) presentBy[r.enrollment_id] = (presentBy[r.enrollment_id] || 0) + 1;
-      });
-      const opened = Math.max(DEFAULT_SCHOOL_DAYS, dates.size);
-
-      const summaries = enrollmentIds.map((id) => {
-        const present = presentBy[id] || 0;
-        return {
-          enrollment_id: id,
-          term: activeTerm,
-          times_opened: opened,
-          times_present: present,
-          times_absent: Math.max(0, opened - present),
-          updated_at: new Date().toISOString(),
-        };
-      });
-      const { error: summaryErr } = await service
-        .from("attendance_summaries")
-        .upsert(summaries, { onConflict: "enrollment_id,term" });
-      if (summaryErr) throw summaryErr;
-
+      // The attendance_records trigger updates the summary in this same transaction.
       return NextResponse.json({
         ok: true,
         message: `Daily register saved and synced for ${rows.length} students!`,
@@ -301,6 +275,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const { data: config, error: configError } = await service.from("academic_terms")
+      .select("school_days,school_days_managed").eq("academic_session_id", sess.id).eq("term_code", activeTerm).maybeSingle();
+    if (configError) throw configError;
+    if (config?.school_days_managed && rows.some(({ record }: any) => Number(record.times_opened) !== config.school_days)) {
+      return NextResponse.json({ error: "The admin changed school days. Reload attendance before saving." }, { status: 409 });
+    }
     const summaries = rows.map(({ record, enrollmentId }: any) => {
       const opened = Math.max(0, Number(record.times_opened) || DEFAULT_SCHOOL_DAYS);
       const present = Math.min(opened, Math.max(0, Number(record.times_present) || 0));

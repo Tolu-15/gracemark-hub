@@ -7,6 +7,7 @@ import { useAnnouncementBadge, badgeText } from "@/components/announcements/useA
 import { usePendingActions } from "@/components/shared/usePendingActions";
 
 const teacherNavItems: NavItem[] = [
+  { label: "Academic support", href: "/teacher/academic-support" },
   {
     label: "My Dashboard",
     href: "/teacher/dashboard",
@@ -22,7 +23,7 @@ const teacherNavItems: NavItem[] = [
     ),
   },
   {
-    label: "Manage Grades",
+    label: "Enter scores",
     href: "/teacher/score-entry",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -78,7 +79,7 @@ const teacherNavItems: NavItem[] = [
     ),
   },
   {
-    label: "Gradebook",
+    label: "Review gradebook",
     href: "/teacher/gradebook",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

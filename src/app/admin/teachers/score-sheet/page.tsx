@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import {
@@ -39,7 +40,7 @@ export default function AdminScoreSheetPage() {
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
   const [selectedClass, setSelectedClass] = useState("");
   const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
-  const [selectedSubject, setSelectedSubject] = useState("");
+  const [subjectChoice, setSelectedSubject] = useState("");
   const [selectedTerm, setSelectedTerm] = useState("term1");
   const [currentSession, setCurrentSession] = useState("");
   const [termList, setTermList] = useState<any[]>([]);
@@ -48,7 +49,7 @@ export default function AdminScoreSheetPage() {
   const [classSubjectIds, setClassSubjectIds] = useState<Map<string, string> | null>(null);
   const [notOffering, setNotOffering] = useState<Set<string>>(new Set());
 
-  const [rows, setRows] = useState<StudentScoreRow[]>([]);
+  const [storedRows, setRows] = useState<StudentScoreRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [metaLoading, setMetaLoading] = useState(true);
   const [error, setError] = useState("");
@@ -112,12 +113,11 @@ export default function AdminScoreSheetPage() {
     return subjects.filter((s) => classSubjectIds.has(s.id));
   }, [subjects, classSubjectIds]);
 
-  useEffect(() => {
-    if (availableSubjects.length > 0 && (!selectedSubject || !availableSubjects.some((s) => s.id === selectedSubject))) {
-      setSelectedSubject(availableSubjects[0].id);
-    }
-  }, [availableSubjects, selectedSubject]);
+  const selectedSubject = availableSubjects.some(s => s.id === subjectChoice) ? subjectChoice : (availableSubjects[0]?.id || "");
 
+  const sheetKey = JSON.stringify([currentSession, selectedTerm, selectedClass, selectedSubject]);
+  const [loadedSheet, setLoadedSheet] = useState("");
+  const rows = useMemo(() => loadedSheet === sheetKey ? storedRows : [], [loadedSheet, sheetKey, storedRows]);
   const loadScores = useCallback(async () => {
     if (!selectedClass || !selectedSubject) return;
     const seq = ++loadSeqRef.current;
@@ -176,6 +176,7 @@ export default function AdminScoreSheetPage() {
           return_reason: existing?.return_reason,
         };
       });
+      setLoadedSheet(sheetKey);
       setRows(newRows);
     } catch (err: any) {
       console.error("Admin score sheet load error:", err);
@@ -183,11 +184,9 @@ export default function AdminScoreSheetPage() {
     } finally {
       if (loadSeqRef.current === seq) setLoading(false);
     }
-  }, [selectedClass, selectedSubject, selectedTerm, currentSession]);
+  }, [selectedClass, selectedSubject, selectedTerm, currentSession, sheetKey]);
 
-  useEffect(() => {
-    loadScores();
-  }, [loadScores]);
+  useEffect(() => scheduleInitialLoad(loadScores), [loadScores]);
 
   const isFirstLoad = (loading || metaLoading) && rows.length === 0;
   const isRefetching = loading && !metaLoading && rows.length > 0;

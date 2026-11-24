@@ -1,8 +1,6 @@
 /**
- * Terminal Results a student has already opened with a scratch card view, kept in this browser tab's memory
- * only. It lets the Results page and the Performance Summary page share one opened result, so looking at
- * both in the same visit costs one view, not two. It is never saved anywhere: refreshing the page or closing
- * the tab forgets it, and opening the result again then uses another view, exactly as the card rules say.
+ * The Results and Performance Summary pages can reuse a report in tab memory
+ * when the server still reports the same active card for the selected term.
  *
  * The key includes the student's id, so a different student signing in on the same tab can never see it.
  */
@@ -15,8 +13,9 @@ const store = new Map<string, OpenedTr>();
 
 export const openedTrKey = (studentId: string | undefined, session: string, term: string) => `${studentId || "?"}|${session}|${term}`;
 
-export function getOpenedTr(key: string): OpenedTr | null {
-  return store.get(key) ?? null;
+export function getOpenedTr(key: string, card: { id: string; status: string } | null | undefined): OpenedTr | null {
+  const saved = store.get(key);
+  return saved && card?.status === "active" && card.id === saved.card.id ? saved : null;
 }
 
 export function rememberOpenedTr(key: string, value: OpenedTr): void {

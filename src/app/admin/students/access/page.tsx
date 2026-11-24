@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import { StudentRecord, ClassRecord } from "@/types/database";
@@ -34,9 +35,7 @@ export default function AdminStudentAccessPage() {
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => scheduleInitialLoad(loadData), [loadData]);
 
   async function handleToggleAccess(student: StudentRecord) {
     const isCurrentlyLocked = student.portal_access_status === "locked";

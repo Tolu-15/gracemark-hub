@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/supabase/client";
 
@@ -56,9 +57,7 @@ export default function TestSandbox() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => scheduleInitialLoad(load), [load]);
 
   async function run(label: string, body: Record<string, unknown>, confirmText: string | null, done: (json: any) => string) {
     if (confirmText && !window.confirm(confirmText)) return;

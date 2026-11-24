@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useState, useEffect } from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
 import { supabase } from "@/lib/supabase/client";
@@ -61,9 +62,7 @@ export default function AdminAdmissionsFormsPage() {
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => scheduleInitialLoad(loadData), []);
 
   const openAddModal = () => {
     setEditId(null);

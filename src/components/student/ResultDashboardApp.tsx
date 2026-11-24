@@ -1,12 +1,15 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/supabase/client";
+import { CorrectionForm } from "@/components/shared/SchoolFollowUp";
 import ReportSheet from "@/components/results/ReportSheet";
 import { PageLoader, InlineSpinner } from "@/components/shared/PageLoader";
 import { printWithTitle } from "@/lib/printTitle";
 import { trackEvent } from "@/lib/activity";
-import TerminalResultGate, { type TrCardInfo, type TrInfo } from "@/components/student/TerminalResultGate";
+import TerminalResultGate, { type TrInfo } from "@/components/student/TerminalResultGate";
+import { useRefreshOpenReport } from "@/components/student/useRefreshOpenReport";
 import { getOpenedTr, openedTrKey, rememberOpenedTr } from "@/lib/openedTrCache";
 
 const TERMS = [
@@ -56,7 +59,7 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
   // can't resolve after a newer one and overwrite the screen with stale results.
   const loadSeqRef = React.useRef(0);
   // Terminal results opened with a scratch card view, kept in memory only for this page visit.
-  const [opened, setOpened] = useState<Record<string, { report: any; card: TrCardInfo }>>({});
+  const [, bump] = useState(0);
 
   const load = useCallback(async () => {
     const seq = ++loadSeqRef.current;
@@ -86,9 +89,7 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
     }
   }, [session, term, studentId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => scheduleInitialLoad(load), [load]);
 
   // Nothing on screen yet vs. re-fetching after switching session/term with a report
   // already showing — the latter keeps the old report visible (dimmed) instead of
@@ -101,7 +102,10 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
   const trPublished = Boolean(isStudentView && data?.tr?.published);
   // Shared with the Performance Summary page in this browser tab, so seeing both costs one view.
   const openedKey = openedTrKey(data?.student.id, session, term);
-  const openedTr = opened[openedKey] || getOpenedTr(openedKey);
+  const cachedTr = trPublished && data?.session === session && data?.term === term && !error
+    ? getOpenedTr(openedKey, data.tr?.card) : null;
+  useRefreshOpenReport(tab === "TR" && !!cachedTr, load);
+  const openedTr = loading ? null : cachedTr;
   const published = data ? MILESTONE_TABS.filter((m) => data.reports[m.key] || (m.key === "TR" && trPublished)) : [];
   const current = tab && data ? (tab === "TR" && isStudentView ? openedTr?.report || null : data.reports[tab]) : null;
   const showGate = Boolean(data && tab === "TR" && trPublished && !openedTr);
@@ -216,6 +220,8 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
                 Try again
               </button>
             </div>
+          ) : loading && tab === "TR" && isStudentView ? (
+            <PageLoader label="Checking result access." />
           ) : showGate && data?.tr ? (
             <TerminalResultGate
               session={session}
@@ -225,7 +231,7 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
               tr={data.tr}
               onOpened={(report, card) => {
                 rememberOpenedTr(openedKey, { report, card });
-                setOpened((prev) => ({ ...prev, [openedKey]: { report, card } }));
+                bump(n => n + 1);
               }}
               onRefresh={load}
             />
@@ -240,11 +246,11 @@ export default function ResultDashboardApp({ studentId, initialTerm, initialSess
             <>
               {tab === "TR" && isStudentView && openedTr && (
                 <div className="no-print print:hidden mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
-                  Scratch card: <strong>{openedTr.card.viewsLeft}</strong> of {openedTr.card.viewsAllowed} views left. Print from this page as often as you like.
-                  Refreshing or closing the page means opening the result again will use another view.
+                  Your scratch card gives unlimited viewing and printing for this term.
                 </div>
               )}
               <ReportSheet report={current} />
+              {isStudentView && !loading && <CorrectionForm key={current.publishedAt + current.milestone} report={current} />}
             </>
           )}
         </div>

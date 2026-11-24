@@ -164,6 +164,10 @@ function padArray(arr: any[], len: number, fill: any): any[] {
   return out.slice(0, len);
 }
 
+export function hasEnteredScores(raw: RawScores) {
+  return [...raw.cw, ...raw.hw, ...raw.tests, raw.project, raw.exam].some(isFilled);
+}
+
 export function normalizeBreakdown(existing: any): RawScores {
   if (existing?.score_breakdown && typeof existing.score_breakdown === "object") {
     const b = existing.score_breakdown;

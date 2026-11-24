@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
 import TimetableGrid, { DAYS, Period, Slot, Spinner } from "@/components/timetable/TimetableGrid";
@@ -79,9 +80,7 @@ export default function AdminTimetablePage() {
     }
   }, [session, term, classId]);
 
-  useEffect(() => {
-    loadSide();
-  }, [loadSide]);
+  useEffect(() => scheduleInitialLoad(loadSide), [loadSide]);
 
   const refresh = async () => {
     await Promise.all([reload(), loadSide()]);

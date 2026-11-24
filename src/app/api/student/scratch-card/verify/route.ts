@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
 import { logAudit } from "@/lib/audit";
 import { findStudentForActor, verifyPaystackReference } from "@/lib/financeServer";
-import { applyCardPayment, onlineCardSalesEnabled } from "@/lib/scratchCards";
+import { applyCardPayment } from "@/lib/scratchCards";
 
 /** POST { reference } — the browser reports a finished checkout; Paystack (not the browser) decides if it counts. */
 export async function POST(req: NextRequest) {
@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   if ("response" in authorization) return authorization.response;
   const { actor } = authorization;
   const { service, authId, dbUserId } = actor;
-  if (!(await onlineCardSalesEnabled(service))) return NextResponse.json({ ok: false, error: "Not available." }, { status: 503 });
+  if (!process.env.PAYSTACK_SECRET_KEY?.trim()) return NextResponse.json({ ok: false, error: "Not available." }, { status: 503 });
 
   let body: { reference?: string };
   try {

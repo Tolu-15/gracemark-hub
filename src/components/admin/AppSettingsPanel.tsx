@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/supabase/client";
 
@@ -55,9 +56,7 @@ export default function AppSettingsPanel() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => scheduleInitialLoad(load), [load]);
 
   async function save(section: "scratch_card" | "maintenance", value: unknown, confirmText: string | null, done: string) {
     if (confirmText && !window.confirm(confirmText)) return;
@@ -80,7 +79,7 @@ export default function AppSettingsPanel() {
       <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-6">
         {!storeReady && (
           <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold">
-            The settings table doesn&rsquo;t exist yet, so changes can&rsquo;t be saved. Run <code>supabase/041_system_settings.sql</code> first. Until then the app uses the built-in defaults (₦1,000, 5 views, maintenance off).
+            The settings table doesn&rsquo;t exist yet, so changes can&rsquo;t be saved. Run <code>supabase/041_system_settings.sql</code> first. Until then the app uses the built-in defaults (₦1,000, unlimited term access, maintenance off).
           </div>
         )}
         {message && (
@@ -104,17 +103,7 @@ export default function AppSettingsPanel() {
                 className="mt-1 block w-32 px-3 py-2 border border-slate-300 rounded-lg text-sm normal-case tracking-normal text-slate-800"
               />
             </label>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Views per card
-              <input
-                type="number"
-                min={1}
-                max={50}
-                value={card.viewsAllowed}
-                onChange={(e) => setCard({ ...card, viewsAllowed: Number(e.target.value) })}
-                className="mt-1 block w-28 px-3 py-2 border border-slate-300 rounded-lg text-sm normal-case tracking-normal text-slate-800"
-              />
-            </label>
+            <p className="text-xs text-slate-600">Unlimited viewing and printing per term.</p>
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 pb-2">
               <input
                 type="checkbox"
@@ -131,7 +120,7 @@ export default function AppSettingsPanel() {
                 save(
                   "scratch_card",
                   card,
-                  `Set the card price to ₦${card.price} with ${card.viewsAllowed} views, online sales ${card.onlineEnabled ? "ON" : "OFF"}? New purchases use this; cards already bought keep what they were sold with.`,
+                  `Set the card price to ₦${card.price} with unlimited term access, online sales ${card.onlineEnabled ? "ON" : "OFF"}? New purchases use this; all valid cards allow unlimited term access.`,
                   "Scratch card settings saved."
                 )
               }

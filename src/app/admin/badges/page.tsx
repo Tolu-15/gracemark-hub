@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
 import { getAuthHeaders } from "@/lib/supabase/client";
@@ -79,9 +80,7 @@ export default function AdminBadgesPage() {
     }
   }, [term, session]);
 
-  useEffect(() => {
-    loadBadges();
-  }, [loadBadges]);
+  useEffect(() => scheduleInitialLoad(loadBadges), [loadBadges]);
 
   return (
     <AuthGuard allowedRoles={["admin"]}>

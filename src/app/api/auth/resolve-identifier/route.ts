@@ -66,59 +66,6 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Self-healing: verify this student has a valid Supabase Auth user, or provision one with default password 'gracemark'
-        try {
-          const { data: listData } = await service.auth.admin.listUsers();
-          let existingAuthUser = listData?.users?.find(
-            (u) => u.email?.toLowerCase() === targetEmail.toLowerCase()
-          );
-
-          if (!existingAuthUser) {
-            // Provision user with default password 'gracemark'
-            const { data: createdAuth } = await service.auth.admin.createUser({
-              email: targetEmail,
-              password: "gracemark",
-              email_confirm: true,
-              user_metadata: {
-                display_name: student.full_name || "Student",
-                role: "student",
-              },
-            });
-            if (createdAuth?.user) {
-              existingAuthUser = createdAuth.user;
-            }
-          }
-
-          if (existingAuthUser) {
-            // Ensure public.users profile exists
-            const { data: upUser } = await service
-              .from("users")
-              .upsert(
-                {
-                  auth_id: existingAuthUser.id,
-                  email: targetEmail,
-                  display_name: student.full_name || "Student",
-                  role: "student",
-                  status: "active",
-                  must_change_password: false,
-                },
-                { onConflict: "auth_id" }
-              )
-              .select("id")
-              .single();
-
-            // Ensure student.user_id points to public.users(id)
-            if (upUser?.id && student.user_id !== upUser.id) {
-              await service
-                .from("students")
-                .update({ user_id: upUser.id })
-                .eq("id", student.id);
-            }
-          }
-        } catch (provErr) {
-          console.warn("Auto-provision auth check error:", provErr);
-        }
-
         return NextResponse.json({ ok: true, email: targetEmail });
       }
     } catch (err) {

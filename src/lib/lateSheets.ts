@@ -40,12 +40,14 @@ const DONE = new Set(["submitted", "approved", "published"]);
  * Every score sheet (class + subject) assigned to a teacher this term that is not fully submitted.
  * Throwaway "ZZ Test" classes are ignored. Read-only.
  */
-export async function computeLateSheets(service: SupabaseClient): Promise<LateSheetsReport> {
+export async function computeLateSheets(service: SupabaseClient, scope?: URLSearchParams): Promise<LateSheetsReport> {
   const { data: settings } = await service.from("app_settings").select("current_term, current_session, current_session_id").limit(1).maybeSingle();
-  const term = settings?.current_term || "term1";
+  const requestedTerm = scope?.get("term");
+  const term = requestedTerm && ["term1","term2","term3"].includes(requestedTerm) ? requestedTerm : settings?.current_term || "term1";
   const session = settings?.current_session || "";
   const sessionId = settings?.current_session_id || "";
   const empty: LateSheetsReport = { term, session, teachers: [], totalSheets: 0, completeSheets: 0 };
+  if (scope?.get("session") && scope.get("session") !== session) throw new Error("Late sheets are available for the current academic session only.");
   if (!session || !sessionId) return empty;
 
   const [{ data: classes }, { data: subjects }, { data: assignments }, { data: students }] = await Promise.all([
@@ -102,6 +104,7 @@ export async function computeLateSheets(service: SupabaseClient): Promise<LateSh
   let completeSheets = 0;
 
   for (const a of (assignments || []) as any[]) {
+    if (scope?.get("class") && scope.get("class") !== a.class_id) continue;
     if (isTestClass(a.class_id)) continue;
     const sheet = sheetFor(a.class_id, a.subject_id);
     if (!sheet) continue;

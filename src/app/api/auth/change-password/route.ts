@@ -4,7 +4,7 @@ import { isDefaultPassword } from "@/lib/defaultPasswords";
 
 export async function POST(req: NextRequest) {
   try {
-    const authorization = await requireApiActor(req, ["admin", "teacher", "student"], { allowLockedStudent: true });
+    const authorization = await requireApiActor(req, ["admin", "teacher", "student"], { allowLockedStudent: true, allowOwnPasswordChange: true });
     if ("response" in authorization) return authorization.response;
     const { actor } = authorization;
 
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (actor.role !== "admin" && actor.authId !== user_id) {
+    if ((actor.role !== "admin" || actor.restricted) && actor.authId !== user_id) {
       return NextResponse.json(
         { error: "You can only change your own password." },
         { status: 403 }

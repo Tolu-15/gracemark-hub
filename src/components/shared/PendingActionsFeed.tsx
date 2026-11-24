@@ -1,5 +1,6 @@
 "use client";
 
+import { useCurrentTime } from "@/components/shared/useCurrentTime";
 import React from "react";
 import Link from "next/link";
 import { usePendingActions } from "./usePendingActions";
@@ -13,6 +14,7 @@ const TERM_LABEL: Record<string, string> = { term1: "1st", term2: "2nd", term3: 
  * (usePendingActions), so the two can never show different numbers.
  */
 export default function PendingActionsFeed({ role }: { role: "admin" | "teacher" }) {
+  const now = useCurrentTime();
   const { items, loading } = usePendingActions();
   if (loading || !items.length) return null;
 
@@ -27,7 +29,7 @@ export default function PendingActionsFeed({ role }: { role: "admin" | "teacher"
     const classCount = new Set(items.map((i) => i.classId)).size;
     const studentCount = items.reduce((sum, i) => sum + i.count, 0);
     const oldest = items.reduce<string | null>((m, i) => (i.oldest && (!m || i.oldest < m) ? i.oldest : m), null);
-    const oldestDays = oldest ? Math.max(0, Math.floor((Date.now() - new Date(oldest).getTime()) / 86_400_000)) : 0;
+    const oldestDays = oldest ? Math.max(0, Math.floor((now - new Date(oldest).getTime()) / 86_400_000)) : 0;
     return (
       <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>

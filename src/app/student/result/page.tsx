@@ -41,8 +41,10 @@ export default function StudentResultPage() {
         }
 
         const settings = await getAppSettings();
-        if (settings?.current_session) setSession(settings.current_session);
-        if (settings?.current_term) setTerm(settings.current_term);
+        const params = new URLSearchParams(window.location.search);
+        setSession(params.get("session") || settings?.current_session || "");
+        const period = params.get("term") || "";
+        setTerm(["term1", "term2", "term3"].includes(period) ? period : settings?.current_term || "term1");
 
         setStudent(studentRecord);
       } catch (err: any) {

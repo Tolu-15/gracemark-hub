@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import type { PendingActionItem } from "@/app/api/results/pending-actions/route";
@@ -140,7 +141,10 @@ export default function AdminApprovalsPage() {
       .order("display_order")
       .then(({ data }) => {
         setClasses(data || []);
-        if (data?.length) setClassId((prev) => prev || data[0].id);
+        const params = new URLSearchParams(window.location.search);
+        const period = params.get("term");
+        if (period && ["term1","term2","term3"].includes(period)) setTerm(period);
+        if (data?.length) setClassId(prev => prev || data.find(c => c.id === params.get("class"))?.id || data[0].id);
       });
   }, []);
 
@@ -192,9 +196,7 @@ export default function AdminApprovalsPage() {
     }
   }, [classId, term, loadPending]);
 
-  useEffect(() => {
-    loadOverview();
-  }, [loadOverview]);
+  useEffect(() => scheduleInitialLoad(loadOverview), [loadOverview]);
 
   const loadSettings = useCallback(async () => {
     if (!term) return;
@@ -206,7 +208,7 @@ export default function AdminApprovalsPage() {
   }, [term]);
 
   useEffect(() => {
-    if (tab === "settings") loadSettings();
+    if (tab === "settings") return scheduleInitialLoad(loadSettings);
   }, [tab, loadSettings]);
 
   // ---------------- Review ----------------
@@ -376,6 +378,13 @@ export default function AdminApprovalsPage() {
       <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">Result Approvals &amp; Publishing</h2>
+          {classId && term && overview && (
+            <nav aria-label="Class results workflow" className="my-2 flex flex-wrap gap-4 text-sm font-semibold underline">
+              <a href={"/admin/late-sheets?" + new URLSearchParams({ class: classId, term, session: overview.session })}>Check missing sheets</a>
+              <a href={"/admin/historical-results?" + new URLSearchParams({ class: classId, term, session: overview.session, view: "broadsheet" })}>Review class broadsheet</a>
+              <a href={"/admin/report-cards?" + new URLSearchParams({ class: classId, term, session: overview.session })}>Print class reports</a>
+            </nav>
+          )}
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             Approve teachers&rsquo; scores, then release each report to students when it is ready.
             {overview?.session ? ` Session ${overview.session}.` : ""}

@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
@@ -92,9 +93,7 @@ export default function AdminSubjectsPage() {
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => scheduleInitialLoad(loadData), [loadData]);
 
   const displayed = useMemo(() => {
     const q = search.trim().toLowerCase();

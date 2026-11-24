@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
@@ -101,9 +102,7 @@ export default function TeacherDashboardPage() {
     }
   }, []);
 
-  useEffect(() => {
-    loadTeacherData();
-  }, [loadTeacherData]);
+  useEffect(() => scheduleInitialLoad(loadTeacherData), [loadTeacherData]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">

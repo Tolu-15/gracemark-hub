@@ -3,7 +3,7 @@ import { requireApiActor } from "@/lib/apiAuth";
 import { logAudit } from "@/lib/audit";
 import { notifyUsers, notifyAdmins } from "@/lib/notify";
 import { sendResultPublishedEmail, sendGuardianResultPublishedEmail } from "@/lib/email";
-import { applyLevelWidePositions, buildClassReports, ensureEnrollments, Milestone, MILESTONES, STATUS_COLUMN } from "@/lib/reportBuilder";
+import { applyLevelWidePositions, buildClassReports, Milestone, MILESTONES } from "@/lib/reportBuilder";
 import { usersByAnyId } from "@/lib/serverContext";
 import { awardPositionBadges } from "@/lib/badges";
 
@@ -40,7 +40,11 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ ok: false, error: "No current session is set in settings." }, { status: 400 });
 
   try {
-    let build = await buildClassReports(service, { classId: class_id, term, session, milestone });
+    const { data: version, error: versionError } = await service.rpc("publication_version", {
+      p_class: class_id, p_session: session, p_term: term,
+    });
+    if (versionError) throw versionError;
+    const build = await buildClassReports(service, { classId: class_id, term, session, milestone });
 
     const blocking = build.issues.filter((i) => i.level === "block");
     if (blocking.length) {
@@ -56,58 +60,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: `Academic session "${session}" was not found.` }, { status: 400 });
     }
 
-    // Every student needs an enrollment for the session to hold a snapshot.
-    const missing = build.reports.map((r) => r.student.id).filter((id) => !build.enrollmentByStudent.has(id));
-    if (missing.length) {
-      await ensureEnrollments(service, class_id, build.sessionId, missing);
-      build = await buildClassReports(service, { classId: class_id, term, session, milestone });
-    }
     await applyLevelWidePositions(service, build);
-
     const publishedAt = new Date().toISOString();
-    const snapshots = build.reports.map((report) => ({
-      enrollment_id: build.enrollmentByStudent.get(report.student.id),
-      term,
-      report_type: milestone,
-      snapshot_data: report,
-      published_by: dbUserId,
-      published_at: publishedAt,
-    }));
-
-    const { error: snapErr } = await service
-      .from("result_snapshots")
-      .upsert(snapshots, { onConflict: "enrollment_id,term,report_type" });
-    if (snapErr) throw snapErr;
-
-    // Remove snapshots of students in the class who no longer have a report
-    const keep = new Set(snapshots.map((s) => s.enrollment_id));
-    const stale = Array.from(build.enrollmentByStudent.values()).filter((id) => !keep.has(id));
-    if (stale.length) {
-      await service.from("result_snapshots").delete().eq("term", term).eq("report_type", milestone).in("enrollment_id", stale);
-    }
+    const { data: published, error } = await service.rpc("commit_publication", {
+      p_class: class_id, p_session: session, p_term: term, p_type: milestone, p_actor: dbUserId,
+      p_version: version, p_reports: build.reports, p_results: build.resultIds, p_at: publishedAt, p_recall: false,
+    });
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 409 });
 
     if (milestone === "TR") {
       await awardPositionBadges(service, build.reports, term, session);
     }
 
-    // Mark exactly the included result rows as published for this milestone
-    const col = STATUS_COLUMN[milestone];
     const { data: students } = await service.from("students").select("id, user_id, name, full_name, guardian_email").eq("class_id", class_id);
-    const studentIds = (students || []).map((s: any) => s.id);
-    await service.from("results").update({ [col]: "draft" }).eq("term", term).eq("session", session).in("student_id", studentIds);
-    const { error: stErr } = await service.from("results").update({ [col]: "published", published_at: publishedAt }).in("id", build.resultIds);
-    if (stErr) throw stErr;
-
     const { data: cls } = await service.from("classes").select("name").eq("id", class_id).maybeSingle();
     await logAudit(actor, {
       action: "results.publish",
       entityType: "class",
       entityId: class_id,
-      summary: `Published ${milestone} for ${cls?.name || "class"} (${term}, ${session}) — ${snapshots.length} students${force ? " (forced past warnings)" : ""}`,
-      metadata: { class_id, term, session, milestone, students: snapshots.length, forced: Boolean(force) },
+      summary: `Published ${milestone} for ${cls?.name || "class"} (${term}, ${session}) — ${published} students${force ? " (forced past warnings)" : ""}`,
+      metadata: { class_id, term, session, milestone, students: published, forced: Boolean(force) },
     });
 
-    const rawUserIds = (students || []).map((s: any) => s.user_id).filter(Boolean);
+    const publishedStudentIds = new Set(build.reports.map(r => r.student.id));
+    const rawUserIds = (students || []).filter(s => publishedStudentIds.has(s.id)).map((s: any) => s.user_id).filter(Boolean);
     if (rawUserIds.length) {
       const userMap = await usersByAnyId(service, rawUserIds);
       const recipientIds = Array.from(new Set(Array.from(userMap.values()).map((u) => u.id)));
@@ -125,7 +101,7 @@ export async function POST(req: NextRequest) {
     await notifyAdmins(actor, {
       type: "results.publish",
       title: "Result published",
-      body: `${milestone.replace(/_/g, " ")} for ${cls?.name || "a class"} (${term}, ${session}) was published — ${snapshots.length} students.`,
+      body: `${milestone.replace(/_/g, " ")} for ${cls?.name || "a class"} (${term}, ${session}) was published — ${published} students.`,
       link: "/admin/historical-results",
       metadata: { class_id, term, session, milestone },
     });
@@ -157,7 +133,7 @@ export async function POST(req: NextRequest) {
         milestone,
         term,
         session,
-        studentCount: snapshots.length,
+        studentCount: published,
       });
     } catch (mailErr) {
       console.warn("Result-published email failed:", mailErr);
@@ -166,7 +142,6 @@ export async function POST(req: NextRequest) {
     // One best-effort email per guardian who has an email on file, for the
     // students actually included in this publish. Never lets one bad address
     // block the rest, and never blocks or undoes the publish itself.
-    const publishedStudentIds = new Set(build.reports.map((r) => r.student.id));
     const guardianTargets = (students || []).filter((s: any) => publishedStudentIds.has(s.id) && s.guardian_email);
     await Promise.allSettled(
       guardianTargets.map((s: any) =>
@@ -181,7 +156,7 @@ export async function POST(req: NextRequest) {
       )
     );
 
-    return NextResponse.json({ ok: true, published: snapshots.length, publishedAt });
+    return NextResponse.json({ ok: true, published: published, publishedAt });
   } catch (err: any) {
     console.error("Publish error:", err);
     return NextResponse.json({ ok: false, error: err.message || "Failed to publish." }, { status: 500 });

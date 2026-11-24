@@ -37,8 +37,9 @@ export default function PortalLayout({
   navItems,
   children,
 }: PortalLayoutProps) {
-  const [navOpen, setNavOpen] = useState(false);
+  const [openPath, setOpenPath] = useState<string | null>(null);
   const pathname = usePathname();
+  const navOpen = openPath !== null && openPath === pathname;
   const router = useRouter();
 
   // Highlight only the closest nav item (e.g. /admin/subjects/lists highlights
@@ -48,10 +49,7 @@ export default function PortalLayout({
       .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
       .sort((a, b) => b.href.length - a.href.length)[0]?.href || "";
 
-  // Close mobile nav on route change
-  useEffect(() => {
-    setNavOpen(false);
-  }, [pathname]);
+
 
   useEffect(() => {
     trackEvent("page_view", { path: pathname });
@@ -60,10 +58,10 @@ export default function PortalLayout({
   // Close on Escape key and handle resize
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setNavOpen(false);
+      if (e.key === "Escape") setOpenPath(null);
     }
     function handleResize() {
-      if (window.innerWidth >= 1024) setNavOpen(false);
+      if (window.innerWidth >= 1024) setOpenPath(null);
     }
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("resize", handleResize);
@@ -111,7 +109,7 @@ export default function PortalLayout({
           navOpen ? "block opacity-100" : "hidden opacity-0 pointer-events-none"
         }`}
         style={{ backgroundColor: "rgba(7, 17, 32, 0.6)" }}
-        onClick={() => setNavOpen(false)}
+        onClick={() => setOpenPath(null)}
       />
 
       {/* Sidebar Navigation — Navy Blue */}
@@ -158,7 +156,7 @@ export default function PortalLayout({
             className="lg:hidden p-2 rounded-lg transition cursor-pointer"
             style={{ color: "#7ba3d8" }}
             aria-label="Close navigation menu"
-            onClick={() => setNavOpen(false)}
+            onClick={() => setOpenPath(null)}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -205,7 +203,7 @@ export default function PortalLayout({
                     key={item.href}
                     href={item.href}
                     aria-current={isActive ? "page" : undefined}
-                    onClick={() => setNavOpen(false)}
+                    onClick={() => setOpenPath(null)}
                     className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150"
                     style={
                       isActive
@@ -295,7 +293,7 @@ export default function PortalLayout({
             <button
               type="button"
               id="portalMobileHamburgerBtn"
-              onClick={() => setNavOpen(true)}
+              onClick={() => setOpenPath(pathname)}
               aria-label="Open navigation menu"
               aria-expanded={navOpen}
               aria-controls="portalSidebar"

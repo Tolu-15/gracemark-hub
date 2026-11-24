@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
 
   const starting = await service
     .from("academic_terms")
-    .upsert({ academic_session_id: cur.sessionId, term_code: next, school_days: days, status: "open" }, { onConflict: "academic_session_id,term_code" });
+    .upsert({ academic_session_id: cur.sessionId, term_code: next, school_days: days, school_days_managed: true, status: "open" }, { onConflict: "academic_session_id,term_code" });
   if (starting.error) return NextResponse.json({ ok: false, error: starting.error.message }, { status: 500 });
 
   const { error: settingsErr } = await service.from("app_settings").update({ current_term: next, updated_at: new Date().toISOString() }).eq("id", cur.settingsId);
@@ -142,4 +142,24 @@ export async function POST(req: NextRequest) {
     metadata: { session: cur.session, from: cur.term, to: next, schoolDays: days, nextTermBegins: begins, openScores: open || 0 },
   });
   return NextResponse.json({ ok: true, term: next, label: LABEL[next] });
+}
+
+export async function PATCH(req: NextRequest) {
+  const authorization = await requireApiActor(req, ["admin"]);
+  if ("response" in authorization) return authorization.response;
+  const body = await req.json().catch(() => null);
+  const days = body?.school_days;
+  if (!Number.isInteger(days) || days < 1 || days > 250 || !TERMS.includes(body.term) || !body.session) {
+    return NextResponse.json({ error: "Select the current term and enter 1 to 250 whole school days." }, { status: 400 });
+  }
+  const { actor } = authorization;
+  const { error } = await actor.service.rpc("set_current_school_days", {
+    p_session: body.session, p_term: body.term, p_days: days,
+  });
+  if (error) return NextResponse.json({ error: error.code === "P0001" ? error.message : "Could not update school days." },
+    { status: error.code === "P0001" ? 409 : 503 });
+  await logAudit(actor, { action: "term_setup.school_days", entityType: "academic_terms",
+    summary: `Set school days opened to ${days} for ${body.session}, ${body.term}.`,
+    metadata: { session: body.session, term: body.term, schoolDays: days } });
+  return NextResponse.json({ ok: true });
 }

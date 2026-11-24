@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { ClassRecord } from "@/types/database";
@@ -85,9 +86,7 @@ export default function AdminPaymentStatusPage() {
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => scheduleInitialLoad(loadData), [loadData]);
 
   const filteredItems = items.filter((item) => {
     if (filterClass && item.class_id !== filterClass) return false;

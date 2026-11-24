@@ -484,7 +484,7 @@ export async function buildClassReports(
         ? service.from("student_evaluations").select("*").eq("term", term).in("enrollment_id", enrollIds)
         : Promise.resolve({ data: [] }),
       sessionId
-        ? service.from("academic_terms").select("school_days, next_term_begins").eq("academic_session_id", sessionId).eq("term_code", term).maybeSingle()
+        ? service.from("academic_terms").select("school_days, school_days_managed, next_term_begins").eq("academic_session_id", sessionId).eq("term_code", term).maybeSingle()
         : Promise.resolve({ data: null }),
       enrollIds.length
         ? service.from("attendance_records").select("enrollment_id, am_present, pm_present").eq("term", term).in("enrollment_id", enrollIds)
@@ -498,7 +498,7 @@ export async function buildClassReports(
     (summRes.data || []).forEach((a: any) => {
       const sid = studentByEnrollment.get(a.enrollment_id);
       if (!sid) return;
-      const opened = Number(a.times_opened) || 0;
+      const opened = (termRes.data?.school_days_managed && schoolTimesOpened) || Number(a.times_opened) || 0;
       const present = Number(a.times_present) || 0;
       attendanceByStudent.set(sid, { opened, present, absent: Math.max(0, opened - present) });
     });
@@ -506,7 +506,7 @@ export async function buildClassReports(
     (recRes.data || []).forEach((r: any) => {
       const sid = studentByEnrollment.get(r.enrollment_id);
       if (!sid) return;
-      presentCounts.set(sid, (presentCounts.get(sid) || 0) + (r.am_present ? 1 : 0) + (r.pm_present ? 1 : 0));
+      presentCounts.set(sid, (presentCounts.get(sid) || 0) + (r.am_present && r.pm_present ? 1 : 0));
     });
     presentCounts.forEach((present, sid) => {
       if (!attendanceByStudent.has(sid) && schoolTimesOpened) {

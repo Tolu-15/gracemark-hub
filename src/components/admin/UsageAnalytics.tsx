@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getAuthHeaders } from "@/lib/supabase/client";
 
@@ -179,9 +180,7 @@ export default function UsageAnalytics() {
     }
   }, []);
 
-  useEffect(() => {
-    load(days);
-  }, [days, load]);
+  useEffect(() => scheduleInitialLoad(() => load(days)), [days, load]);
 
   const series = useMemo<TrendDay[]>(() => {
     if (!data) return [];

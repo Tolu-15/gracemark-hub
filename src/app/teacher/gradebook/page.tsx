@@ -1,4 +1,5 @@
 "use client";
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import { recordedScore } from "@/lib/gradingEngine";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
@@ -15,8 +16,12 @@ export default function TeacherGradebookPage() {
   const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
   const [selectedSubject, setSelectedSubject] = useState("");
   const [term, setTerm] = useState("term1");
-  const [session, setSession] = useState("2026/2027");
-  const [results, setResults] = useState<any[]>([]);
+  const [session, setSession] = useState("");
+  const [sessionNames, setSessionNames] = useState<string[]>([]);
+  const [storedRows, setResults] = useState<any[]>([]);
+  const sheetKey = JSON.stringify([session, term, selectedClass, selectedSubject]);
+  const [loadedSheet, setLoadedSheet] = useState("");
+  const results = useMemo(() => loadedSheet === sheetKey ? storedRows : [], [loadedSheet, sheetKey, storedRows]);
   const [loading, setLoading] = useState(false);
   // What this teacher may actually see per class: the full cross-subject master
   // view if they're the class teacher, otherwise only the subject(s) they teach
@@ -24,18 +29,28 @@ export default function TeacherGradebookPage() {
   const [classPermissions, setClassPermissions] = useState<Map<string, ClassPermission>>(new Map());
   // Tags each loadResults() call so a slower, older request (previous filter
   // selection) can't resolve after a newer one and overwrite the screen.
+  const requestedSubject = React.useRef("");
+  const [activeSession, setActiveSession] = useState("");
   const loadSeqRef = React.useRef(0);
 
   // 1. Initial Load: App term settings & teacher assigned classes
   useEffect(() => {
     async function init() {
       try {
+        const params = new URLSearchParams(window.location.search);
+        requestedSubject.current = params.get("subject") || "";
         // Fetch active term & session
-        const res = await fetch("/api/terms");
+        const res = await fetch("/api/terms", { headers: await getAuthHeaders() });
         if (res.ok) {
           const tData = await res.json();
-          if (tData.current_session) setSession(tData.current_session);
-          if (tData.current_term) setTerm(tData.current_term);
+          const { data: sessions } = await supabase.from("academic_sessions").select("name").order("name", { ascending: false });
+          const names = Array.from(new Set<string>([tData.current_session, ...(sessions || []).map(row => row.name)].filter(Boolean)));
+          const requested = params.get("session") || "";
+          setSessionNames(names);
+          setActiveSession(tData.current_session || "");
+          setSession(names.includes(requested) ? requested : tData.current_session || names[0] || "");
+          const period = params.get("term") || "";
+          setTerm(["term1","term2","term3"].includes(period) ? period : tData.current_term || "term1");
         }
 
         const { data: sessionData } = await supabase.auth.getSession();
@@ -117,7 +132,7 @@ export default function TeacherGradebookPage() {
         setClasses(classList);
         setClassPermissions(permissions);
         if (classList.length > 0) {
-          setSelectedClass(classList[0].id);
+          setSelectedClass(classList.find(c => c.id === params.get("class"))?.id || classList[0].id);
         }
       } catch (err) {
         console.error("Gradebook init error:", err);
@@ -156,10 +171,15 @@ export default function TeacherGradebookPage() {
 
   // Drop a subject selection that's no longer valid after switching classes.
   useEffect(() => {
+    if (requestedSubject.current && selectedClass && subjects.length) {
+      const requested = requestedSubject.current;
+      requestedSubject.current = "";
+      if (availableSubjects.some(s => s.id === requested)) { setSelectedSubject(requested); return; }
+    }
     if (selectedSubject && !availableSubjects.some((s) => s.id === selectedSubject)) {
       setSelectedSubject("");
     }
-  }, [availableSubjects, selectedSubject]);
+  }, [availableSubjects, selectedSubject, selectedClass, subjects]);
 
   // 3. Load gradebook results via resilient server API
   const loadResults = useCallback(async () => {
@@ -179,6 +199,7 @@ export default function TeacherGradebookPage() {
       }
       const data = await res.json();
       if (loadSeqRef.current !== seq) return; // a newer filter selection already took over
+      setLoadedSheet(sheetKey);
       setResults(data.results || []);
     } catch (err) {
       console.error("Load gradebook results error:", err);
@@ -186,11 +207,9 @@ export default function TeacherGradebookPage() {
     } finally {
       if (loadSeqRef.current === seq) setLoading(false);
     }
-  }, [selectedClass, selectedSubject, term, session]);
+  }, [selectedClass, selectedSubject, term, session, sheetKey]);
 
-  useEffect(() => {
-    loadResults();
-  }, [loadResults]);
+  useEffect(() => scheduleInitialLoad(loadResults), [loadResults]);
 
   const scores = results.map(r => recordedScore(r.total)).filter((n): n is number => n !== null);
   const avg = scores.length ? +(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";
@@ -228,8 +247,9 @@ export default function TeacherGradebookPage() {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-              Class Teacher Gradebook
+              Review gradebook
             </h2>
+            {session === activeSession && selectedClass && <a className="text-sm font-semibold underline" href={"/teacher/score-entry?" + new URLSearchParams({ class: selectedClass, subject: selectedSubject, term })}>Enter scores</a>}
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
               {session} • {term.toUpperCase()}
             </span>
@@ -305,8 +325,7 @@ export default function TeacherGradebookPage() {
             onChange={(e) => setSession(e.target.value)}
             className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
           >
-            <option value="2026/2027">2026/2027</option>
-            <option value="2025/2026">2025/2026</option>
+            {sessionNames.map(name => <option key={name} value={name}>{name}</option>)}
           </select>
         </div>
       </div>

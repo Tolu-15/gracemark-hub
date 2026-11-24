@@ -10,7 +10,6 @@ import { getStudentCurrentInvoice, formatPaymentStatus } from "@/lib/schoolFinan
 import { PAYMENTS_ENABLED } from "@/lib/features";
 import { getAcademicSessions } from "@/lib/academicSessions";
 import { Skeleton, SkeletonValue } from "@/components/shared/Skeleton";
-import ResultDashboardApp from "@/components/student/ResultDashboardApp";
 import AnnouncementsPreview from "@/components/announcements/AnnouncementsPreview";
 
 interface StudentProfile {
@@ -44,8 +43,6 @@ export default function StudentDashboardPage() {
   const [latest, setLatest] = useState<{ milestone: string; report: any; count: number; tr?: any } | null>(null);
   const [loadingResults, setLoadingResults] = useState(false);
 
-  // Overlay Report Dashboard
-  const [showFullReport, setShowFullReport] = useState(false);
 
   // CBT Summaries
   const [upcomingCbt, setUpcomingCbt] = useState<any[]>([]);
@@ -219,7 +216,7 @@ export default function StudentDashboardPage() {
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto print:overflow-visible">
       {/* Header */}
-      <header className={`bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-20 shrink-0 ${showFullReport ? "print:hidden" : ""}`}>
+      <header className={`bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-20 shrink-0`}>
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
             Welcome, {student ? student.name : <Skeleton className="h-6 w-44 align-middle" />}
@@ -232,7 +229,7 @@ export default function StudentDashboardPage() {
       </header>
 
       {/* Main Content */}
-      <div className={`p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full flex-1 ${showFullReport ? "print:hidden" : ""}`}>
+      <div className={`p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full flex-1`}>
         <AnnouncementsPreview role="student" />
 
         {/* KPI Cards */}
@@ -365,13 +362,11 @@ export default function StudentDashboardPage() {
                 </div>
                 {latest.tr ? (
                   <div className="text-xs text-slate-500">
-                    {latest.tr.card?.status === "active"
-                      ? `Scratch card active · ${latest.tr.card.viewsLeft} of ${latest.tr.card.viewsAllowed} views left`
+                    {latest.tr.card?.status === "active" || latest.tr.card?.status === "exhausted"
+                      ? "Scratch card active · Unlimited access for this term"
                       : latest.tr.card?.status === "issued"
                         ? "Your scratch card is ready: enter its PIN to activate it"
-                        : latest.tr.card?.status === "exhausted"
-                          ? "All views on your scratch card are used. A new card is needed to view it again"
-                          : `Ready to view with a scratch card (₦${Number(latest.tr.price ?? 1000).toLocaleString("en-NG")})`}
+                        : `Ready to view with a scratch card (₦${Number(latest.tr.price ?? 1000).toLocaleString("en-NG")})`}
                   </div>
                 ) : (
                   <div className="text-xs text-slate-500">
@@ -379,12 +374,12 @@ export default function StudentDashboardPage() {
                   </div>
                 )}
               </div>
-              <button
-                onClick={() => setShowFullReport(true)}
+              <Link
+                href={"/student/result?" + new URLSearchParams({ session, term }).toString()}
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg hover:bg-slate-800 cursor-pointer"
               >
                 {latest.tr ? "Open terminal result" : "View report sheet"}
-              </button>
+              </Link>
             </div>
           )}
         </section>
@@ -500,16 +495,6 @@ export default function StudentDashboardPage() {
         </div>
       )}
 
-      {/* Full Report Dashboard Overlay Modal */}
-      {showFullReport && student && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-white print:static print:overflow-visible">
-          <ResultDashboardApp
-            initialTerm={term}
-            initialSession={session}
-            onClose={() => setShowFullReport(false)}
-          />
-        </div>
-      )}
     </div>
   );
 }

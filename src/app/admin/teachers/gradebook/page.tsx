@@ -1,4 +1,5 @@
 "use client";
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import { recordedScore } from "@/lib/gradingEngine";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
@@ -17,7 +18,7 @@ export default function AdminTeacherGradebookPage() {
   const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
   const [selectedClass, setSelectedClass] = useState("");
   const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
-  const [selectedSubject, setSelectedSubject] = useState("");
+  const [subjectChoice, setSelectedSubject] = useState("");
   // Subject list configured for the selected class (via its subject group), if
   // any — the subject picker is narrowed to these, same as the teacher's own
   // score-entry/gradebook pages, instead of showing every subject in the school.
@@ -80,11 +81,7 @@ export default function AdminTeacherGradebookPage() {
   }, [subjects, classSubjectIds]);
 
   // Drop a subject selection that's no longer valid after switching classes.
-  useEffect(() => {
-    if (selectedSubject && !availableSubjects.some((s) => s.id === selectedSubject)) {
-      setSelectedSubject("");
-    }
-  }, [availableSubjects, selectedSubject]);
+  const selectedSubject = availableSubjects.some(s => s.id === subjectChoice) ? subjectChoice : "";
 
   const loadResults = useCallback(async () => {
     if (!selectedClass) return;
@@ -110,9 +107,7 @@ export default function AdminTeacherGradebookPage() {
     }
   }, [selectedClass, selectedSubject, term, session]);
 
-  useEffect(() => {
-    loadResults();
-  }, [loadResults]);
+  useEffect(() => scheduleInitialLoad(loadResults), [loadResults]);
 
   const scores = results.map(r => recordedScore(r.total)).filter((n): n is number => n !== null);
   const avg = scores.length ? +(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : "—";

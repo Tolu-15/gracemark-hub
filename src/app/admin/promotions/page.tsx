@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useState, useEffect } from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
@@ -29,6 +30,7 @@ interface PromotionRecord {
   promoted_at: string;
   summary: any[];
   notes?: string | null;
+  rollback_outcomes?: Record<string,{ status: string; name: string; reason?: string }>;
   rolled_back_at?: string | null;
 }
 
@@ -154,7 +156,7 @@ export default function AdminPromotionsPage() {
       // Fetch promotions history
       const { data: histData, error: hErr } = await supabase
         .from("promotions")
-        .select("id, from_session_id, promoted_at, summary, notes, rolled_back_at")
+        .select("id, from_session_id, promoted_at, summary, notes, rolled_back_at, rollback_outcomes")
         .order("promoted_at", { ascending: false });
       if (hErr) throw hErr;
       const { data: sessionNames } = await supabase.from("academic_sessions").select("id, name");
@@ -168,9 +170,7 @@ export default function AdminPromotionsPage() {
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => scheduleInitialLoad(loadData), []);
 
   const studentCountMap = new Map<string, number>();
   students.forEach((s) => {
@@ -309,10 +309,10 @@ export default function AdminPromotionsPage() {
   };
 
   const handleRollback = async (record: PromotionRecord) => {
-    const count = Array.isArray(record.summary) ? record.summary.length : 0;
+    const count = (record.summary || []).filter(pupil => record.rollback_outcomes?.[pupil.student_id]?.status !== "restored").length;
     if (
       !confirm(
-        `Undo this promotion?\n\n${count} students will be moved back to their previous classes and the new-session enrollments created by this promotion will be removed.\n\nStudents who already have results in the new session, or whose class was changed afterwards, are skipped and listed for you.`
+        `Undo this promotion?\n\n${count} pupil records will be checked. Eligible pupils will be restored to their previous classes.\n\nStudents who already have results in the new session, or whose class was changed afterwards, are skipped and listed for you.`
       )
     )
       return;
@@ -550,9 +550,10 @@ export default function AdminPromotionsPage() {
                           </span>
                         ) : (
                           <span className="text-xs font-semibold bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg">
-                            {count} students promoted / graduated
+                            {Object.keys(h.rollback_outcomes || {}).length ? "Partially rolled back" : count + " students promoted / graduated"}
                           </span>
                         )}
+                        {Object.keys(h.rollback_outcomes || {}).length > 0 && <details><summary>Pupil outcomes</summary>{Object.entries(h.rollback_outcomes || {}).map(([id, o]) => <p key={id}>{o.name}: {o.reason || o.status}</p>)}</details>}
                         {h.id === latestActiveId && (
                           <button
                             type="button"
@@ -560,7 +561,7 @@ export default function AdminPromotionsPage() {
                             disabled={rollingBackId === h.id}
                             className="text-xs font-bold text-rose-700 border border-rose-200 bg-white hover:bg-rose-50 px-3 py-1.5 rounded-lg disabled:opacity-50 cursor-pointer"
                           >
-                            {rollingBackId === h.id ? "Undoing…" : "Undo promotion"}
+                            {rollingBackId === h.id ? "Undoing…" : Object.keys(h.rollback_outcomes || {}).length ? "Retry unresolved pupils" : "Undo promotion"}
                           </button>
                         )}
                       </div>

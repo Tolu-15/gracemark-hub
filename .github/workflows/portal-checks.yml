@@ -1,0 +1,32 @@
+name: Portal release checks
+on: [pull_request]
+permissions:
+  contents: read
+jobs:
+  academic-transactions:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 2s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: psql -h localhost -U postgres -d postgres -f scripts/test-academic-transactions.sql -f scripts/test-password-reset-challenges.sql -f scripts/test-school-follow-up.sql
+        env:
+          PGPASSWORD: fixture
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm run build

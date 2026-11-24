@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase/server";
-import { createOtp } from "@/lib/otp";
+import { generateOtp, otpDigest } from "@/lib/otp";
 import { sendPasswordResetOtpEmail } from "@/lib/email";
 
 function maskEmail(email: string): string {
@@ -125,7 +125,12 @@ export async function POST(req: NextRequest) {
       }
 
       // Validated! Generate and send OTP to the verified recovery email
-      const otp = await createOtp(user.auth_id);
+      const otp = generateOtp();
+      const { data: issued, error } = await service.rpc("issue_password_reset_challenge", {
+        p_user: user.auth_id, p_digest: otpDigest(user.auth_id, "password-reset", otp),
+      });
+      if (error) return NextResponse.json({ ok: false, error: "Password recovery unavailable." }, { status: 503 });
+      if (!issued) return NextResponse.json({ ok: false, error: "Please wait before requesting another code." }, { status: 429 });
       await sendPasswordResetOtpEmail(
         recoveryEmail,
         otp,
@@ -149,7 +154,12 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const otp = await createOtp(user.auth_id);
+      const otp = generateOtp();
+      const { data: issued, error } = await service.rpc("issue_password_reset_challenge", {
+        p_user: user.auth_id, p_digest: otpDigest(user.auth_id, "password-reset", otp),
+      });
+      if (error) return NextResponse.json({ ok: false, error: "Password recovery unavailable." }, { status: 503 });
+      if (!issued) return NextResponse.json({ ok: false, error: "Please wait before requesting another code." }, { status: 429 });
       await sendPasswordResetOtpEmail(
         user.email,
         otp,

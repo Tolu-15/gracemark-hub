@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
-import { findStudentForActor, getPaystackPublicKey } from "@/lib/financeServer";
+import { findStudentForActor } from "@/lib/financeServer";
 import { isTermCode } from "@/lib/serverContext";
 import {
   createPurchase,
@@ -8,12 +8,13 @@ import {
   getCardState,
   getPublishedTr,
   onlineCardSalesEnabled,
+  recoverPendingPurchases,
 } from "@/lib/scratchCards";
 
 /**
  * POST { session, term }
- * Starts an online purchase: records a pending order and returns the Paystack reference and public
- * key for the checkout popup. The card itself is only created after Paystack confirms the payment
+ * Starts an online purchase: records a pending order and initializes Paystack checkout server-side and returns its
+ * checkout URL. The card itself is only created after Paystack confirms the payment
  * (browser callback, webhook or recovery), never from this request.
  */
 export async function POST(req: NextRequest) {
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { session?: string; term?: string };
+  let body: { session?: string; term?: string; previousReference?: string };
   try {
     body = await req.json();
   } catch {
@@ -46,19 +47,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "The terminal result has not been published yet." }, { status: 409 });
     }
 
+    const pendingReference = await recoverPendingPurchases(service, student.id, enrollment.sessionId, term);
     const existing = await getCardState(service, student.id, enrollment.sessionId, term);
     if (existing && (existing.status === "active" || existing.status === "issued")) {
-      return NextResponse.json({ ok: false, error: "You already have a scratch card for this term." }, { status: 409 });
+      return NextResponse.json({ ok: false, hasCard: true, error: "You already have a scratch card for this term." }, { status: 409 });
+    }
+    if (pendingReference && body.previousReference !== pendingReference) {
+      return NextResponse.json({ ok: false, pendingReference, error: "Check your previous payment before starting another checkout." }, { status: 409 });
     }
 
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ ok: false, error: "A valid email is required for Paystack. Please contact the school to update your account email." }, { status: 422 });
+    }
     const { reference, amount } = await createPurchase(service, { studentId: student.id, sessionId: enrollment.sessionId, termCode: term });
-    return NextResponse.json({
-      ok: true,
-      reference,
-      amountKobo: Math.round(amount * 100),
-      publicKey: await getPaystackPublicKey(service),
-      email: email || "",
+    const response = await fetch("https://api.paystack.co/transaction/initialize", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY?.trim()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, amount: Math.round(amount * 100), currency: "NGN", reference,
+        callback_url: new URL("/student/scratch-card-payment", req.url).toString(),
+        metadata: { purpose: "scratch_card", student_id: student.id, session, term } }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(20000),
     });
+    const checkout = await response.json().catch(() => null);
+    if (!response.ok || !checkout?.status || !checkout.data?.authorization_url) {
+      console.error("Scratch card Paystack initialization failed:", checkout?.message || response.status);
+      return NextResponse.json({ ok: false, error: "Paystack could not start checkout. Please try again or contact the school." }, { status: 502 });
+    }
+    const checkoutUrl = new URL(checkout.data.authorization_url);
+    if (checkoutUrl.protocol !== "https:" || checkoutUrl.hostname !== "checkout.paystack.com") throw new Error("Invalid checkout URL");
+    return NextResponse.json({ ok: true, reference, authorizationUrl: checkoutUrl.toString() });
+
   } catch (err: any) {
     console.error("Scratch card start error:", err);
     return NextResponse.json({ ok: false, error: "Could not start the payment. Please try again." }, { status: 500 });

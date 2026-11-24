@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
@@ -211,13 +212,11 @@ export default function AdminTeachersPage() {
     }
   }, [selectedSession]);
 
-  useEffect(() => {
-    loadInitialData();
-  }, [loadInitialData]);
+  useEffect(() => scheduleInitialLoad(loadInitialData), [loadInitialData]);
 
   useEffect(() => {
     if (selectedSession) {
-      loadAssignments();
+      return scheduleInitialLoad(loadAssignments);
     }
   }, [selectedSession, loadAssignments]);
 

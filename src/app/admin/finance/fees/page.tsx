@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { getAppSettings } from "@/lib/appSettings";
@@ -93,9 +94,7 @@ export default function AdminFinanceFeesPage() {
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => scheduleInitialLoad(loadData), [loadData]);
 
   function handleOpenModal(fee?: FeeStructure) {
     if (fee) {

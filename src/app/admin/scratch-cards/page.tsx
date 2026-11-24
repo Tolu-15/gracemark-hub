@@ -1,7 +1,10 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { PaymentResolutions } from "@/components/shared/SchoolFollowUp";
+
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
+import { getAcademicSessions } from "@/lib/academicSessions";
 import { getAppSettings } from "@/lib/appSettings";
 import { PageLoader } from "@/components/shared/PageLoader";
 
@@ -17,15 +20,18 @@ const fmt = (iso: string | null) =>
 
 interface Card {
   id: string;
-  serial: string;
+  entryId: string;
+  paymentStatus: string;
+  paymentReference: string | null;
+  refunded: number;
+  amount: number;
+  serial: string | null;
   studentName: string;
   admissionNo: string;
   session: string;
   term: string;
-  viewsAllowed: number;
-  viewsUsed: number;
   source: "online" | "offline" | "complimentary";
-  status: "issued" | "active" | "exhausted" | "revoked";
+  status: "issued" | "active" | "revoked" | "unissued";
   amountPaid: number;
   issuedBy: string | null;
   createdAt: string;
@@ -37,6 +43,8 @@ interface RevenueRow {
   offline: number;
   complimentary: number;
   revenue: number;
+  refunded: number;
+  net: number;
 }
 interface Attention {
   reference: string;
@@ -63,9 +71,9 @@ async function api(path: string, init?: RequestInit) {
 }
 
 const STATUS_STYLE: Record<Card["status"], string> = {
+  unissued: "bg-slate-50 text-slate-700",
   issued: "bg-sky-50 text-sky-800 border-sky-200",
   active: "bg-emerald-50 text-emerald-800 border-emerald-200",
-  exhausted: "bg-slate-100 text-slate-600 border-slate-200",
   revoked: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
@@ -75,7 +83,6 @@ export default function AdminScratchCardsPage() {
   const [attention, setAttention] = useState<Attention[]>([]);
   const [canIssue, setCanIssue] = useState(false);
   const [price, setPrice] = useState(1000);
-  const [viewsAllowed, setViewsAllowed] = useState(5);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -91,6 +98,15 @@ export default function AdminScratchCardsPage() {
 
   // Filters
   const [filter, setFilter] = useState<"all" | Card["status"]>("all");
+  const [cardSearch, setCardSearch] = useState("");
+
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [pageSize, setPageSize] = useState(40);
+  const [sessionFilter, setSessionFilter] = useState("");
+  const [termFilter, setTermFilter] = useState("");
+  const [sessions, setSessions] = useState<{ id: string; name: string }[]>([]);
+  const sequence = useRef(0);
 
   const flash = (msg: string) => {
     setToast(msg);
@@ -98,35 +114,41 @@ export default function AdminScratchCardsPage() {
   };
 
   const load = useCallback(async () => {
+    const request = ++sequence.current;
     setError(null);
     try {
-      const { res, json } = await api("/api/admin/scratch-cards");
+      const params = new URLSearchParams({ page: String(page), q: cardSearch, status: filter, session_id: sessionFilter, term: termFilter });
+      const { res, json } = await api("/api/admin/scratch-cards?" + params);
+      if (request !== sequence.current) return;
       if (!res.ok || !json.ok) throw new Error(json.error || "Could not load scratch cards.");
+      setTotal(json.total);
+      setPageSize(json.pageSize);
       setCards(json.cards || []);
       setRevenue(json.revenue || []);
       setAttention(json.needsAttention || []);
       setCanIssue(Boolean(json.canIssue));
       setPrice(json.price || 1000);
-      setViewsAllowed(json.viewsAllowed || 5);
     } catch (e: any) {
-      setError(e.message);
+      if (request === sequence.current) setError(e.message);
     } finally {
-      setLoading(false);
+      if (request === sequence.current) setLoading(false);
     }
-  }, []);
+  }, [page, cardSearch, filter, sessionFilter, termFilter]);
 
   useEffect(() => {
-    load();
-    getAppSettings().then((s) => s?.current_term && setTerm(s.current_term)).catch(() => {});
+    const timer = setTimeout(load, 180);
+    return () => { clearTimeout(timer); sequence.current++; };
   }, [load]);
+
+  useEffect(() => {
+    getAcademicSessions().then(setSessions).catch(() => {});
+    getAppSettings().then((s) => s?.current_term && setTerm(s.current_term)).catch(() => {});
+  }, []);
 
   // Student lookup by name or admission number.
   useEffect(() => {
     const q = search.trim();
-    if (picked || q.length < 2) {
-      setHits([]);
-      return;
-    }
+    if (picked || q.length < 2) return;
     const t = setTimeout(async () => {
       const safe = q.replace(/[%,()]/g, " ");
       const { data } = await supabase
@@ -177,7 +199,24 @@ export default function AdminScratchCardsPage() {
     }
   }
 
-  const shown = useMemo(() => cards.filter((c) => filter === "all" || c.status === filter), [cards, filter]);
+  async function recordRefund(card: Card) {
+    const input = window.prompt("Total already refunded to this payer in naira (including earlier refunds). This records a refund paid outside the portal.", String(card.amountPaid));
+    if (input === null) return;
+    const refunded = Number(input);
+    if (!Number.isFinite(refunded) || refunded <= card.refunded || refunded > card.amountPaid) {
+      setError("Enter a total above the recorded refund and within the amount received.");
+      return;
+    }
+    setBusy(card.entryId);
+    try {
+      const { res, json } = await api("/api/admin/scratch-cards", { method: "PATCH",
+        body: JSON.stringify({ action: "record_refund", entryId: card.entryId, previous: card.refunded, refunded }) });
+      if (!res.ok) throw new Error(json.error || "Could not record refund.");
+      await load();
+      flash("Refund recorded.");
+    } catch (e: any) { setError(e.message); } finally { setBusy(null); }
+  }
+  const shown = cards;
   const totalRevenue = revenue.reduce((sum, r) => sum + r.revenue, 0);
 
   if (loading) return <PageLoader label="Loading scratch cards…" />;
@@ -188,7 +227,7 @@ export default function AdminScratchCardsPage() {
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">Scratch Cards</h2>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Terminal Result cards: {naira(price)} each, {viewsAllowed} views per term, tied to one student (the developer sets the price in Dev Tools). Online sales appear here automatically; cash sales are issued below.
+            Terminal Result cards: {naira(price)} each, unlimited access per term, tied to one student (the developer sets the price in Dev Tools). Online sales appear here automatically; cash sales are issued below.
           </p>
         </div>
 
@@ -202,6 +241,7 @@ export default function AdminScratchCardsPage() {
           </div>
         )}
 
+        <PaymentResolutions />
         {attention.length > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2">
             <h3 className="text-sm font-bold text-amber-900">Needs your attention ({attention.length})</h3>
@@ -218,6 +258,15 @@ export default function AdminScratchCardsPage() {
           </div>
         )}
 
+        {/* Reporting period */}
+        <div className="flex flex-wrap gap-3">
+          <label>Session <select value={sessionFilter} onChange={e => { setSessionFilter(e.target.value); setPage(1); }}>
+            <option value="">All sessions</option>{sessions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select></label>
+          <label>Term <select value={termFilter} onChange={e => { setTermFilter(e.target.value); setPage(1); }}>
+            <option value="">All terms</option>{TERMS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select></label>
+        </div>
         {/* Revenue */}
         <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
@@ -234,12 +283,13 @@ export default function AdminScratchCardsPage() {
                   <th className="px-2 py-2.5 text-center">Offline</th>
                   <th className="px-2 py-2.5 text-center">Free</th>
                   <th className="px-4 py-2.5 text-right">Received</th>
+                  <th className="px-2 text-right">Recorded refunds</th><th className="px-2 text-right">Net received</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {revenue.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
                       No cards sold yet.
                     </td>
                   </tr>
@@ -252,6 +302,7 @@ export default function AdminScratchCardsPage() {
                       <td className="px-2 py-2.5 text-center">{r.offline}</td>
                       <td className="px-2 py-2.5 text-center">{r.complimentary}</td>
                       <td className="px-4 py-2.5 text-right font-bold">{naira(r.revenue)}</td>
+                      <td className="px-2 text-right">{naira(r.refunded)}</td><td className="px-2 text-right">{naira(r.net)}</td>
                     </tr>
                   ))
                 )}
@@ -281,7 +332,7 @@ export default function AdminScratchCardsPage() {
                       className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg text-sm normal-case tracking-normal text-slate-800"
                     />
                   </label>
-                  {hits.length > 0 && (
+                  {!picked && search.trim().length >= 2 && hits.length > 0 && (
                     <ul className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-auto">
                       {hits.map((h) => (
                         <li key={h.id}>
@@ -337,13 +388,16 @@ export default function AdminScratchCardsPage() {
         {/* Cards */}
         <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-bold text-slate-900">All cards ({shown.length})</h3>
-            <select value={filter} onChange={(e) => setFilter(e.target.value as any)} className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold">
+            <h3 className="text-sm font-bold text-slate-900">Card and payment history ({total})</h3>
+            <input type="search" value={cardSearch} onChange={event => { setCardSearch(event.target.value); setPage(1); }}
+              aria-label="Search all payments and cards" placeholder="Name, admission no., serial or reference"
+              className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm sm:w-64" />
+            <select value={filter} onChange={(e) => { setFilter(e.target.value as Card["status"] | "all"); setPage(1); }} className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold">
               <option value="all">All statuses</option>
               <option value="issued">Issued (not yet activated)</option>
               <option value="active">Active</option>
-              <option value="exhausted">Used up</option>
               <option value="revoked">Revoked</option>
+              <option value="unissued">Payment without a card</option>
             </select>
           </div>
           <div className="overflow-x-auto">
@@ -354,7 +408,7 @@ export default function AdminScratchCardsPage() {
                   <th className="px-2 py-2.5">Card</th>
                   <th className="px-2 py-2.5">Term</th>
                   <th className="px-2 py-2.5">Source</th>
-                  <th className="px-2 py-2.5 text-center">Views</th>
+                  <th className="px-2 py-2.5 text-center">Term access</th>
                   <th className="px-2 py-2.5">Status</th>
                   <th className="px-2 py-2.5 text-right">Paid</th>
                   <th className="px-4 py-2.5 text-right">Action</th>
@@ -364,18 +418,19 @@ export default function AdminScratchCardsPage() {
                 {shown.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
-                      No cards to show.
+                      No matching payments or cards.
                     </td>
                   </tr>
                 ) : (
                   shown.map((c) => (
-                    <tr key={c.id}>
+                    <tr key={c.entryId}>
                       <td className="px-4 py-2.5">
                         <div className="font-semibold text-slate-900">{c.studentName}</div>
                         <div className="text-[11px] text-slate-500">{c.admissionNo}</div>
                       </td>
                       <td className="px-2 py-2.5 font-mono text-[11px]">
-                        {c.serial}
+                        {c.serial || "No card issued"}
+                        {c.paymentReference && <div className="break-all">{c.paymentReference}</div>}
                         <div className="text-slate-400 font-sans">{fmt(c.createdAt)}</div>
                       </td>
                       <td className="px-2 py-2.5">
@@ -387,13 +442,16 @@ export default function AdminScratchCardsPage() {
                         {c.issuedBy && <div className="text-[11px] text-slate-400 normal-case">{c.issuedBy}</div>}
                       </td>
                       <td className="px-2 py-2.5 text-center tabular-nums">
-                        {c.viewsUsed}/{c.viewsAllowed}
+                        {c.status === "active" ? "Unlimited" : c.status === "issued" ? "Awaiting PIN" : c.status === "revoked" ? "Revoked" : "No card"}
                       </td>
                       <td className="px-2 py-2.5">
-                        <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase ${STATUS_STYLE[c.status]}`}>{c.status === "exhausted" ? "used up" : c.status}</span>
+                        <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase ${STATUS_STYLE[c.status]}`}>{c.status}</span>
                       </td>
-                      <td className="px-2 py-2.5 text-right tabular-nums">{naira(c.amountPaid)}</td>
+                      <td className="px-2 py-2.5 text-right tabular-nums">{naira(c.amountPaid)}<div>{c.paymentStatus}</div>
+                        {c.amountPaid === 0 && c.amount > 0 && <div>Order {naira(c.amount)}</div>}
+                        {c.refunded > 0 && <div>Refunded {naira(c.refunded)}</div>}</td>
                       <td className="px-4 py-2.5 text-right">
+                        {canIssue && c.amountPaid > c.refunded && <button type="button" disabled={!!busy} onClick={() => recordRefund(c)} className="block px-2 py-1 underline">Record paid refund</button>}
                         {canIssue && (c.status === "issued" || c.status === "active") && (
                           <button
                             type="button"
@@ -411,6 +469,11 @@ export default function AdminScratchCardsPage() {
               </tbody>
             </table>
           </div>
+          <nav aria-label="Payment history pages" className="flex items-center justify-end gap-4 border-t p-3 text-sm">
+            <button disabled={page <= 1} onClick={() => setPage(n => n - 1)}>Previous</button>
+            <span>Page {page} of {Math.max(1, Math.ceil(total / pageSize))}</span>
+            <button disabled={page * pageSize >= total} onClick={() => setPage(n => n + 1)}>Next</button>
+          </nav>
         </div>
       </div>
 
@@ -451,7 +514,7 @@ export default function AdminScratchCardsPage() {
               {issued.studentName} ({issued.admissionNo})
             </div>
             <div className="text-xs">
-              {termLabel(issued.term)} {issued.session} · Terminal Result · {viewsAllowed} views
+              {termLabel(issued.term)} {issued.session} · Terminal Result · Unlimited access
             </div>
             <div className="text-2xl font-mono font-bold tracking-widest py-3">{issued.pin}</div>
             <div className="text-[10px]">Serial {issued.serial} · Log in to the student portal, open Results, and enter this PIN.</div>

@@ -8,7 +8,7 @@ import {
   applySchoolFeePayment,
   verifyPaystackReference,
 } from "@/lib/financeServer";
-import { applyCardPayment, onlineCardSalesEnabled } from "@/lib/scratchCards";
+import { applyCardPayment } from "@/lib/scratchCards";
 
 /**
  * Paystack webhook. Records payments even when the payer closes the tab before the
@@ -18,10 +18,8 @@ import { applyCardPayment, onlineCardSalesEnabled } from "@/lib/scratchCards";
  * switched off is acknowledged and ignored, so Paystack stops retrying and nothing is recorded.
  */
 export async function POST(req: NextRequest) {
-  const secret = process.env.PAYSTACK_SECRET_KEY;
+  const secret = process.env.PAYSTACK_SECRET_KEY?.trim();
   const service = getServiceClient();
-  const cardsOn = service ? await onlineCardSalesEnabled(service) : false;
-  if (!PAYMENTS_ENABLED && !cardsOn) return NextResponse.json({ ok: true, ignored: true });
   if (!secret || !service) return NextResponse.json({ error: "Not configured." }, { status: 503 });
 
   const raw = await req.text();
@@ -45,10 +43,10 @@ export async function POST(req: NextRequest) {
   try {
     // Re-verify with Paystack rather than trusting the payload alone.
     const txn = await verifyPaystackReference(reference);
-    if (!txn) return NextResponse.json({ ok: true, ignored: true });
+    if (!txn) return NextResponse.json({ error: "Payment is not confirmed yet." }, { status: 503 });
 
     if (reference.startsWith(`${REF_PREFIX.card}-`)) {
-      if (cardsOn) await applyCardPayment(service, txn);
+      await applyCardPayment(service, txn);
     } else if (PAYMENTS_ENABLED) {
       if (reference.startsWith(`${REF_PREFIX.fees}-`)) await applySchoolFeePayment(service, txn);
       else if (reference.startsWith(`${REF_PREFIX.admission}-`)) await applyAdmissionPayment(service, txn);

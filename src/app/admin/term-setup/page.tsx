@@ -1,6 +1,8 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useState } from "react";
+import AcademicSessionControls from "@/components/admin/AcademicSessionControls";
 import Link from "next/link";
 import { getAuthHeaders } from "@/lib/supabase/client";
 import { PageLoader } from "@/components/shared/PageLoader";
@@ -33,10 +35,21 @@ function Check({ ok, title, children }: { ok: boolean; title: string; children?:
   );
 }
 
-export default function TermSetupPage() {
+export default function AcademicSetupPage() {
+  const [controlsVersion, refreshControls] = useState(0);
+  const [termVersion, refreshTerm] = useState(0);
+  return <div className="space-y-6">
+    <h1 className="text-xl font-bold">Academic Setup</h1>
+    <div id="session-settings"><AcademicSessionControls key={controlsVersion} onChange={() => refreshTerm(n => n + 1)} /></div>
+    <TermSetupPage key={termVersion} onChange={() => refreshControls(n => n + 1)} />
+  </div>;
+}
+
+function TermSetupPage({ onChange }: { onChange: () => void }) {
   const [data, setData] = useState<Setup | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState("120");
+  const [currentDays, setCurrentDays] = useState("");
   const [begins, setBegins] = useState("");
   const [ack, setAck] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -48,20 +61,36 @@ export default function TermSetupPage() {
     setError(null);
     setData(json);
     const finishing = (json.terms as Setup["terms"]).find((t) => t.term === json.term);
+    setCurrentDays(String(finishing?.schoolDays ?? ""));
     if (finishing?.nextTermBegins) setBegins(finishing.nextTermBegins);
     const upcoming = (json.terms as Setup["terms"]).find((t) => t.term === json.next?.term);
     if (upcoming?.schoolDays) setDays(String(upcoming.schoolDays));
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => scheduleInitialLoad(load), [load]);
 
   if (!data && !error) return <PageLoader label="Checking the term…" />;
   if (!data) return <div className="max-w-3xl mx-auto p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">{error}</div>;
 
   const open = data.scores.draft + data.scores.submitted + data.scores.returned;
   const lastTerm = !data.next;
+
+  async function saveCurrentDays(event: React.FormEvent) {
+    event.preventDefault();
+    if (!data || busy) return;
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    try {
+      const { res, json } = await api("/api/admin/term-setup", { method: "PATCH",
+        body: JSON.stringify({ session: data.session, term: data.term, school_days: Number(currentDays) }) });
+      if (!res.ok) throw new Error(json.error || "Could not save school days.");
+      await load();
+      setDone(`School days opened for ${data.termLabel} saved as ${currentDays}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save school days.");
+    } finally { setBusy(false); }
+  }
 
   async function advance() {
     if (!data?.next) return;
@@ -73,6 +102,7 @@ export default function TermSetupPage() {
       if (!res.ok || !json.ok) throw new Error(json.error || "Could not move to the next term.");
       setDone(`The school is now in ${json.label}.`);
       setAck(false);
+      onChange();
       await load();
     } catch (e: any) {
       setError(e.message);
@@ -90,6 +120,16 @@ export default function TermSetupPage() {
           {lastTerm ? "This is the last term. Finish the year with the steps below." : `Check the list, set the dates, then move to ${data.next!.label}.`}
         </p>
       </div>
+
+      <form onSubmit={saveCurrentDays} className="rounded-2xl border bg-white p-5">
+        <label htmlFor="current-school-days" className="block text-sm font-bold">School days opened</label>
+        <p className="my-2 text-sm text-slate-600">{data.termLabel}, {data.session} · Applies to every class this term.</p>
+        <div className="flex items-center gap-3">
+          <input id="current-school-days" type="number" required min={1} max={250} step={1} value={currentDays}
+            onChange={e => setCurrentDays(e.target.value)} className="w-24 rounded-lg border px-3 py-2" />
+          <button type="submit" disabled={busy} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50">Save school days</button>
+        </div>
+      </form>
 
       {done && <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">{done}</div>}
       {error && <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">{error}</div>}
@@ -124,7 +164,7 @@ export default function TermSetupPage() {
               Publish every class&rsquo;s Terminal Result (<Link href="/admin/approvals" className="underline font-semibold">Approvals</Link>).
             </li>
             <li>
-              Create the new session on the <Link href="/admin/dashboard" className="underline font-semibold">Dashboard</Link> and make it current.
+              Create the new session in <Link href="#session-settings" className="underline font-semibold">Academic Setup</Link> and make it current.
             </li>
             <li>
               Move students up with <Link href="/admin/promotions" className="underline font-semibold">Class Promotions</Link>.
@@ -152,7 +192,7 @@ export default function TermSetupPage() {
           <ul className="text-xs text-slate-600 list-disc pl-5 space-y-1">
             <li>The current term becomes <strong>{data.next!.label}</strong> everywhere (score entry, attendance, dashboards).</li>
             <li>
-              <strong>{data.termLabel}</strong> is locked for teachers. Admins can unlock it later from the Dashboard if a correction is needed.
+              <strong>{data.termLabel}</strong> is locked for teachers. Admins can unlock it later in Academic Setup if a correction is needed.
             </li>
             <li>The resumption date and school days above are saved.</li>
           </ul>

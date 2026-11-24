@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import { enqueue, isNetworkFailure } from "@/lib/offlineQueue";
@@ -23,6 +24,7 @@ export default function TeacherAttendancePage() {
   // Term and session state
   const [currentSession, setCurrentSession] = useState("2026/2027");
   const [currentTerm, setCurrentTerm] = useState("term2");
+  const [managedDays, setManagedDays] = useState<number | null>(null);
   const [defaultTimesOpened, setDefaultTimesOpened] = useState(120);
 
   // Daily mode state
@@ -126,6 +128,7 @@ export default function TeacherAttendancePage() {
       const data = await res.json();
       // A newer loadAttendance() call (class/date changed again) already took over.
       if (loadSeqRef.current !== seq) return;
+      setManagedDays(data.managedDays ?? null);
       if (data.students && data.students.length > 0) {
         const serverOpened = Number(data.students[0]?.timesOpened) || 120;
         setDefaultTimesOpened(serverOpened);
@@ -154,15 +157,11 @@ export default function TeacherAttendancePage() {
     } finally {
       if (loadSeqRef.current === seq) setLoading(false);
     }
-  }, [selectedClass, selectedDate, currentTerm, currentSession, defaultTimesOpened]);
+  }, [selectedClass, selectedDate, currentTerm, currentSession]);
 
-  useEffect(() => {
-    loadClasses();
-  }, [loadClasses]);
+  useEffect(() => scheduleInitialLoad(loadClasses), [loadClasses]);
 
-  useEffect(() => {
-    loadAttendance();
-  }, [loadAttendance]);
+  useEffect(() => scheduleInitialLoad(loadAttendance), [loadAttendance]);
 
   // Daily Mode: Mark all present or reset
   function handleMarkAllDaily(present: boolean) {
@@ -465,13 +464,14 @@ export default function TeacherAttendancePage() {
                 <input
                   type="number"
                   min="1"
-                  max="200"
+                  max="250"
+                  readOnly={managedDays !== null}
                   value={defaultTimesOpened}
                   onChange={(e) => handleSetClassTimesOpened(Number(e.target.value))}
                   className="w-24 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
                 />
                 <span className="text-[11px] text-slate-500 font-medium">
-                  days per term
+                  {managedDays === null ? "days per term" : "Set in Academic Setup"}
                 </span>
               </div>
             </div>
@@ -638,7 +638,8 @@ export default function TeacherAttendancePage() {
                             <input
                               type="number"
                               min="0"
-                              max="200"
+                              max="250"
+                              readOnly={managedDays !== null}
                               value={s.timesOpened}
                               onChange={(e) => {
                                 const updated = [...students];

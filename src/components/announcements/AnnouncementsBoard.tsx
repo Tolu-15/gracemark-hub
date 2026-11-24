@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { getAuthHeaders } from "@/lib/supabase/client";
 import { getAcademicSessions } from "@/lib/academicSessions";
@@ -95,9 +96,7 @@ export default function AnnouncementsBoard({ role }: { role: Role }) {
     }
   }, [session, term]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => scheduleInitialLoad(load), [load]);
 
   // Opening the board clears the unread badge (only for the current session).
   useEffect(() => {

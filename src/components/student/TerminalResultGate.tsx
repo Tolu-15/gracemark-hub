@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import Script from "next/script";
+import Link from "next/link";
 import { getAuthHeaders } from "@/lib/supabase/client";
 
 export interface TrCardInfo {
@@ -19,6 +19,7 @@ export interface TrInfo {
   price?: number;
   viewsAllowed?: number;
   onlineEnabled?: boolean;
+  pendingReference?: string;
 }
 
 interface Props {
@@ -52,10 +53,10 @@ async function post(path: string, body: unknown) {
 export default function TerminalResultGate({ session, term, termLabel, studentName, tr, onOpened, onRefresh }: Props) {
   const card = tr.card || null;
   const price = tr.price ?? 1000;
+  const [paymentRef, setPaymentRef] = useState("");
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState<"redeem" | "pay" | "view" | null>(null);
   const [message, setMessage] = useState<{ kind: "error" | "info"; text: string } | null>(null);
-  const [confirming, setConfirming] = useState(false);
 
   async function redeem() {
     setBusy("redeem");
@@ -77,15 +78,13 @@ export default function TerminalResultGate({ session, term, termLabel, studentNa
     setBusy("view");
     setMessage(null);
     try {
-      const { res, json } = await post("/api/student/scratch-card/view", { session, term, confirm: true });
+      const { res, json } = await post("/api/student/scratch-card/view", { session, term });
       if (!res.ok || !json.ok) {
         if (json.needsCard) onRefresh();
-        throw new Error(json.error || "Could not open the result. You were not charged.");
+        throw new Error(json.error || "Could not open the result. Please try again.");
       }
-      setConfirming(false);
       onOpened(json.report, json.card);
     } catch (e: any) {
-      setConfirming(false);
       setMessage({ kind: "error", text: e.message });
     } finally {
       setBusy(null);
@@ -96,45 +95,15 @@ export default function TerminalResultGate({ session, term, termLabel, studentNa
     setBusy("pay");
     setMessage(null);
     try {
-      if (typeof window === "undefined" || !(window as any).PaystackPop) {
-        throw new Error("The payment window is still loading. Please try again in a few seconds.");
+      const { res, json } = await post("/api/student/scratch-card/start", { session, term, previousReference: tr.pendingReference });
+      if (json.hasCard || json.pendingReference) {
+        onRefresh();
+        setBusy(null);
+        return;
       }
-      const { res, json } = await post("/api/student/scratch-card/start", { session, term });
       if (!res.ok || !json.ok) throw new Error(json.error || "Could not start the payment.");
-      if (!json.publicKey || !json.email) throw new Error("Online payment is not set up for this account. Please buy from the school office.");
-
-      const handler = (window as any).PaystackPop.setup({
-        key: json.publicKey,
-        email: json.email,
-        amount: json.amountKobo,
-        currency: "NGN",
-        ref: json.reference,
-        metadata: { purpose: "scratch_card", term, session },
-        callback: (response: any) => {
-          setMessage({ kind: "info", text: "Payment received. Confirming with the bank…" });
-          post("/api/student/scratch-card/verify", { reference: response.reference })
-            .then(({ res: vRes, json: vJson }) => {
-              if (!vRes.ok || !vJson.ok) {
-                setMessage({
-                  kind: "info",
-                  text: `We could not confirm this payment yet (${vJson.error || "please wait"}). If you were charged, your card will appear on this page shortly. Reference: ${response.reference}`,
-                });
-              } else {
-                setMessage({ kind: "info", text: "Payment confirmed. Your card is ready." });
-              }
-              onRefresh();
-            })
-            .catch(() => {
-              setMessage({ kind: "info", text: `Payment received but not yet confirmed. Reload this page in a minute. Reference: ${response.reference}` });
-            })
-            .finally(() => setBusy(null));
-        },
-        onClose: () => {
-          setBusy(null);
-          onRefresh();
-        },
-      });
-      handler.openIframe();
+      if (!json.authorizationUrl) throw new Error("Paystack did not return a checkout link.");
+      window.location.assign(json.authorizationUrl);
     } catch (e: any) {
       setMessage({ kind: "error", text: e.message });
       setBusy(null);
@@ -179,11 +148,11 @@ export default function TerminalResultGate({ session, term, termLabel, studentNa
 
   return (
     <div className="max-w-xl mx-auto rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 space-y-5 shadow-xs">
-      <Script src="https://js.paystack.co/v1/inline.js" strategy="lazyOnload" />
       {heading}
 
       {message && (
         <div
+          role={message.kind === "error" ? "alert" : "status"}
           className={`p-3 rounded-xl border text-xs font-semibold ${
             message.kind === "error" ? "bg-rose-50 border-rose-200 text-rose-700" : "bg-emerald-50 border-emerald-200 text-emerald-800"
           }`}
@@ -192,14 +161,14 @@ export default function TerminalResultGate({ session, term, termLabel, studentNa
         </div>
       )}
 
-      {card?.status === "active" ? (
+      {card?.status === "active" || card?.status === "exhausted" ? (
         <div className="space-y-3">
           <p className="text-sm text-slate-700">
-            You have <strong>{card.viewsLeft}</strong> of <strong>{card.viewsAllowed}</strong> views left on your scratch card for this term.
+            Your scratch card gives unlimited access to this term’s result, including printing.
           </p>
           <button
             type="button"
-            onClick={() => setConfirming(true)}
+            onClick={openResult}
             disabled={!!busy}
             className="w-full px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold disabled:opacity-40 cursor-pointer"
           >
@@ -208,15 +177,11 @@ export default function TerminalResultGate({ session, term, termLabel, studentNa
         </div>
       ) : (
         <div className="space-y-5">
-          {card?.status === "exhausted" ? (
-            <p className="text-sm text-slate-700">
-              All <strong>{card.viewsAllowed}</strong> views on your scratch card for this term have been used. To see this result again you need a new card.
-            </p>
-          ) : card?.status === "issued" ? (
+          {card?.status === "issued" ? (
             <p className="text-sm text-slate-700">The school has issued you a scratch card for this term. Enter its PIN to activate it.</p>
           ) : (
             <p className="text-sm text-slate-700">
-              The terminal result is ready. A scratch card ({naira(price)}) lets you view it up to {tr.viewsAllowed ?? 5} times this term, and print it.
+              The terminal result is ready. A scratch card ({naira(price)}) gives unlimited viewing and printing for this term.
             </p>
           )}
 
@@ -225,8 +190,26 @@ export default function TerminalResultGate({ session, term, termLabel, studentNa
           ) : (
             <>
               <div className="space-y-2">
-                <p className="text-xs font-bold text-slate-700">Get a scratch card</p>
-                {tr.onlineEnabled && (
+                {tr.pendingReference && (
+                  <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <h4 className="font-bold text-slate-900">Check your last payment</h4>
+                    <p className="text-sm text-slate-700">You started a checkout for this term. If you paid, check its status before paying again.</p>
+                    <p className="break-all font-mono text-xs">{tr.pendingReference}</p>
+                    <Link className="inline-block rounded bg-slate-900 px-4 py-2 text-sm font-bold text-white"
+                      href={"/student/scratch-card-payment?reference=" + encodeURIComponent(tr.pendingReference)}>
+                      Check payment status
+                    </Link>
+                  </div>
+                )}
+                {tr.onlineEnabled && (tr.pendingReference ? (
+                  <details className="text-sm">
+                    <summary className="cursor-pointer font-semibold">Left checkout before paying?</summary>
+                    <button type="button" onClick={payOnline} disabled={!!busy}
+                      className="mt-2 rounded-lg border px-4 py-2 font-semibold disabled:opacity-40">
+                      {busy === "pay" ? "Opening checkout…" : `Start a new ${naira(price)} checkout`}
+                    </button>
+                  </details>
+                ) : (
                   <button
                     type="button"
                     onClick={payOnline}
@@ -235,43 +218,31 @@ export default function TerminalResultGate({ session, term, termLabel, studentNa
                   >
                     {busy === "pay" ? "Opening payment…" : `Pay ${naira(price)} online`}
                   </button>
-                )}
+                ))}
                 <p className="text-xs text-slate-500">
                   {tr.onlineEnabled ? "Or buy" : "Buy"} a card from the school office: pay {naira(price)}, collect your PIN, then enter it below.
                 </p>
               </div>
+              <details className="text-sm text-slate-700">
+                <summary className="cursor-pointer font-semibold">{tr.pendingReference ? "Check a different reference" : "Already paid online?"}</summary>
+                <form className="mt-3 space-y-2" onSubmit={(event) => {
+                  event.preventDefault();
+                  const reference = paymentRef.trim();
+                  if (reference) window.location.assign("/student/scratch-card-payment?reference=" + encodeURIComponent(reference));
+                }}>
+                  <label className="block" htmlFor="payment-reference">Paystack payment reference</label>
+                  <input id="payment-reference" required value={paymentRef} onChange={event => setPaymentRef(event.target.value)}
+                    className="w-full rounded-lg border px-3 py-2" />
+                  <button className="font-semibold underline" type="submit">Check payment status</button>
+                </form>
+              </details>
               {pinBox}
             </>
           )}
         </div>
       )}
 
-      {confirming && card && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 border border-slate-200 space-y-3">
-            <h4 className="font-bold text-slate-900">Use 1 view to open this result?</h4>
-            <p className="text-sm text-slate-600">
-              You have <strong>{card.viewsLeft}</strong> of {card.viewsAllowed} views left. Opening the result uses 1 view.
-            </p>
-            <p className="text-xs text-slate-500">
-              Printing from the open result is free. If you leave or refresh this page, opening the result again uses another view.
-            </p>
-            <div className="flex justify-end gap-2 pt-1">
-              <button type="button" onClick={() => setConfirming(false)} disabled={busy === "view"} className="px-4 py-2 text-xs font-semibold text-slate-600 cursor-pointer">
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={openResult}
-                disabled={busy === "view"}
-                className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg disabled:opacity-40 cursor-pointer"
-              >
-                {busy === "view" ? "Opening…" : "Use 1 view and open"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

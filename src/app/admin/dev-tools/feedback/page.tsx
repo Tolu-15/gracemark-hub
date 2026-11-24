@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import { useCallback, useEffect, useState } from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
 import { getAuthHeaders } from "@/lib/supabase/client";
@@ -38,7 +39,7 @@ export default function DeveloperFeedbackPage() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => scheduleInitialLoad(load), [load]);
 
   async function updateStatus(id: string, status: FeedbackItem["status"]) {
     setUpdating(id);

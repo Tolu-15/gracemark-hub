@@ -2,13 +2,13 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import PoweredBy from "@/components/shared/PoweredBy";
 import { markLoginPromptsPending } from "@/lib/loginPrompts";
 
 export default function OtpVerifyPage() {
   const router = useRouter();
-  const [authId, setAuthId] = useState<string | null>(null);
+  const started = useRef(false);
   const [emailHint, setEmailHint] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(true);
@@ -26,12 +26,12 @@ export default function OtpVerifyPage() {
         router.replace("/");
         return;
       }
-      setAuthId(user.id);
+
       setLoading(false);
       // Auto-send OTP on mount
-      await requestOtp(user.id);
+      await requestOtp();
     }
-    init();
+    if (!started.current) { started.current = true; void init(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -42,14 +42,14 @@ export default function OtpVerifyPage() {
     return () => clearTimeout(t);
   }, [countdown]);
 
-  async function requestOtp(id: string) {
+  async function requestOtp() {
     setSending(true);
     setError("");
     try {
       const res = await fetch("/api/auth/request-otp", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ auth_id: id }),
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send code.");
@@ -99,14 +99,16 @@ export default function OtpVerifyPage() {
     try {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ auth_id: authId, otp: code }),
+        headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
+        body: JSON.stringify({ otp: code }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Invalid code.");
       setSuccess(true);
       markLoginPromptsPending();
-      setTimeout(() => router.replace("/admin/dashboard"), 1200);
+      const { data: { user } } = await supabase.auth.getUser();
+      const profile = user && await supabase.from("users").select("must_change_password").eq("auth_id", user.id).maybeSingle();
+      router.replace(profile?.data?.must_change_password ? "/change-password" : "/admin/dashboard");
     } catch (err: any) {
       setError(err.message || "Verification failed.");
       setOtp(["", "", "", "", "", ""]);
@@ -212,7 +214,7 @@ export default function OtpVerifyPage() {
                   <button
                     type="button"
                     disabled={sending}
-                    onClick={() => authId && requestOtp(authId)}
+                    onClick={() => requestOtp()}
                     className="text-xs text-amber-400 hover:text-amber-300 underline cursor-pointer disabled:opacity-50"
                   >
                     {sending ? "Sending…" : "Resend verification code"}

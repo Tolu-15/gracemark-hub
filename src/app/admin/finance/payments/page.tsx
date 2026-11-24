@@ -1,5 +1,7 @@
 "use client";
+import { PaymentResolutions } from "@/components/shared/SchoolFollowUp";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useState, useEffect, useCallback } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import { getAcademicSessions } from "@/lib/academicSessions";
@@ -49,7 +51,7 @@ export default function AdminFinancePaymentsPage() {
     notes: "",
   });
   const [saving, setSaving] = useState(false);
-  const pendingPayment = React.useRef<{ body: string; key: string } | null>(null);
+
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -103,9 +105,7 @@ export default function AdminFinancePaymentsPage() {
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => scheduleInitialLoad(loadData), [loadData]);
 
   async function handleRecordPayment(e: React.FormEvent) {
     e.preventDefault();
@@ -118,18 +118,22 @@ export default function AdminFinancePaymentsPage() {
     try {
       const body = JSON.stringify({ student_id: formData.student_id, amount: Number(formData.amount),
         method: formData.payment_gateway, notes: formData.notes });
-      if (pendingPayment.current?.body !== body) {
-        pendingPayment.current = { body, key: crypto.randomUUID() };
-      }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sign in again before recording a payment.");
+      const fingerprint = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body));
+      const digest = Array.from(new Uint8Array(fingerprint), byte => byte.toString(16).padStart(2, "0")).join("");
+      const storageKey = `manual-payment:${session.user.id}:${digest}`;
+      const requestKey = sessionStorage.getItem(storageKey) || crypto.randomUUID();
+      sessionStorage.setItem(storageKey, requestKey);
       // The server finds/creates the invoice, records the payment and applies the fee-lock policy.
       const res = await fetch("/api/admin/finance/manual-payment", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Idempotency-Key": pendingPayment.current.key, ...(await getAuthHeaders()) },
+        headers: { "Content-Type": "application/json", "Idempotency-Key": requestKey, ...(await getAuthHeaders()) },
         body,
       });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || "Could not record payment.");
-      pendingPayment.current = null;
+      sessionStorage.removeItem(storageKey);
 
       setIsModalOpen(false);
       setFormData({ student_id: "", amount: "", payment_gateway: "cash", notes: "" });
@@ -184,6 +188,7 @@ export default function AdminFinancePaymentsPage() {
         </div>
       </div>
 
+      <PaymentResolutions />
       {/* Filter Bar & Total Badge */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-1">

@@ -8,6 +8,7 @@ import { PAYMENTS_ENABLED } from "@/lib/features";
 import { useAnnouncementBadge, badgeText } from "@/components/announcements/useAnnouncementBadge";
 
 const studentNavItems: NavItem[] = [
+  
   {
     label: "Results Dashboard",
     href: "/student/dashboard",
@@ -50,15 +51,15 @@ const studentNavItems: NavItem[] = [
       </svg>
     ),
   },
-  {
-    label: "Performance Summary",
-    href: "/student/summary-notavailable",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16l4-4 3 3 5-6M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z" />
-      </svg>
-    ),
-  },
+  // {
+  //   label: "Performance Summary",
+  //   href: "/student/summary-notavailable",
+  //   icon: (
+  //     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  //       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16l4-4 3 3 5-6M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z" />
+  //     </svg>
+  //   ),
+  // },
   {
     label: "My Badges",
     href: "/student/badges",
@@ -73,6 +74,8 @@ const studentNavItems: NavItem[] = [
       </svg>
     ),
   },
+  { label: "Payment resolutions", href: "/student/payment-resolutions" },
+  { label: "Result corrections", href: "/student/corrections" },
   {
     label: "Bio Profile",
     href: "/student/profile",

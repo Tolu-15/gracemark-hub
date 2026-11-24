@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor, requireTeacherAssignment } from "@/lib/apiAuth";
 import { MIGRATION_HINT } from "@/lib/subjectGroups";
 import { resolveSession } from "@/lib/serverContext";
-import { isTermEditable } from "@/lib/termPermissions";
 
 /** GET ?subject_id=&session=&student_ids=a,b,c → { studentIds: [...] } marked "Not offering". */
 export async function GET(req: NextRequest) {
@@ -76,52 +75,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "This student is not in the selected class." }, { status: 403 });
   }
 
-  if (not_offering) {
-    // Scores already entered for this subject in the session are removed,
-    // unless a milestone containing them has been published.
-    const { data: existing, error: exErr } = await service
-      .from("results")
-      .select("id, term, pr1_status, pr2_status, pr3_status, tr_status")
-      .eq("student_id", student_id)
-      .eq("subject_id", subject_id)
-      .eq("session", session);
-    if (exErr) return NextResponse.json({ ok: false, error: exErr.message }, { status: 500 });
-
-    const published = (existing || []).some((r: any) =>
-      [r.pr1_status, r.pr2_status, r.pr3_status, r.tr_status].includes("published")
-    );
-    if (published) {
-      return NextResponse.json(
-        { ok: false, error: "This student's result for this subject has already been published. Ask the admin to recall it first." },
-        { status: 409 }
-      );
-    }
-    if (existing?.length) {
-      for (const term of new Set(existing.map(r => r.term))) {
-        if (!(await isTermEditable(session, term, service, settings.current_term, settings.current_session))) {
-          return NextResponse.json({ error: "This change would remove scores from a locked term." }, { status: 409 });
-        }
-      }
-      const { error: delErr } = await service.from("results").delete().in("id", existing.map((r: any) => r.id));
-      if (delErr) return NextResponse.json({ ok: false, error: delErr.message }, { status: 500 });
-    }
-
-    const { error } = await service
-      .from("student_subject_optouts")
-      .upsert(
-        { student_id, subject_id, session, created_by: actor.dbUserId || null },
-        { onConflict: "student_id,subject_id,session" }
-      );
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  } else {
-    const { error } = await service
-      .from("student_subject_optouts")
-      .delete()
-      .eq("student_id", student_id)
-      .eq("subject_id", subject_id)
-      .eq("session", session);
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  }
-
+  const { error } = await service.rpc("set_subject_optout", {
+    p_student: student_id, p_subject: subject_id, p_class: class_id,
+    p_session: session, p_drop: not_offering, p_actor: actor.dbUserId || null,
+  });
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 409 });
   return NextResponse.json({ ok: true });
 }

@@ -51,9 +51,9 @@ export async function POST(req: NextRequest) {
     await service.from("scratch_card_failures").insert({ student_id: student.id, auth_id: authId });
     return NextResponse.json({ ok: false, error: "That PIN is not valid for this student." }, { status: 400 });
   }
-  if (card.status === "active") return NextResponse.json({ ok: true, alreadyActive: true, term: card.term_code });
+  if (card.status === "active" || card.status === "exhausted") return NextResponse.json({ ok: true, alreadyActive: true, term: card.term_code });
   if (card.status !== "issued") {
-    return NextResponse.json({ ok: false, error: "This card has already been used up or cancelled." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "This card is no longer valid. Please contact the school." }, { status: 400 });
   }
 
   const { data: activated } = await service

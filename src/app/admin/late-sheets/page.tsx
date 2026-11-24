@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/supabase/client";
 import { PageLoader } from "@/components/shared/PageLoader";
@@ -59,15 +60,13 @@ export default function AdminLateSheetsPage() {
   const [results, setResults] = useState<{ name: string; status: string; detail: string }[]>([]);
 
   const load = useCallback(async () => {
-    const { res, json } = await api("/api/admin/late-sheets");
+    const { res, json } = await api("/api/admin/late-sheets" + window.location.search);
     if (!res.ok || !json.ok) return setError(json.error || "Could not load score sheets.");
     setError(null);
     setReport(json);
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => scheduleInitialLoad(load), [load]);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -83,7 +82,7 @@ export default function AdminLateSheetsPage() {
     setBusy(true);
     setResults([]);
     try {
-      const { res, json } = await api("/api/admin/late-sheets", { method: "POST", body: JSON.stringify({ teacher_ids: Array.from(selected), note }) });
+      const { res, json } = await api("/api/admin/late-sheets" + window.location.search, { method: "POST", body: JSON.stringify({ teacher_ids: Array.from(selected), note }) });
       if (!res.ok || !json.ok) throw new Error(json.error || "Could not send reminders.");
       setResults(json.results);
       setSelected(new Set());
@@ -104,6 +103,7 @@ export default function AdminLateSheetsPage() {
     <div className="space-y-5 max-w-5xl mx-auto">
       <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
         <h2 className="text-xl font-bold text-slate-900 tracking-tight">Late Score Sheets</h2>
+        {report && <a href={"/admin/approvals" + window.location.search} className="text-sm underline">Return to result approvals</a>}
         <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
           Teachers with score sheets that are not fully submitted
           {report ? ` for ${TERM_LABEL[report.term] || report.term}, ${report.session}` : ""}. A sheet is one subject in one class; it is complete when every student&rsquo;s scores are submitted or approved.

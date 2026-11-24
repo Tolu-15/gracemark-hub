@@ -65,10 +65,14 @@ export default function AdminHistoricalResultsPage() {
       ]);
       const names = (sessList || []).map((s: { name: string }) => s.name);
       setSessions(names);
-      setBsSession(settings?.current_session || names[0] || "");
-      if (settings?.current_term) setBsPeriod(settings.current_term as Period);
+      const params = new URLSearchParams(window.location.search);
+      const wantedSession = params.get("session") || "";
+      setBsSession(names.includes(wantedSession) ? wantedSession : settings?.current_session || names[0] || "");
+      const period = params.get("term");
+      setBsPeriod(period === "term1" || period === "term2" || period === "term3" ? period : (settings?.current_term as Period) || "term1");
+      if (params.get("view") === "broadsheet") setTab("class-broadsheet");
       setClasses(cls.data || []);
-      if (cls.data?.length) setBsClass(cls.data[0].id);
+      if (cls.data?.length) setBsClass(cls.data.find(c => c.id === params.get("class"))?.id || cls.data[0].id);
     })();
   }, []);
 

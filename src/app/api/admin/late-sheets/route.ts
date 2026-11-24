@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   const { service } = authorization.actor;
 
   try {
-    const report = await computeLateSheets(service);
+    const report = await computeLateSheets(service, req.nextUrl.searchParams);
     const reminded = await lastReminders(service, report.teachers.map((t) => t.userId));
     return NextResponse.json({
       ok: true,
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
   if (!ids.length) return NextResponse.json({ ok: false, error: "Select at least one teacher." }, { status: 400 });
   if (ids.length > MAX_TEACHERS) return NextResponse.json({ ok: false, error: `Remind at most ${MAX_TEACHERS} teachers at a time.` }, { status: 400 });
 
-  const report = await computeLateSheets(service);
+  const report = await computeLateSheets(service, req.nextUrl.searchParams);
   const reminded = await lastReminders(service, ids);
   const termLabel = TERM_LABEL[report.term] || report.term;
   const emailOn = isEmailConfigured();

@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Script from "next/script";
@@ -64,11 +65,7 @@ function FormContent() {
   }>(null);
 
   useEffect(() => {
-    if (!formId) {
-      setErrorMsg("No form ID provided in the URL.");
-      setLoading(false);
-      return;
-    }
+    if (!formId) return;
 
     const loadFormData = async () => {
       setLoading(true);
@@ -100,7 +97,7 @@ function FormContent() {
       }
     };
 
-    loadFormData();
+    return scheduleInitialLoad(loadFormData);
   }, [formId]);
 
   const handleCustomChange = (key: string, val: string) => {
@@ -219,7 +216,7 @@ function FormContent() {
     }
   };
 
-  if (loading) {
+  if (formId && loading) {
     return (
       <div className="text-center py-16">
         <div className="inline-block w-8 h-8 border-4 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
@@ -228,7 +225,7 @@ function FormContent() {
     );
   }
 
-  if (errorMsg || !currentForm) {
+  if (!formId || errorMsg || !currentForm) {
     return (
       <div className="text-center py-12">
         <div className="w-12 h-12 bg-red-950/60 border border-red-800 text-red-400 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -237,7 +234,7 @@ function FormContent() {
           </svg>
         </div>
         <h3 className="text-lg font-bold text-red-300">Form Not Available</h3>
-        <p className="text-xs text-slate-400 mt-1">{errorMsg || "This form link may be invalid or expired."}</p>
+        <p className="text-xs text-slate-400 mt-1">{!formId ? "No form ID provided in the URL." : errorMsg || "This form link may be invalid or expired."}</p>
         <Link
           href="/"
           className="inline-block mt-5 px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition"

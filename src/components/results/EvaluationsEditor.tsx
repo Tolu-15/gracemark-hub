@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/supabase/client";
 import { PERSONAL_SKILLS } from "@/lib/gradingEngine";
@@ -40,8 +41,11 @@ export default function EvaluationsEditor({
   initialTerm: string;
   isAdmin: boolean;
 }) {
-  const [classId, setClassId] = useState(classes[0]?.id || "");
-  const [term, setTerm] = useState(initialTerm || "term1");
+  const [classChoice, setClassId] = useState("");
+  const classId = classChoice || classes[0]?.id || "";
+  const [termChoice, setTermChoice] = useState({ initialTerm, value: initialTerm || "term1" });
+  const term = termChoice.initialTerm === initialTerm ? termChoice.value : (initialTerm || "term1");
+  const setTerm = (value: string) => setTermChoice({ initialTerm, value });
   const [rows, setRows] = useState<Row[]>([]);
   const [session, setSession] = useState("");
   const [loading, setLoading] = useState(false);
@@ -52,13 +56,7 @@ export default function EvaluationsEditor({
   // resolve after a newer one and overwrite the screen with stale data.
   const loadSeqRef = React.useRef(0);
 
-  useEffect(() => {
-    if (!classId && classes[0]) setClassId(classes[0].id);
-  }, [classes, classId]);
 
-  useEffect(() => {
-    if (initialTerm) setTerm(initialTerm);
-  }, [initialTerm]);
 
   const load = useCallback(async () => {
     if (!classId) return;
@@ -83,9 +81,7 @@ export default function EvaluationsEditor({
     }
   }, [classId, term]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => scheduleInitialLoad(load), [load]);
 
   function update(index: number, patch: Partial<Row>) {
     setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));

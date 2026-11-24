@@ -1,11 +1,13 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/supabase/client";
 import { PageLoader, InlineSpinner } from "@/components/shared/PageLoader";
 import { printWithTitle } from "@/lib/printTitle";
 import TerminalResultGate, { type TrInfo } from "@/components/student/TerminalResultGate";
 import PerformanceSummary from "@/components/student/PerformanceSummary";
+import { useRefreshOpenReport } from "@/components/student/useRefreshOpenReport";
 import { getOpenedTr, openedTrKey, rememberOpenedTr } from "@/lib/openedTrCache";
 import type { Milestone, StudentReport } from "@/lib/reportBuilder";
 
@@ -71,12 +73,16 @@ export default function StudentSummaryPage() {
     }
   }, [session, term]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => scheduleInitialLoad(load), [load]);
+
+  const key = openedTrKey(data?.student.id, session, term);
+  const opened = data?.tr?.published && data.session === session && data.term === term && !error
+    ? getOpenedTr(key, data.tr.card) : null;
+  useRefreshOpenReport(tab === "TR" && !!opened, load);
+  if (loading && tab === "TR") return <PageLoader label="Checking result access." />;
 
   if (loading && !data) return <PageLoader label="Loading your summary…" />;
-  if (!data) {
+  if (!data || error) {
     return (
       <div className="max-w-xl mx-auto p-6 rounded-2xl border border-rose-200 bg-rose-50 text-center">
         <p className="text-sm font-semibold text-rose-700">{error || "Could not load your results."}</p>
@@ -90,8 +96,6 @@ export default function StudentSummaryPage() {
   const trPublished = Boolean(data.tr?.published);
   const available = TABS.filter((t) => data.reports[t.key] || (t.key === "TR" && trPublished));
   const termLabel = TERMS.find((t) => t.value === term)?.label || "";
-  const key = openedTrKey(data.student.id, data.session, data.term);
-  const opened = getOpenedTr(key);
 
   // What this student may see right now: progress reports always; the Terminal Result only once opened.
   const reports: Partial<Record<Milestone, StudentReport | null>> = { ...data.reports, TR: opened ? (opened.report as StudentReport) : null };
@@ -177,7 +181,7 @@ export default function StudentSummaryPage() {
           {tab === "TR" && !current && data.tr ? (
             <div className="space-y-3 print:hidden">
               <div className="max-w-xl mx-auto p-3 rounded-xl bg-sky-50 border border-sky-200 text-xs text-sky-900">
-                The terminal summary is written from your Terminal Result, so it needs the same scratch card as the result. Opening it uses one view, and the Results page can then show the same result without using another view while this page stays open.
+                Your active scratch card gives unlimited access to the terminal result and its performance summary for this term.
               </div>
               <TerminalResultGate
                 session={data.session}

@@ -1,44 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { getServiceClient } from "@/lib/supabase/server";
-import { verifyOtp } from "@/lib/otp";
+import { otpDigest } from "@/lib/otp";
 import { sendPasswordChangedEmail } from "@/lib/email";
 
-const TOKEN_SECRET =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.BREVO_API_KEY ||
-  "gracemark-auth-reset-secret-key";
-
-function signResetToken(authId: string): string {
-  const expiresAt = Date.now() + 15 * 60 * 1000; // 15 mins
-  const payload = `${authId}:${expiresAt}`;
-  const hmac = crypto.createHmac("sha256", TOKEN_SECRET).update(payload).digest("hex");
-  return `${payload}:${hmac}`;
-}
-
-function verifyResetToken(authId: string, token: string): boolean {
-  try {
-    const parts = token.split(":");
-    if (parts.length !== 3) return false;
-    const [tokenAuthId, expiresAtStr, hmac] = parts;
-    if (tokenAuthId !== authId) return false;
-    const expiresAt = parseInt(expiresAtStr, 10);
-    if (Date.now() > expiresAt) return false;
-    const expected = crypto
-      .createHmac("sha256", TOKEN_SECRET)
-      .update(`${tokenAuthId}:${expiresAtStr}`)
-      .digest("hex");
-    return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(expected));
-  } catch {
-    return false;
-  }
-}
+const digest = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
 
 /**
  * POST /api/auth/reset-password
  *
  * Action 1: { action: "verify", auth_id: string, otp: string }
- *   Validates the OTP and returns a signed 15-minute reset token.
+ *   Validates the OTP and returns a single-use 15-minute reset token.
  *
  * Action 2: { action: "reset", auth_id: string, reset_token: string, new_password: string }
  *   Validates the token, updates the user's password, and clears must_change_password.
@@ -72,7 +44,11 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const isValid = await verifyOtp(auth_id, String(otp).trim());
+      const token = crypto.randomBytes(32).toString("hex");
+      const { data: isValid, error } = await service.rpc("exchange_reset_code", {
+        p_user: auth_id, p_token: digest(token), p_code: otpDigest(auth_id, "password-reset", String(otp).trim()),
+      });
+      if (error) return NextResponse.json({ ok: false, error: "Password recovery unavailable." }, { status: 503 });
       if (!isValid) {
         return NextResponse.json(
           { ok: false, error: "Invalid or expired verification code. Please check or request a new one." },
@@ -80,7 +56,6 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const token = signResetToken(auth_id);
       return NextResponse.json({
         ok: true,
         reset_token: token,
@@ -96,18 +71,19 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const isTokenValid = verifyResetToken(auth_id, reset_token);
-      if (!isTokenValid) {
-        return NextResponse.json(
-          { ok: false, error: "Reset session has expired or is invalid. Please start the recovery process again." },
-          { status: 401 }
-        );
-      }
-
       if (!new_password || String(new_password).length < 6) {
         return NextResponse.json(
           { ok: false, error: "Password must be at least 6 characters long." },
           { status: 400 }
+        );
+      }
+
+      const { data: isTokenValid, error } = await service.rpc("claim_reset_token", { p_user: auth_id, p_token: digest(String(reset_token)) });
+      if (error) return NextResponse.json({ ok: false, error: "Password recovery unavailable." }, { status: 503 });
+      if (!isTokenValid) {
+        return NextResponse.json(
+          { ok: false, error: "Reset session has expired or is invalid. Please start the recovery process again." },
+          { status: 401 }
         );
       }
 

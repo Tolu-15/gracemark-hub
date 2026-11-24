@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiActor } from "@/lib/apiAuth";
 import { logAudit } from "@/lib/audit";
-import { Milestone, MILESTONES, STATUS_COLUMN } from "@/lib/reportBuilder";
+import { Milestone, MILESTONES } from "@/lib/reportBuilder";
 
 /**
  * POST { class_id, term, milestone }
@@ -27,36 +27,12 @@ export async function POST(req: NextRequest) {
 
   const { data: settings } = await service.from("app_settings").select("current_session").limit(1).maybeSingle();
   const session = settings?.current_session || "";
-  const { data: sess } = await service.from("academic_sessions").select("id").eq("name", session).maybeSingle();
-
-  const { data: students } = await service.from("students").select("id").eq("class_id", class_id);
-  const studentIds = (students || []).map((s: any) => s.id);
-  if (!studentIds.length || !sess?.id) return NextResponse.json({ ok: true, recalled: 0 });
-
-  const { data: enrollments } = await service
-    .from("student_enrollments")
-    .select("id")
-    .eq("academic_session_id", sess.id)
-    .in("student_id", studentIds);
-  const enrollIds = (enrollments || []).map((e: any) => e.id);
-
-  if (enrollIds.length) {
-    const { error } = await service
-      .from("result_snapshots")
-      .delete()
-      .eq("term", term)
-      .eq("report_type", milestone)
-      .in("enrollment_id", enrollIds);
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  }
-
-  const { error: stErr } = await service
-    .from("results")
-    .update({ [STATUS_COLUMN[milestone]]: "draft" })
-    .eq("term", term)
-    .eq("session", session)
-    .in("student_id", studentIds);
-  if (stErr) return NextResponse.json({ ok: false, error: stErr.message }, { status: 500 });
+  const { error } = await service.rpc("commit_publication", {
+    p_class: class_id, p_session: session, p_term: term, p_type: milestone,
+    p_actor: authorization.actor.dbUserId, p_version: null, p_reports: [], p_results: [],
+    p_at: new Date().toISOString(), p_recall: true,
+  });
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 409 });
 
   const { data: cls } = await service.from("classes").select("name").eq("id", class_id).maybeSingle();
   await logAudit(authorization.actor, {

@@ -34,15 +34,13 @@ export default function BulkReportCardsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [zipProgress, setZipProgress] = useState<{ done: number; total: number } | null>(null);
-  const [includeUnpublished, setIncludeUnpublished] = useState(false);
+  const [unpublishedChoice, setIncludeUnpublished] = useState<boolean | null>(null);
   const [draftCount, setDraftCount] = useState(0);
   const [notes, setNotes] = useState<string[]>([]);
   const isRestricted = useIsRestrictedAdmin();
 
   // The view-only proprietress account is meant to review everything, published or not.
-  useEffect(() => {
-    if (isRestricted) setIncludeUnpublished(true);
-  }, [isRestricted]);
+  const includeUnpublished = unpublishedChoice ?? isRestricted;
 
   useEffect(() => {
     (async () => {
@@ -54,9 +52,12 @@ export default function BulkReportCardsPage() {
       setClasses(cl || []);
       const names = sess.map((s) => s.name);
       setSessions(names);
-      setSession(settings?.current_session || names[0] || "");
-      if (settings?.current_term) setTerm(settings.current_term);
-      if (cl?.length) setClassId(cl[0].id);
+      const params = new URLSearchParams(window.location.search);
+      const wantedSession = params.get("session") || "";
+      setSession(names.includes(wantedSession) ? wantedSession : settings?.current_session || names[0] || "");
+      const period = params.get("term");
+      setTerm(period === "term1" || period === "term2" || period === "term3" ? period : settings?.current_term || "term1");
+      if (cl?.length) setClassId(cl.find(c => c.id === params.get("class"))?.id || cl[0].id);
     })();
   }, []);
 
@@ -111,6 +112,7 @@ export default function BulkReportCardsPage() {
       <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
         <header className="print:hidden bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 sm:py-5 sticky top-0 z-20">
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Bulk Report Cards</h1>
+          {!isRestricted && <a href={"/admin/approvals?" + new URLSearchParams({ class: classId, term })} className="text-sm underline">Current-session approvals</a>}
           <p className="text-sm text-slate-500 mt-1">
             Print or save a whole class&rsquo;s report cards as one PDF, one student per page. Tick &ldquo;Include unpublished&rdquo; to also see students whose result hasn&rsquo;t been released yet.
           </p>

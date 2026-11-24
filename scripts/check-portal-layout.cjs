@@ -13,6 +13,7 @@ const pr = { student, className: "JSS 1", session: "Fixture", term: "term1", ter
   milestoneLabel: "Progress Report 1", classSize: 1, subjects: [], summary: { total: 0, percentage: 0, grade: "F" },
   skills: null, attendance: null, generatedAt: "2026-01-01" };
 const roles = ["admin", "teacher", "student", "public"];
+const targetPages = process.argv.slice(4);
 const widths = [375, 768, 1024, 1440];
 
 function pages(dir) {
@@ -27,6 +28,9 @@ async function main() {
   let redirectCount = 0;
   try {
     for (const role of roles) {
+      if (targetPages.length && !targetPages.some(target => target.split("/")[1] === role)) continue;
+      const card = { id: "fixture-card", serial: "TEST", status: "issued", viewsAllowed: 5, viewsUsed: 0, viewsLeft: 5 };
+      let verified = 0;
       const ctx = await browser.newContext({ reducedMotion: "reduce", serviceWorkers: "block" });
       const uid = "00000000-0000-4000-8000-000000000001";
       const user = { id: uid, email: "fixture@example.invalid", role: "authenticated",
@@ -39,7 +43,7 @@ async function main() {
         if (role !== "public") localStorage.setItem(key, JSON.stringify(session));
         sessionStorage.setItem("gm_tdev_intro_seen", "1");
       }, { key: "sb-" + project + "-auth-token", session, role });
-      await ctx.routeWebSocket("**/*", socket => socket.close());
+      await ctx.routeWebSocket(url => url.host !== new URL(origin).host, socket => socket.close());
       await ctx.route("**/*", route => {
         const url = new URL(route.request().url());
         const json = body => route.fulfill({ json: body, headers: { "access-control-allow-origin": "*" } });
@@ -53,8 +57,18 @@ async function main() {
         }
         if (url.pathname === "/auth/v1/user") return json(user);
         if (url.origin !== origin) return route.abort();
+        if (url.pathname === "/api/auth/sync-profile") return json({ ok: true, profile: { id: uid, auth_id: uid, role, status: "active" } });
+        if (url.pathname === "/api/student/scratch-card/redeem") {
+          if (route.request().postDataJSON().pin !== "ABCD-EFGH-JKMN") return json({ ok: false, error: "Wrong PIN" });
+          card.status = "active";
+          return json({ ok: true });
+        }
+        if (url.pathname === "/api/student/scratch-card/verify") {
+          assert.equal(route.request().postDataJSON().reference, "FIXTURE-REF");
+          return ++verified === 1 ? json({ ok: false, error: "Payment is pending" }) : json({ ok: true, status: "success" });
+        }
         if (url.pathname === "/api/student/report") return json({ ok: true, student, session: "Fixture", term: "term1",
-          sessions: ["Fixture"], reports: { PR1: pr, PR2: null, PR3: null, TR: null }, availableTerms: { term1: ["PR1"] }, tr: { published: false } });
+          sessions: ["Fixture"], reports: { PR1: pr, PR2: null, PR3: null, TR: null }, availableTerms: { term1: ["PR1"] }, tr: { published: true, card, price: 1000 } });
         if (url.pathname === "/api/terms") return json({ ok: true, terms: [], current_term: "term1", current_session: "Fixture" });
         if (url.pathname === "/api/maintenance") return json({ enabled: false });
         // Other endpoints intentionally exercise their unavailable state without any real requests.
@@ -66,18 +80,20 @@ async function main() {
       const base = path.join(root, "src", "app");
       for (const dir of pages(base)) {
         target = "/" + path.relative(base, dir).split(path.sep).join("/");
+        if (targetPages.length && !targetPages.includes(target)) continue;
         const group = target.split("/")[1];
         if ((roles.includes(group) ? group : "public") !== role) continue;
-        await page.goto(origin + target, { waitUntil: "domcontentloaded" });
+        await page.goto(origin + target + (target.endsWith("/scratch-card-payment") ? "?reference=FIXTURE-REF" : ""), { waitUntil: "domcontentloaded" });
         if (role !== "public") {
-          await page.locator("#portalSidebar").waitFor({ state: "attached", timeout: 6000 }).catch(() => {});
+          await page.locator("#portalSidebar").waitFor({ state: "attached", timeout: 30000 }).catch(() => {});
         }
         if (new URL(page.url()).pathname.replace(/\/$/, "") !== target.replace(/\/$/, "")) {
           redirectCount++;
+          if (targetPages.length) failures.push([target, "unexpected redirect"]);
           continue;
         }
         if (role !== "public" && !await page.locator("#portalSidebar").count()) {
-          failures.push([target, "role page did not mount"]);
+          failures.push([target, "role page did not mount", (await page.locator("body").innerText()).slice(0, 140)]);
           continue;
         }
         for (const width of widths) {
@@ -87,10 +103,21 @@ async function main() {
           measured++;
         }
         if (target === "/student/result") {
+          await page.setViewportSize({ width: 375, height: 812 });
+          await page.locator("#scratch-pin").fill("abcd-efgh-jkmn");
+          await page.getByRole("button", { name: "Activate", exact: true }).click();
+          await page.getByRole("button", { name: "View terminal result" }).waitFor();
+          await page.getByRole("button", { name: /PR 1/ }).click();
           await page.getByText("Fixture Student", { exact: false }).first().waitFor({ timeout: 5000 });
           await page.emulateMedia({ media: "print" });
           assert.ok((await page.pdf({ format: "A4" })).length > 1000);
           await page.emulateMedia({ media: "screen" });
+        }
+        if (target === "/student/scratch-card-payment") {
+          await page.setViewportSize({ width: 375, height: 812 });
+          await page.getByRole("button", { name: "Check again" }).click();
+          await page.getByText(/Payment confirmed/).waitFor();
+          assert.equal(verified, 2);
         }
         if (target === "/teacher/score-entry") {
           await page.setViewportSize({ width: 768, height: 900 });

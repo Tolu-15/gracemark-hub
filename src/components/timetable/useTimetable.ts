@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAuthHeaders } from "@/lib/supabase/client";
 import type { Period, Slot } from "./TimetableGrid";
@@ -38,9 +39,7 @@ export function useTimetable(query: string | null) {
     }
   }, [query]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => scheduleInitialLoad(load), [load]);
 
   return { data, loading, error, reload: load };
 }

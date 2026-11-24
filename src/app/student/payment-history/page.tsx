@@ -1,5 +1,7 @@
 "use client";
 
+import { PaymentResolutions } from "@/components/shared/SchoolFollowUp";
+
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -61,6 +63,7 @@ export default function StudentPaymentHistoryPage() {
       </header>
 
       <div className="p-6 max-w-5xl mx-auto w-full flex-1">
+        <PaymentResolutions />
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">

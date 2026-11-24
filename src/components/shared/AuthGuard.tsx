@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { verifyRoleAccess, GuardResult } from "@/lib/guard";
@@ -44,11 +45,7 @@ function GuardRoot({ requiredRole, allowedRoles, children }: AuthGuardProps) {
       sessionStorage.setItem(SEEN_KEY, "1");
     } catch {}
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (seen || reduced) {
-      setMinDone(true);
-      return;
-    }
-    const t = setTimeout(() => setMinDone(true), MIN_MS);
+    const t = setTimeout(() => setMinDone(true), seen || reduced ? 0 : MIN_MS);
     return () => clearTimeout(t);
   }, []);
 
@@ -65,9 +62,9 @@ function GuardRoot({ requiredRole, allowedRoles, children }: AuthGuardProps) {
   }, []);
   useEffect(() => {
     if (!authorized) return;
-    loadMaintenance();
+    const cancel = scheduleInitialLoad(loadMaintenance);
     const t = setInterval(loadMaintenance, 60_000);
-    return () => clearInterval(t);
+    return () => { cancel(); clearInterval(t); };
   }, [authorized, loadMaintenance]);
   const blocked = Boolean(maintenance?.enabled && !maintenance.bypass);
 

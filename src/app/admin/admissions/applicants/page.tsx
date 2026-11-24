@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getAuthHeaders } from "@/lib/supabase/client";
@@ -89,9 +90,7 @@ export default function AdminApplicantsPage() {
     setClasses(json.classes);
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => scheduleInitialLoad(load), [load]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();

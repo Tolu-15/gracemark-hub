@@ -1,5 +1,7 @@
 "use client";
 
+import { useCurrentTime } from "@/components/shared/useCurrentTime";
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getSupabaseBrowserClient, getAuthHeaders } from "@/lib/supabase/client";
 import { resolveStudentUserIdCandidates } from "@/lib/auth";
@@ -58,6 +60,7 @@ function formatSeconds(total: number) {
 }
 
 export default function StudentAssessmentsPage() {
+  const now = useCurrentTime();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "instructions" | "quiz" | "result" | "review">("list");
@@ -109,9 +112,7 @@ export default function StudentAssessmentsPage() {
     }
   }, []);
 
-  useEffect(() => {
-    loadExams();
-  }, [loadExams]);
+  useEffect(() => scheduleInitialLoad(loadExams), [loadExams]);
 
   function localStorageKey(sid: string) {
     return `cbt_quiz_${sid}`;
@@ -309,7 +310,7 @@ export default function StudentAssessmentsPage() {
               <div className="col-span-full text-center py-16 text-slate-400 text-sm">No exams have been published for your class yet.</div>
             ) : (
               exams.map((exam) => {
-                const isOverdue = exam.due_date && Date.now() > new Date(exam.due_date).getTime();
+                const isOverdue = exam.due_date && now > new Date(exam.due_date).getTime();
                 return (
                   <div key={exam.id} className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs space-y-3">
                     <div>

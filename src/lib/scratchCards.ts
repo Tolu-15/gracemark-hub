@@ -11,7 +11,7 @@ import {
 
 /**
  * Scratch cards for the Terminal Result (TR). One card = one student + one session + one term,
- * 5 successful views, printing included. See docs/SCRATCH_CARD_SPEC.md.
+ * unlimited access for that term, printing included. See docs/SCRATCH_CARD_SPEC.md.
  * Everything here runs with the service-role client; browsers never touch these tables.
  */
 
@@ -67,22 +67,23 @@ export interface CardState {
   viewsAllowed: number;
   viewsUsed: number;
   viewsLeft: number;
+  unlimited: boolean;
 }
 
 const toState = (c: any): CardState => ({
   id: c.id,
   serial: c.serial,
-  status: c.status,
+  status: c.status === "exhausted" ? "active" : c.status,
   source: c.source,
   viewsAllowed: c.views_allowed,
   viewsUsed: c.views_used,
   viewsLeft: Math.max(0, c.views_allowed - c.views_used),
+  unlimited: true,
 });
 
 /**
- * The card the student should see for a session + term: an open (issued/active) card first,
- * otherwise the most recent exhausted one so the page can say "all views used". Revoked cards
- * are treated as "no card".
+ * Only the newest card controls access for this term. Including revoked cards
+ * in the lookup prevents older five-view cards from reactivating after revocation.
  */
 export async function getCardState(
   service: SupabaseClient,
@@ -90,19 +91,18 @@ export async function getCardState(
   sessionId: string,
   termCode: string
 ): Promise<CardState | null> {
-  const { data } = await service
+  const { data, error } = await service
     .from("scratch_cards")
     .select("id, serial, status, source, views_allowed, views_used")
     .eq("student_id", studentId)
     .eq("academic_session_id", sessionId)
     .eq("term_code", termCode)
-    .in("status", ["issued", "active", "exhausted"])
     .order("created_at", { ascending: false })
-    .limit(10);
-  const cards = data || [];
-  const open = cards.find((c: any) => c.status === "active" || c.status === "issued");
-  const chosen = open || cards.find((c: any) => c.status === "exhausted");
-  return chosen ? toState(chosen) : null;
+    .order("id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data && data.status !== "revoked" ? toState(data) : null;
 }
 
 /** Whether `student` has a published TR for this enrollment + term, and the snapshot if so. */
@@ -134,35 +134,14 @@ export async function findEnrollment(service: SupabaseClient, studentId: string,
 
 /* ------------------------------ Views ----------------------------------- */
 
-/**
- * Charges one view. The update only applies if the row still has the `views_used` we read, so two
- * simultaneous opens can never spend the same view or push a card past its allowance.
- * Returns null when the card can't be charged (not active, used up, or lost the race 4 times).
- */
+/** Checks term access without modifying historical counters. Exhausted legacy cards remain valid. */
 export async function spendView(service: SupabaseClient, cardId: string) {
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const { data: card } = await service
-      .from("scratch_cards")
-      .select("id, status, views_used, views_allowed")
-      .eq("id", cardId)
-      .maybeSingle();
-    if (!card || card.status !== "active" || card.views_used >= card.views_allowed) return null;
+  const { data: card, error } = await service.from("scratch_cards")
+    .select("id, status, views_used, views_allowed").eq("id", cardId).maybeSingle();
+  if (error) throw error;
+  if (!card || !["active", "exhausted"].includes(card.status)) return null;
+  return { viewsUsed: card.views_used as number, viewsAllowed: card.views_allowed as number };
 
-    const next = card.views_used + 1;
-    const { data: updated } = await service
-      .from("scratch_cards")
-      .update({
-        views_used: next,
-        status: next >= card.views_allowed ? "exhausted" : "active",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", cardId)
-      .eq("status", "active")
-      .eq("views_used", card.views_used)
-      .select("id");
-    if (updated?.length) return { viewsUsed: next, viewsAllowed: card.views_allowed as number };
-  }
-  return null;
 }
 
 /** True when a charged view on this card by this account happened inside the grace window. */
@@ -220,12 +199,16 @@ export async function applyCardPayment(
   txn: PaystackTransaction,
   expected?: { studentId?: string }
 ): Promise<{ ok: true; status: string } | { ok: false; status: number; error: string }> {
+  if (txn.status !== "success" || txn.currency !== "NGN") {
+    return { ok: false, status: 422, error: "This payment has not been confirmed in NGN." };
+  }
   const reference = txn.reference || "";
   if (!reference.startsWith(`${REF_PREFIX.card}-`)) {
     return { ok: false, status: 422, error: "This payment is not a scratch card payment." };
   }
 
-  const { data: purchase } = await service.from("scratch_card_purchases").select("*").eq("reference", reference).maybeSingle();
+  const { data: purchase, error: orderError } = await service.from("scratch_card_purchases").select("*").eq("reference", reference).maybeSingle();
+  if (orderError) throw orderError;
   if (!purchase) return { ok: false, status: 404, error: "No scratch card order matches this payment." };
   if (expected?.studentId && purchase.student_id !== expected.studentId) {
     return { ok: false, status: 403, error: "This payment belongs to another student." };
@@ -257,16 +240,17 @@ export async function applyCardPayment(
 
   if (error) {
     // 23505 on payment_reference: a concurrent request (e.g. the webhook) already created the card.
-    const { data: existing } = await service.from("scratch_cards").select("id").eq("payment_reference", reference).maybeSingle();
+    const { data: existing, error: lookupError } = await service.from("scratch_cards").select("id").eq("payment_reference", reference).maybeSingle();
+    if (lookupError) throw lookupError;
     if (existing) {
-      await service.from("scratch_card_purchases").update({ status: "success", card_id: existing.id, updated_at: new Date().toISOString() }).eq("reference", reference);
+      await service.from("scratch_card_purchases").update({ status: "success", card_id: existing.id, updated_at: new Date().toISOString() }).eq("reference", reference).throwOnError();
       return { ok: true, status: "success" };
     }
     // Otherwise the open-card index fired: the student already holds a card for this term (for
     // example the school issued one while the payment was in flight). Money was taken, so flag it
     // for the admin to refund or credit instead of silently losing it.
-    if ((error as any).code === "23505") {
-      await service.from("scratch_card_purchases").update({ status: "duplicate", updated_at: new Date().toISOString() }).eq("reference", reference);
+    if (error.code === "23505" && error.message.includes("uq_scratch_card_open")) {
+      await service.from("scratch_card_purchases").update({ status: "duplicate", updated_at: new Date().toISOString() }).eq("reference", reference).throwOnError();
       return { ok: true, status: "duplicate" };
     }
     throw error;
@@ -275,28 +259,31 @@ export async function applyCardPayment(
   await service
     .from("scratch_card_purchases")
     .update({ status: "success", card_id: card.id, updated_at: new Date().toISOString() })
-    .eq("reference", reference);
+    .eq("reference", reference).throwOnError();
   return { ok: true, status: "success" };
 }
 
 /** Re-checks the student's unfinished checkouts with Paystack so a payment never goes missing. */
-export async function recoverPendingPurchases(service: SupabaseClient, studentId: string) {
-  if (!(await onlineCardSalesEnabled(service))) return;
-  const olderThan = new Date(Date.now() - 30_000).toISOString();
+export async function recoverPendingPurchases(service: SupabaseClient, studentId: string, sessionId: string, termCode: string) {
+  if (!process.env.PAYSTACK_SECRET_KEY?.trim()) return null;
   const { data } = await service
     .from("scratch_card_purchases")
     .select("reference")
     .eq("student_id", studentId)
+    .eq("academic_session_id", sessionId)
+    .eq("term_code", termCode)
     .eq("status", "pending")
-    .lt("created_at", olderThan)
     .order("created_at", { ascending: false })
     .limit(3);
+  let pendingReference: string | null = null;
   for (const row of data || []) {
     try {
       const txn = await verifyPaystackReference(row.reference);
-      if (txn) await applyCardPayment(service, txn, { studentId });
+      if (txn && (await applyCardPayment(service, txn, { studentId })).ok) continue;
     } catch (err) {
       console.warn("Scratch card payment recovery failed:", row.reference, (err as Error)?.message);
     }
+    pendingReference ??= row.reference;
   }
+  return pendingReference;
 }

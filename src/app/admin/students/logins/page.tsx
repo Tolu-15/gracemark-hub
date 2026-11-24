@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import { PageLoader } from "@/components/shared/PageLoader";
@@ -69,9 +70,7 @@ export default function StudentLoginsPage() {
     setSelected(new Set());
   }, [classId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => scheduleInitialLoad(load), [load]);
 
   const shown = useMemo(() => (rows || []).filter((r) => filter === "all" || r.status !== "ok"), [rows, filter]);
   const selectable = shown.filter((r) => r.status === "never_signed_in" && r.hasLogin);

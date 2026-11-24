@@ -88,7 +88,6 @@ export default function LoginPage() {
               "Content-Type": "application/json",
               Authorization: `Bearer ${signInData.session?.access_token || ""}`,
             },
-            body: JSON.stringify({ authId: user.id }),
           });
           if (syncRes.ok) {
             const syncJson = await syncRes.json();
@@ -118,7 +117,7 @@ export default function LoginPage() {
         await supabase.from("users").update({ must_change_password: true }).eq("auth_id", user.id);
       }
 
-      if (mustChange) {
+      if (mustChange && profile.role !== "admin") {
         router.replace("/change-password");
         return;
       }
@@ -126,7 +125,7 @@ export default function LoginPage() {
       // For admin accounts: check for HttpOnly device cookie via server API — redirect to OTP verify if absent
       if (String(profile.role).trim() === "admin") {
         try {
-          const chkRes = await fetch("/api/auth/check-device");
+          const chkRes = await fetch("/api/auth/check-device", { headers: { Authorization: "Bearer " + signInData.session.access_token }, cache: "no-store" });
           const chkData = await chkRes.json();
           if (!chkData?.trusted) {
             router.replace("/otp-verify");
@@ -138,6 +137,7 @@ export default function LoginPage() {
         }
       }
 
+      if (mustChange) { router.replace("/change-password"); return; }
       markLoginPromptsPending();
       router.replace(destinationForRole(String(profile.role).trim()));
     } catch (err: any) {

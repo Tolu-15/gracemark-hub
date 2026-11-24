@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useState, useEffect, useRef } from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
 import { supabase } from "@/lib/supabase/client";
@@ -78,8 +79,10 @@ export default function AdminFormsPage() {
   };
 
   useEffect(() => {
-    loadClasses();
-    loadForms();
+    return scheduleInitialLoad(() => {
+      void loadClasses();
+      void loadForms();
+    });
   }, []);
 
   const handleAddField = () => {

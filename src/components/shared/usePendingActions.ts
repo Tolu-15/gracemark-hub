@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { getAuthHeaders } from "@/lib/supabase/client";
@@ -35,9 +36,9 @@ export function usePendingActions(): { count: number; items: PendingActionItem[]
   }, []);
 
   useEffect(() => {
-    load();
+    const cancel = scheduleInitialLoad(load);
     const t = setInterval(load, 120_000);
-    return () => clearInterval(t);
+    return () => { cancel(); clearInterval(t); };
   }, [pathname, load]);
 
   return { count: items.length, items, loading };

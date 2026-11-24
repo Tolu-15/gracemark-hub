@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase/client";
@@ -106,9 +107,7 @@ export default function AdminFinanceReportsPage() {
     }
   }, [session, term]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => scheduleInitialLoad(loadData), [loadData]);
 
   const grandBilled = summaries.reduce((s, c) => s + c.totalBilled, 0);
   const grandPaid = summaries.reduce((s, c) => s + c.totalPaid, 0);

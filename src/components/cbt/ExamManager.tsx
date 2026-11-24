@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
@@ -167,12 +168,15 @@ export default function ExamManager({ role }: { role: "admin" | "teacher" }) {
   }, []);
 
   useEffect(() => {
-    loadClassesAndSubjects();
-    loadExams();
+    const cancel = scheduleInitialLoad(() => {
+      void loadClassesAndSubjects();
+      void loadExams();
+    });
     fetch("/api/terms")
       .then((r) => r.json())
       .then((d) => d?.current_term && setTerm(d.current_term))
       .catch(() => {});
+    return cancel;
   }, [loadClassesAndSubjects, loadExams]);
 
   const availableSubjects = useMemo(() => subjectsByClass.get(form.class_id) || [], [subjectsByClass, form.class_id]);

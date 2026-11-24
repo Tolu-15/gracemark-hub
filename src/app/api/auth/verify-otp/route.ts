@@ -1,49 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyOtp } from "@/lib/otp";
+import { challengeActor } from "@/lib/adminChallenge";
+import { issueDevice, otpDigest, TRUST_COOKIE, TRUST_SECONDS } from "@/lib/otp";
 
-/**
- * POST /api/auth/verify-otp
- * Body: { auth_id: string; otp: string }
- *
- * Validates the OTP. On success the client sets a long-lived device cookie
- * so subsequent logins from the same browser skip OTP.
- */
 export async function POST(req: NextRequest) {
-  try {
-    const { auth_id, otp } = await req.json();
-
-    if (!auth_id || !otp) {
-      return NextResponse.json(
-        { error: "auth_id and otp are required." },
-        { status: 400 }
-      );
-    }
-
-    const valid = await verifyOtp(auth_id, String(otp).trim());
-
-    if (!valid) {
-      return NextResponse.json(
-        { error: "Invalid or expired verification code. Please try again." },
-        { status: 401 }
-      );
-    }
-
-    // Set a long-lived HttpOnly device cookie (30 days)
-    const response = NextResponse.json({ ok: true });
-    response.cookies.set("gm_device", "verified", {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 60 * 24 * 30, // 30 days
-      path: "/",
-    });
-
-    return response;
-  } catch (err: any) {
-    console.error("[verify-otp] Error:", err);
-    return NextResponse.json(
-      { error: err.message || "Failed to verify OTP." },
-      { status: 500 }
-    );
-  }
+  const auth = await challengeActor(req);
+  if ("response" in auth) return auth.response;
+  const body = await req.json().catch(() => null);
+  if (typeof body?.otp !== "string" || !/^\d{6}$/.test(body.otp)) return NextResponse.json({ error: "Enter the six-digit code." }, { status: 400 });
+  const { actor, sessionId } = auth;
+  const { data, error } = await actor.service.rpc("consume_admin_challenge", {
+    p_user: actor.authId, p_session: sessionId, p_digest: otpDigest(actor.authId, sessionId, body.otp)
+  });
+  if (error) return NextResponse.json({ error: "Verification unavailable." }, { status: 503 });
+  if (!data) return NextResponse.json({ error: "Invalid, expired or already used code." }, { status: 401 });
+  const response = NextResponse.json({ ok: true });
+  response.cookies.set(TRUST_COOKIE, issueDevice(actor.authId), { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: TRUST_SECONDS, path: "/" });
+  return response;
 }

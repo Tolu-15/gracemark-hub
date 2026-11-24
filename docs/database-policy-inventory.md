@@ -94,3 +94,9 @@ select p.oid::regprocedure, p.prosecdef, p.proconfig,
 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' order by 1;
 select id, public, file_size_limit, allowed_mime_types from storage.buckets order by id;
 ```
+
+## Release order for the November portal changes
+
+On staging, check which scripts are installed before applying the numbered changes. Apply missing scripts in order: 042 result access, 043 score-sheet saves, 044 profile permissions, 045 scratch-card sales, 046 admin device challenges, 047 academic transactions, then 048 password recovery. Deploy the new application after these functions exist. Several scripts create database objects on first installation. Keep a record of applied filenames. The alternative schema baselines and cleanup scripts in this directory serve other installation histories.
+
+Using staging accounts, publish a third-term report, promote a pupil from JSS1 to JSS2, and open the original session as that pupil. Verify the JSS1 class and frozen scores. Exercise repeat, graduation, rollback, and a batch containing an invalid placement. Check that a failed batch leaves every enrollment and promotion record intact. Exercise admin sign-in and teacher password recovery independently. Verify a Paystack test payment through both callback and webhook and confirm that only one entitlement exists.

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { usePathname } from "next/navigation";
 import AuthGuard from "@/components/shared/AuthGuard";
 import PortalLayout, { NavItem } from "@/components/shared/PortalLayout";
 import { useAnnouncementBadge, badgeText } from "@/components/announcements/useAnnouncementBadge";
@@ -18,6 +19,8 @@ const RESTRICTED_ADMIN_HREFS = new Set([
 ]);
 
 const adminNavItems: NavItem[] = [
+  
+
   {
     label: "Dashboard",
     href: "/admin/dashboard",
@@ -69,8 +72,18 @@ const adminNavItems: NavItem[] = [
   },
   {
     category: "Academics & Staff",
-    label: "Term Setup",
+    label: "Academic Setup",
     href: "/admin/term-setup",
+  },
+  {
+    category: "Academics & Staff",
+    label: "Results Correction",
+    href: "/admin/corrections",
+  },
+  {
+    category: "Academics & Staff",
+    label: "Academic support",
+    href: "/admin/academic-support"
   },
   {
     category: "Academics & Staff",
@@ -117,11 +130,11 @@ const adminNavItems: NavItem[] = [
     label: "Manage Students",
     href: "/admin/students",
   },
-  {
-    category: "Students & Portal",
-    label: "Payment Status",
-    href: "/admin/students/payment-status",
-  },
+  // {
+  //   category: "Students & Portal",
+  //   label: "Payment Status",
+  //   href: "/admin/students/payment-status",
+  // },
   {
     category: "Students & Portal",
     label: "Portal Access Control",
@@ -132,46 +145,46 @@ const adminNavItems: NavItem[] = [
     label: "Student Logins",
     href: "/admin/students/logins",
   },
-  {
-    category: "Finance & Fees",
-    label: "Fee Structure",
-    href: "/admin/finance/fees",
-  },
-  {
-    category: "Finance & Fees",
-    label: "School Fee Payments",
-    href: "/admin/finance/payments",
-  },
-  {
-    category: "Finance & Fees",
-    label: "Financial Reports",
-    href: "/admin/finance/reports",
-  },
+  // {
+  //   category: "Finance & Fees",
+  //   label: "Fee Structure",
+  //   href: "/admin/finance/fees",
+  // },
+  // {
+  //   category: "Finance & Fees",
+  //   label: "School Fee Payments",
+  //   href: "/admin/finance/payments",
+  // },
+  // {
+  //   category: "Finance & Fees",
+  //   label: "Financial Reports",
+  //   href: "/admin/finance/reports",
+  // },
   {
     category: "Finance & Fees",
     label: "Scratch Cards",
     href: "/admin/scratch-cards",
-  },
-  {
-    category: "Admissions & CBT",
-    label: "Form Builder & QR Codes",
-    href: "/admin/forms",
-  },
-  {
-    category: "Admissions & CBT",
-    label: "CBT Exam Manager",
-    href: "/admin/exams",
-  },
-  {
-    category: "Admissions & CBT",
-    label: "Applicants",
-    href: "/admin/admissions/applicants",
-  },
-  {
-    category: "Admissions & CBT",
-    label: "Admission Form Packages",
-    href: "/admin/admissions/forms",
-  },
+   },
+  // {
+  //   category: "Admissions & CBT",
+  //   label: "Form Builder & QR Codes",
+  //   href: "/admin/forms",
+  // },
+  // {
+  //   category: "Admissions & CBT",
+  //   label: "CBT Exam Manager",
+  //   href: "/admin/exams",
+  // },
+  // {
+  //   category: "Admissions & CBT",
+  //   label: "Applicants",
+  //   href: "/admin/admissions/applicants",
+  // },
+  // {
+  //   category: "Admissions & CBT",
+  //   label: "Admission Form Packages",
+  //   href: "/admin/admissions/forms",
+  // },
   {
     category: "Settings",
     label: "Portal Access Policy",
@@ -198,6 +211,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const unread = useAnnouncementBadge();
   const { count: pendingApprovals } = usePendingActions();
   const isDeveloper = useIsDeveloper();
+  const pathname = usePathname();
   const isRestricted = useIsRestrictedAdmin();
   let navItems = adminNavItems.map((i) => {
     if (i.href === "/admin/announcements") return { ...i, badge: badgeText(unread) };
@@ -207,7 +221,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (isRestricted) {
     navItems = navItems.filter((i) => RESTRICTED_ADMIN_HREFS.has(i.href));
   }
-  if (isDeveloper) {
+  if (isDeveloper && !isRestricted) {
     navItems.push({
       category: "Developer",
       label: "Dev Tools",
@@ -222,7 +236,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <AuthGuard requiredRole="admin">
       <PortalLayout role="admin" navItems={navItems}>
-        {children}
+        {isRestricted && !RESTRICTED_ADMIN_HREFS.has(pathname) ? <p>This page requires full administrator access.</p> : children}
       </PortalLayout>
     </AuthGuard>
   );

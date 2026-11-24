@@ -81,8 +81,9 @@ export async function GET(req: NextRequest) {
     const published = Boolean(enrollment && (availableTerms[term] || []).includes("TR"));
     tr = { published };
     if (published && enrollment) {
-      await recoverPendingPurchases(service, student.id);
+      const pendingReference = await recoverPendingPurchases(service, student.id, enrollment.sessionId, term);
       tr.card = await getCardState(service, student.id, enrollment.sessionId, term);
+      if (!tr.card && pendingReference) tr.pendingReference = pendingReference;
       const cardSettings = await getCardSettings(service);
       tr.price = cardSettings.price;
       tr.viewsAllowed = cardSettings.viewsAllowed;

@@ -1,3 +1,4 @@
+import { TRUST_COOKIE, trustsDevice } from "./otp";
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase/server";
 import { getMaintenance } from "@/lib/systemSettings";
@@ -7,6 +8,7 @@ export type ApiRole = "admin" | "teacher" | "student";
 export interface ApiActor {
   authId: string;
   dbUserId?: string;
+  restricted?: boolean;
   email?: string;
   role: ApiRole;
   service: NonNullable<ReturnType<typeof getServiceClient>>;
@@ -17,10 +19,17 @@ export interface ApiActor {
  * client. Service-role queries bypass RLS, so every such route needs an
  * explicit server-side authorization check.
  */
+const restrictedReadPaths = new Set([
+  "/api/admin/restricted-check", "/api/admin/settings", "/api/admin/historical-lookup",
+  "/api/admin/class-broadsheet", "/api/admin/leaderboard", "/api/admin/reports/bulk",
+  "/api/admin/results/status-summary", "/api/student/report", "/api/results/pending-actions",
+  "/api/announcements", "/api/notifications", "/api/terms"
+]);
+
 export async function requireApiActor(
   req: NextRequest,
   allowedRoles: ApiRole[],
-  options: { allowLockedStudent?: boolean } = {}
+  options: { allowLockedStudent?: boolean; allowOwnPasswordChange?: boolean; adminChallenge?: boolean } = {}
 ): Promise<{ actor: ApiActor } | { response: NextResponse }> {
   const service = getServiceClient();
   if (!service) {
@@ -42,13 +51,25 @@ export async function requireApiActor(
 
   const { data: profile, error: profileError } = await service
     .from("users")
-    .select("id, role, is_developer")
+    .select("id, role, is_developer, is_restricted_admin")
     .eq("auth_id", userData.user.id)
     .maybeSingle();
   const role = profile?.role as ApiRole | undefined;
 
   if (profileError || !role || !allowedRoles.includes(role)) {
     return { response: NextResponse.json({ error: "You are not allowed to perform this action." }, { status: 403 }) };
+  }
+
+  const restricted = role === "admin" && profile?.is_restricted_admin === true;
+  if (role === "admin" && !options.adminChallenge && !trustsDevice(req.cookies.get(TRUST_COOKIE)?.value, userData.user.id)) {
+    return { response: NextResponse.json({ error: "Verify this device to continue.", needsOtp: true }, { status: 403 }) };
+  }
+  if (restricted && !options.adminChallenge && req.method !== "GET" && req.method !== "HEAD" && !options.allowOwnPasswordChange) {
+    return { response: NextResponse.json({ error: "This administrator account is read-only." }, { status: 403 }) };
+  }
+
+  if (restricted && !options.adminChallenge && !options.allowOwnPasswordChange && !restrictedReadPaths.has(req.nextUrl.pathname)) {
+    return { response: NextResponse.json({ error: "This resource requires additional administrator permissions." }, { status: 403 }) };
   }
 
   // Maintenance mode: every API route that signs a user in passes through here, so one check covers
@@ -89,7 +110,7 @@ export async function requireApiActor(
     }
   }
 
-  return { actor: { authId: userData.user.id, dbUserId: profile?.id, email: userData.user.email, role, service } };
+  return { actor: { restricted, authId: userData.user.id, dbUserId: profile?.id, email: userData.user.email, role, service } };
 }
 
 export async function requireTeacherAssignment(
@@ -143,16 +164,5 @@ export async function requireDeveloper(actor: ApiActor): Promise<boolean> {
   if (actor.role !== "admin" || !actor.dbUserId) return false;
   const { data } = await actor.service.from("users").select("is_developer").eq("id", actor.dbUserId).maybeSingle();
   return Boolean(data?.is_developer);
-}
-
-/**
- * Whether the signed-in admin is a view-only account (e.g. the proprietress),
- * flagged is_restricted_admin on their own users row. Only gates the nav UI
- * for now — it does not block any admin API route.
- */
-export async function isRestrictedAdmin(actor: ApiActor): Promise<boolean> {
-  if (actor.role !== "admin" || !actor.dbUserId) return false;
-  const { data } = await actor.service.from("users").select("is_restricted_admin").eq("id", actor.dbUserId).maybeSingle();
-  return Boolean(data?.is_restricted_admin);
 }
 

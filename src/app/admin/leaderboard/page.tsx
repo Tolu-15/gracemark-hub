@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import AuthGuard from "@/components/shared/AuthGuard";
 import { getAuthHeaders } from "@/lib/supabase/client";
@@ -112,9 +113,7 @@ export default function AdminLeaderboardPage() {
     }
   }, [level, term, session]);
 
-  useEffect(() => {
-    loadLeaderboard();
-  }, [loadLeaderboard]);
+  useEffect(() => scheduleInitialLoad(loadLeaderboard), [loadLeaderboard]);
 
   const loadBests = useCallback(async () => {
     if (!session) return;
@@ -137,9 +136,7 @@ export default function AdminLeaderboardPage() {
     }
   }, [term, session]);
 
-  useEffect(() => {
-    loadBests();
-  }, [loadBests]);
+  useEffect(() => scheduleInitialLoad(loadBests), [loadBests]);
 
   const showsArms = new Set(rows.map((r) => r.className)).size > 1;
 

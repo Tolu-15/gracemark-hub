@@ -1,6 +1,6 @@
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { generatePin, generateSerial, hashPin, isCardIssuer, issuerEmails, normalizePin, spendView } from "./scratchCards";
+import { applyCardPayment, generatePin, generateSerial, hashPin, isCardIssuer, issuerEmails, normalizePin, spendView } from "./scratchCards";
 
 /** A tiny in-memory stand-in for the database client: just the calls spendView makes. */
 function fakeCards(rows: Record<string, any>[]) {
@@ -88,38 +88,26 @@ describe("who may issue cards", () => {
   });
 });
 
-describe("spending a view", () => {
-  it("charges one view at a time and exhausts the card on the last", async () => {
-    const rows = [card()];
-    const svc = fakeCards(rows);
-    for (let n = 1; n <= 5; n++) {
-      assert.deepEqual(await spendView(svc, "c1"), { viewsUsed: n, viewsAllowed: 5 });
-    }
-    assert.equal(rows[0].status, "exhausted");
-    assert.equal(await spendView(svc, "c1"), null);
-    assert.equal(rows[0].views_used, 5);
-  });
-
-  it("refuses cards that are not active", async () => {
-    for (const status of ["issued", "exhausted", "revoked"]) {
-      const rows = [card({ status })];
-      assert.equal(await spendView(fakeCards(rows), "c1"), null);
-      assert.equal(rows[0].views_used, 0);
+describe("unlimited term access", () => {
+  it("allows repeated opens without deductions, including previously exhausted cards", async () => {
+    for (const status of ["active", "exhausted"]) {
+      const rows = [card({ status, views_used: 5 })];
+      for (let i = 0; i < 10; i++) assert.ok(await spendView(fakeCards(rows), "c1"));
+      assert.equal(rows[0].views_used, 5);
+      assert.equal(rows[0].status, status);
     }
   });
-
-  it("refuses an unknown card", async () => {
-    assert.equal(await spendView(fakeCards([]), "nope"), null);
+  it("still refuses unactivated, revoked and missing cards", async () => {
+    for (const status of ["issued", "revoked"]) assert.equal(await spendView(fakeCards([card({status})]), "c1"), null);
+    assert.equal(await spendView(fakeCards([]), "missing"), null);
   });
+});
 
-  it("never spends more than the allowance when people open at the same moment", async () => {
-    const rows = [card({ views_used: 3 })];
-    const svc = fakeCards(rows);
-    const results = await Promise.all([spendView(svc, "c1"), spendView(svc, "c1"), spendView(svc, "c1")]);
-    const charged = results.filter(Boolean);
-    assert.equal(charged.length, 2); // only 2 views were left
-    assert.deepEqual(new Set(charged.map((r) => r!.viewsUsed)), new Set([4, 5])); // each got a different view
-    assert.equal(rows[0].views_used, 5);
-    assert.equal(rows[0].status, "exhausted");
+describe("payment confirmation", () => {
+  it("refuses unsuccessful or non-NGN payments before accessing orders", async () => {
+    for (const txn of [{ status: "failed", currency: "NGN" }, { status: "success", currency: "USD" }]) {
+      const result = await applyCardPayment({ from() { throw new Error("must not query"); } } as any, txn);
+      assert.equal(result.ok, false);
+    }
   });
 });

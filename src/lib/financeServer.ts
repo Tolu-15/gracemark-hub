@@ -267,12 +267,13 @@ export async function getPaystackPublicKey(service: SupabaseClient | null): Prom
 
 /** Asks Paystack (never the browser) whether a reference was really paid. Returns null if it was not. */
 export async function verifyPaystackReference(reference: string): Promise<PaystackTransaction | null> {
-  const secretKey = process.env.PAYSTACK_SECRET_KEY;
+  const secretKey = process.env.PAYSTACK_SECRET_KEY?.trim();
   if (!secretKey) throw new Error("Payment verification is not configured.");
 
   const res = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
     headers: { Authorization: `Bearer ${secretKey}` },
     cache: "no-store",
+    signal: AbortSignal.timeout(8000),
   });
   const json = (await res.json().catch(() => null)) as { status?: boolean; data?: PaystackTransaction } | null;
   const txn = json?.data;

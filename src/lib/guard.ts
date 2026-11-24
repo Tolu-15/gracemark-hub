@@ -78,6 +78,10 @@ export async function verifyRoleAccess(
       return { redirect: destinationForRole(role) };
     }
 
+    if (role === "admin") {
+      const device = await fetch("/api/auth/check-device", { headers: { Authorization: "Bearer " + session.access_token }, cache: "no-store" });
+      if (!device.ok || !(await device.json()).trusted) return { redirect: "/otp-verify" };
+    }
     if (role === "student") {
       const candidateIds = await resolveStudentUserIdCandidates(session.user.id);
       const { data: student } = await supabase

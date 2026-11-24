@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useCallback, useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/supabase/client";
 
@@ -64,9 +65,7 @@ export default function TeacherEmailPanel({ refreshKey = 0 }: { refreshKey?: num
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load, refreshKey]);
+  useEffect(() => scheduleInitialLoad(load), [load, refreshKey]);
 
   async function send(kind: "changes" | "logins") {
     setBusy(true);

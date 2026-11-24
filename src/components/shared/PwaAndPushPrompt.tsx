@@ -1,5 +1,6 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useEffect, useRef, useState } from "react";
 import { consumeLoginPromptsPending } from "@/lib/loginPrompts";
 import { enablePushNotifications, pushSupported } from "@/lib/push";
@@ -26,7 +27,7 @@ export default function PwaAndPushPrompt() {
   const [queue, setQueue] = useState<PromptKind[]>([]);
   const [busy, setBusy] = useState(false);
   const deferredRef = useRef<any>(null);
-  const iosOnlyRef = useRef(false);
+
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -35,6 +36,8 @@ export default function PwaAndPushPrompt() {
   }, []);
 
   useEffect(() => {
+    let removeInstallListener: (() => void) | undefined;
+    const cancel = scheduleInitialLoad(() => {
     if (!consumeLoginPromptsPending()) return;
 
     const wants: PromptKind[] = [];
@@ -44,7 +47,7 @@ export default function PwaAndPushPrompt() {
 
     if (!isStandalone()) {
       if (isIos()) {
-        iosOnlyRef.current = true;
+
         wants.unshift("install");
       } else {
         const onBip = (e: any) => {
@@ -53,11 +56,14 @@ export default function PwaAndPushPrompt() {
           setQueue((prev) => (prev.includes("install") ? prev : ["install", ...prev]));
         };
         window.addEventListener("beforeinstallprompt", onBip);
-        setTimeout(() => window.removeEventListener("beforeinstallprompt", onBip), 20_000);
+        const timeout = setTimeout(() => window.removeEventListener("beforeinstallprompt", onBip), 20_000);
+        removeInstallListener = () => { clearTimeout(timeout); window.removeEventListener("beforeinstallprompt", onBip); };
       }
     }
 
     if (wants.length) setQueue(wants);
+    });
+    return () => { cancel(); removeInstallListener?.(); };
   }, []);
 
   const active = queue[0];
@@ -103,20 +109,20 @@ export default function PwaAndPushPrompt() {
           <>
             <div className="pwa-install-copy">
               <strong>Install GraceMark Portal</strong>
-              {iosOnlyRef.current ? (
+              {isIos() ? (
                 <span>Tap the Share icon, then &quot;Add to Home Screen&quot; for one-tap access.</span>
               ) : (
                 <span>Add the portal to your home screen for faster, app-like access.</span>
               )}
             </div>
             <div className="pwa-install-actions">
-              {!iosOnlyRef.current && (
+              {!isIos() && (
                 <button type="button" className="pwa-install-btn pwa-install-btn--primary" onClick={handleInstall}>
                   Install
                 </button>
               )}
               <button type="button" className="pwa-install-btn pwa-install-btn--ghost" onClick={dismiss}>
-                {iosOnlyRef.current ? "Got it" : "Not now"}
+                {isIos() ? "Got it" : "Not now"}
               </button>
             </div>
           </>

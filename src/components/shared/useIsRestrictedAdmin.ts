@@ -5,7 +5,7 @@ import { getAuthHeaders } from "@/lib/supabase/client";
 
 /** Whether the signed-in admin is a view-only account (the is_restricted_admin flag on their users row). */
 export function useIsRestrictedAdmin(): boolean {
-  const [restricted, setRestricted] = useState(false);
+  const [restricted, setRestricted] = useState(true);
 
   useEffect(() => {
     (async () => {
@@ -15,7 +15,7 @@ export function useIsRestrictedAdmin(): boolean {
         const json = await res.json();
         if (json.ok) setRestricted(Boolean(json.restricted));
       } catch {
-        /* nav just stays full on failure */
+        /* nav stays restricted on failure */
       }
     })();
   }, []);

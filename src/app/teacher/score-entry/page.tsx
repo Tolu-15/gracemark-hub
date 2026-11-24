@@ -1,10 +1,12 @@
 "use client";
 
+import { scheduleInitialLoad } from "@/lib/scheduleInitialLoad";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase, getAuthHeaders } from "@/lib/supabase/client";
 import {
   GRADING_CONFIG,
   PR_WINDOWS,
+  hasEnteredScores,
   calculatePR1,
   calculatePR2,
   calculatePR3,
@@ -13,10 +15,11 @@ import {
   emptyScheduledWeeks,
   weeksForFrequency,
   normalizeBreakdown,
-  toStoredScores,
+
   validateRawScores,
   isSeniorClass,
 } from "@/lib/gradingEngine";
+import { changedMarks, mergeMarks } from "@/lib/scoreChanges";
 import { RawScores } from "@/types/result";
 import { PageLoader, InlineSpinner } from "@/components/shared/PageLoader";
 import { enqueue, isNetworkFailure } from "@/lib/offlineQueue";
@@ -29,7 +32,8 @@ interface StudentScoreRow {
   name: string;
   admission_no: string;
   raw: RawScores;
-  resultId?: string;
+  baseline: RawScores;
+  version: string | null;
   hasItemizedScores?: boolean;
   status?: string;
   return_reason?: string | null;
@@ -42,7 +46,6 @@ export default function TeacherScoreEntryPage() {
   const [selectedSubject, setSelectedSubject] = useState("");
   const [selectedTerm, setSelectedTerm] = useState("term1");
   const [currentSession, setCurrentSession] = useState("");
-  const [currentSessionId, setCurrentSessionId] = useState("");
 
   const [teacherAssignments, setTeacherAssignments] = useState<
     Array<{ class_id: string; class_name: string; subject_id: string; subject_name: string }>
@@ -56,10 +59,16 @@ export default function TeacherScoreEntryPage() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const [termList, setTermList] = useState<any[]>([]);
-  const [isEditable, setIsEditable] = useState(true);
+
   const [viewMode, setViewMode] = useState<ViewMode>("all");
 
-  const [rows, setRows] = useState<StudentScoreRow[]>([]);
+  const sheetKey = JSON.stringify([currentSession, selectedTerm, selectedClass, selectedSubject]);
+  const [loadedSheet, setLoadedSheet] = useState("");
+  const [scheduleClass, setScheduleClass] = useState("");
+  const [conflict, setConflict] = useState(false);
+  const [storedRows, setRows] = useState<StudentScoreRow[]>([]);
+  const rows = useMemo(() => loadedSheet === sheetKey && scheduleClass === selectedClass ? storedRows : [],
+    [loadedSheet, sheetKey, scheduleClass, selectedClass, storedRows]);
   const [loading, setLoading] = useState(false);
   const [metaLoading, setMetaLoading] = useState(true);
   const [savingAction, setSavingAction] = useState<"none" | "draft" | "submit">("none");
@@ -73,9 +82,8 @@ export default function TeacherScoreEntryPage() {
   // Tracks whether admins have already been pinged that this teacher started
   // editing this class/subject/term, so we notify once per editing session
   // rather than on every autosave. Reset whenever loadScores re-runs.
-  const editNotifiedRef = React.useRef(false);
   // Serializes autosave/manual-save requests so a debounced autosave can't
-  // race a manual save (or another autosave) with a stale deletedResultIds list.
+  // race another request using the same loaded row versions.
   const savingInFlightRef = React.useRef(false);
   // Tags each loadScores() call so a slower, older request can't overwrite the
   // screen after a newer filter change has already resolved.
@@ -92,11 +100,16 @@ export default function TeacherScoreEntryPage() {
   }, []);
 
   function canSwitchSheet() {
-    if (savingInFlightRef.current) {
+    if (savingInFlightRef.current || togglingId) {
       setStatusMsg("Please wait for the current score save to finish.");
       return false;
     }
-    return !isDirtyRef.current || window.confirm("Some scores are not saved on the server. Leave this sheet and discard those changes?");
+    if (isDirtyRef.current && !window.confirm("Some scores are not saved on the server. Leave this sheet and discard those changes?")) return false;
+    isDirtyRef.current = false;
+    loadSeqRef.current++;
+    setLoadedSheet("");
+    setAutoSaveStatus("idle");
+    return true;
   }
 
   const selectedClassName = classes.find((c) => c.id === selectedClass)?.name || "";
@@ -128,17 +141,20 @@ export default function TeacherScoreEntryPage() {
     if (!selectedClass) return;
     let cancelled = false;
     (async () => {
-      const { data: cls } = await supabase.from("classes").select("subject_group_code").eq("id", selectedClass).maybeSingle();
+      const { data: cls, error: classError } = await supabase.from("classes").select("subject_group_code").eq("id", selectedClass).maybeSingle();
+      if (classError) throw classError;
       const groupCode = (cls as any)?.subject_group_code;
       if (!groupCode) {
-        if (!cancelled) setClassSubjectIds(null);
+        if (!cancelled) { setClassSubjectIds(null); setScheduleClass(selectedClass); }
         return;
       }
-      const { data: list } = await supabase.from("subject_group_subjects").select("subject_id, frequency").eq("group_code", groupCode);
+      const { data: list, error: listError } = await supabase.from("subject_group_subjects").select("subject_id, frequency").eq("group_code", groupCode);
+      if (listError) throw listError;
       if (!cancelled) {
+        setScheduleClass(selectedClass);
         setClassSubjectIds(list && list.length ? new Map(list.map((l: any) => [l.subject_id, l.frequency || "fortnightly"])) : null);
       }
-    })();
+    })().catch(() => { if (!cancelled) setStatusMsg("Error loading assessment schedule. Reload the page to retry."); });
     return () => {
       cancelled = true;
     };
@@ -146,14 +162,14 @@ export default function TeacherScoreEntryPage() {
 
   // Class / subject / term requested by a link, e.g. "Fix scores" on the dashboard
   const linkTarget = React.useRef<{ class?: string; subject?: string; term?: string } | null>(null);
-  if (linkTarget.current === null && typeof window !== "undefined") {
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     linkTarget.current = {
       class: params.get("class") || undefined,
       subject: params.get("subject") || undefined,
       term: params.get("term") || undefined,
     };
-  }
+  }, []);
 
   // Keep selectedSubject in sync with available subjects
   useEffect(() => {
@@ -184,7 +200,6 @@ export default function TeacherScoreEntryPage() {
           if (data.current_session) setCurrentSession(data.current_session);
           if (data.active_session_id) {
             activeSessionId = data.active_session_id;
-            setCurrentSessionId(data.active_session_id);
           }
         }
       }
@@ -261,33 +276,24 @@ export default function TeacherScoreEntryPage() {
       if (wantedClass && cList.some((c) => c.id === wantedClass)) {
         linkTarget.current = { ...linkTarget.current, class: undefined };
         setSelectedClass(wantedClass);
-      } else if (cList.length > 0 && (!selectedClass || !cList.some((c) => c.id === selectedClass))) {
-        setSelectedClass(cList[0].id);
+      } else if (cList.length > 0) {
+        setSelectedClass(previous => cList.some(c => c.id === previous) ? previous : cList[0].id);
       }
     } catch (err) {
       console.error("Load score entry metadata error:", err);
     } finally {
       setMetaLoading(false);
     }
-  }, [selectedClass]);
+  }, []);
 
-  useEffect(() => {
-    loadMetadata();
-  }, [loadMetadata]);
+  useEffect(() => scheduleInitialLoad(loadMetadata), [loadMetadata]);
 
-  // Check if current term is editable
-  useEffect(() => {
-    const t = termList.find((item) => item.term === selectedTerm);
-    if (t) {
-      setIsEditable(Boolean(t.allow_edit));
-    } else {
-      setIsEditable(true);
-    }
-  }, [selectedTerm, termList]);
+  const selectedTermRecord = termList.find((item) => item.term === selectedTerm);
+  const isEditable = !conflict && loadedSheet === sheetKey && scheduleClass === selectedClass && !loading && Boolean(selectedTermRecord?.allow_edit);
 
   // Load scores for selected Class, Subject, and Term
   const loadScores = useCallback(async () => {
-    if (!selectedClass || !selectedSubject) return;
+    if (!selectedClass || !selectedSubject || !currentSession || scheduleClass !== selectedClass) return;
     // Each call to loadScores makes several sequential requests (students, optouts,
     // results). If the teacher switches class/subject/term again before those finish,
     // an earlier, slower call can resolve after the latest one and overwrite the screen
@@ -325,7 +331,7 @@ export default function TeacherScoreEntryPage() {
       );
 
       if (!studentList.length) {
-        if (loadSeqRef.current === seq && editVersionRef.current === editVersionAtLoad) setRows([]);
+        if (loadSeqRef.current === seq && editVersionRef.current === editVersionAtLoad) { setRows([]); setLoadedSheet(sheetKey); }
         return;
       }
 
@@ -337,6 +343,8 @@ export default function TeacherScoreEntryPage() {
         { headers: await getAuthHeaders() }
       );
       const optJson = await optRes.json().catch(() => ({}));
+
+      if (!optRes.ok || !optJson.ok) throw new Error(optJson.error || "Could not check subject enrollment.");
 
       // 3. Fetch existing results
       let resultsQuery = supabase
@@ -367,29 +375,29 @@ export default function TeacherScoreEntryPage() {
           name: s.name,
           admission_no: s.admission_no,
           raw,
-          resultId: existing?.id,
+          baseline: raw,
+          version: existing?.score_version ?? null,
           hasItemizedScores: Boolean(existing?.score_breakdown),
           status: existing?.status || "draft",
           return_reason: existing?.return_reason,
         };
       });
 
+      setLoadedSheet(sheetKey);
+      setConflict(false);
       setRows(newRows);
       isDirtyRef.current = false;
       isInitialLoadRef.current = true;
-      editNotifiedRef.current = false;
       setAutoSaveStatus("idle");
     } catch (err: any) {
       console.error("Load scores error:", err);
-      if (loadSeqRef.current === seq) setStatusMsg(`Error loading scores: ${err.message}`);
+      if (loadSeqRef.current === seq) { setLoadedSheet(""); setStatusMsg(`Error loading scores: ${err.message}`); }
     } finally {
       if (loadSeqRef.current === seq) setLoading(false);
     }
-  }, [selectedClass, selectedSubject, selectedTerm, currentSession]);
+  }, [selectedClass, selectedSubject, selectedTerm, currentSession, scheduleClass, sheetKey]);
 
-  useEffect(() => {
-    loadScores();
-  }, [loadScores]);
+  useEffect(() => scheduleInitialLoad(loadScores), [loadScores]);
 
   // Nothing on screen yet vs. re-fetching after a filter change with rows already showing —
   // the two get different loading treatments (see the table body below).
@@ -406,8 +414,8 @@ export default function TeacherScoreEntryPage() {
     [frequency, offeringRows]
   );
   const hasClearedSavedScores = useMemo(
-    () => offeringRows.some((r) => r.resultId && r.hasItemizedScores && !calculateTR(r.raw, { isSenior, weeks }).hasData),
-    [offeringRows, isSenior, weeks]
+    () => offeringRows.some((r) => r.hasItemizedScores && !hasEnteredScores(r.raw)),
+    [offeringRows]
   );
   const windowEnd = viewMode === "pr1" ? PR_WINDOWS.pr1 : viewMode === "pr2" ? PR_WINDOWS.pr2 : PR_WINDOWS.pr3;
   const visibleCw = (frequency ? weeks.cw : Array.from({ length: 10 }, (_, i) => i + 1)).filter((w) => w <= windowEnd);
@@ -428,32 +436,51 @@ export default function TeacherScoreEntryPage() {
     return parts.length ? `${parts.join(" and ")} ${empty.cw.length + empty.hw.length > 1 ? "are" : "is"} empty for every student. If that work was actually given, enter the scores — until then it's left out of each student's average rather than counted as 0.` : "";
   }, [frequency, offeringRows, weeks]);
 
-  function buildRecords(submit: boolean, allowDeletions = false) {
-    const recordsToSave: any[] = [];
-    const deletedResultIds: string[] = [];
-    offeringRows.forEach((r) => {
-      const tr = calculateTR(r.raw, { isSenior, weeks });
-      if (!tr.hasData) {
-        if (allowDeletions && r.resultId && r.hasItemizedScores) deletedResultIds.push(r.resultId);
-        return;
-      }
-      recordsToSave.push({
-        student_id: r.student_id,
-        subject_id: selectedSubject,
-        class_id: selectedClass,
-        term: selectedTerm,
-        session: currentSession,
-        academic_session_id: currentSessionId || undefined,
-        ...toStoredScores(tr, r.raw),
-        status: submit ? "submitted" : "draft",
-      });
+  const buildEdits = useCallback((submit: boolean, allowClear: boolean) => {
+    return offeringRows.flatMap(row => {
+      const changes = changedMarks(row.baseline, row.raw);
+      const clear = !hasEnteredScores(row.raw);
+      if (clear && (!allowClear || !row.hasItemizedScores || !changes.length)) return [];
+      if (!changes.length && (!submit || clear || ["approved", "submitted"].includes(row.status || ""))) return [];
+      return [{ student_id: row.student_id, expected: row.version, next: crypto.randomUUID(), changes, clear }];
     });
-    return { recordsToSave, deletedResultIds };
-  }
+  }, [offeringRows]);
+
+  const queueLabel = [selectedClassName, subjects.find(s => s.id === selectedSubject)?.name, selectedTerm].join(" / ");
+  const persistEdits = useCallback(async (edits: ReturnType<typeof buildEdits>, submit: boolean) => {
+    const sheet = { class_id: selectedClass, subject_id: selectedSubject, term: selectedTerm, session: currentSession };
+    const body = JSON.stringify({ protocol: 2, sheet, edits, submit });
+    const { data } = await supabase.auth.getSession();
+    let queued = false;
+    let response: Response | undefined;
+    try {
+      response = await fetch("/api/results/save", { method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + (data.session?.access_token || "") }, body });
+    } catch (error) {
+      if (!isNetworkFailure(error)) throw error;
+      enqueue(data.session?.user.id, { url: "/api/results/save", method: "POST", body,
+        label: queueLabel });
+      queued = true;
+    }
+    if (response && !response.ok) {
+      const message = await response.json().catch(() => ({}));
+      if (response.status === 409) setConflict(true);
+      throw new Error(message.error || "Failed to save scores.");
+    }
+    const acknowledged = new Map(edits.map(edit => [edit.student_id, edit]));
+    setRows(current => current.map(row => {
+      const edit = acknowledged.get(row.student_id);
+      if (!edit) return row;
+      return { ...row, baseline: mergeMarks({ score_breakdown: row.baseline }, edit.changes),
+        version: edit.clear ? null : edit.next, hasItemizedScores: !edit.clear,
+        status: submit ? "submitted" : "draft" };
+    }));
+    return queued;
+  }, [selectedClass, selectedSubject, selectedTerm, currentSession, queueLabel]);
 
   async function toggleNotOffering(studentId: string, name: string, value: boolean) {
     const row = rows.find((r) => r.student_id === studentId);
-    const hasScores = row ? calculateTR(row.raw, { isSenior }).hasData : false;
+    const hasScores = row ? hasEnteredScores(row.raw) : false;
     if (
       value &&
       !window.confirm(
@@ -521,48 +548,12 @@ export default function TeacherScoreEntryPage() {
           }
         }
 
-        const { recordsToSave, deletedResultIds } = buildRecords(false);
-        const hasClearedScores = hasClearedSavedScores;
-
-        if (recordsToSave.length > 0 || deletedResultIds.length > 0) {
-          const notifyEditStart = !editNotifiedRef.current;
-          const body = JSON.stringify({ records: recordsToSave, deletedResultIds, notifyEditStart });
-          const { data: sessionData } = await supabase.auth.getSession();
-          try {
-            const res = await fetch("/api/results/save", {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
-              body,
-            });
-            if (res.ok) {
-              isDirtyRef.current = hasClearedScores || editVersionRef.current !== saveVersion;
-              editNotifiedRef.current = true;
-              setAutoSaveStatus(isDirtyRef.current ? "unsaved" : "saved");
-              // Deleted rows may still be re-evaluated on the next autosave pass
-              // (e.g. the student's scores stay empty); clear their stale resultId
-              // now so we don't try to delete the same already-gone row again.
-              if (deletedResultIds.length) {
-                const deletedSet = new Set(deletedResultIds);
-                setRows((prev) => prev.map((r) => (r.resultId && deletedSet.has(r.resultId) ? { ...r, resultId: undefined } : r)));
-              }
-            } else {
-              setAutoSaveStatus("unsaved");
-            }
-          } catch (fetchErr) {
-            if (isNetworkFailure(fetchErr)) {
-              enqueue(sessionData.session?.user.id, { url: "/api/results/save", method: "POST", body, label: `Grade sheet — ${selectedTerm}` });
-              isDirtyRef.current = hasClearedScores || editVersionRef.current !== saveVersion;
-              editNotifiedRef.current = true;
-              setAutoSaveStatus(isDirtyRef.current ? "unsaved" : "pending");
-            } else {
-              throw fetchErr;
-            }
-          }
-        } else {
-          setAutoSaveStatus(hasClearedScores ? "unsaved" : "idle");
-        }
+        const edits = buildEdits(false, false);
+        const queued = edits.length ? await persistEdits(edits, false) : false;
+        isDirtyRef.current = hasClearedSavedScores || editVersionRef.current !== saveVersion;
+        setAutoSaveStatus(isDirtyRef.current ? "unsaved" : queued ? "pending" : "saved");
       } catch (e) {
-        console.warn("Auto-save draft error:", e);
+        setStatusMsg(e instanceof Error ? e.message : "Automatic save failed.");
         setAutoSaveStatus("unsaved");
       } finally {
         savingInFlightRef.current = false;
@@ -571,7 +562,7 @@ export default function TeacherScoreEntryPage() {
     }, 1800);
 
     return () => clearTimeout(timer);
-  }, [rows, notOffering, isEditable, selectedSubject, selectedClass, selectedTerm, currentSession, currentSessionId, isSenior, hasClearedSavedScores, saveRetry]);
+  }, [rows, offeringRows, isEditable, selectedSubject, selectedClass, hasClearedSavedScores, saveRetry, buildEdits, persistEdits]);
 
   // Maximum allowed score helper per component
   function getMaxScore(field: "cw" | "hw" | "tests" | "project" | "exam", subIndex: number): number {
@@ -654,7 +645,8 @@ export default function TeacherScoreEntryPage() {
 
   // Save draft or submit to admin
   async function handleSave(submit = false) {
-    if (!rows.length || savingInFlightRef.current) return;
+    if (!isEditable || !rows.length) return;
+    if (savingInFlightRef.current) { setStatusMsg("A save is in progress. Wait for it to finish, then submit."); return; }
     savingInFlightRef.current = true;
     const saveVersion = editVersionRef.current;
     setSavingAction(submit ? "submit" : "draft");
@@ -673,57 +665,20 @@ export default function TeacherScoreEntryPage() {
         }
       }
 
-      const { recordsToSave, deletedResultIds } = buildRecords(submit, true);
-      if (deletedResultIds.length && !window.confirm(`Clear saved scores for ${deletedResultIds.length} student${deletedResultIds.length === 1 ? "" : "s"}? This removes their stored result for this subject and term.`)) return;
-
-      if (!recordsToSave.length && !deletedResultIds.length) {
-        setStatusMsg("No scores have been entered for this subject yet. Please enter at least one score before saving.");
-        setSavingAction("none");
+      const edits = buildEdits(submit, true);
+      const clearing = edits.filter(e => e.clear).length;
+      if (clearing && !window.confirm(`Clear saved scores for ${clearing} student(s) in this subject and term?`)) return;
+      if (!edits.length) {
+        isDirtyRef.current = false;
+        setAutoSaveStatus("idle");
+        setStatusMsg(submit ? "There are no new scores to submit." : "There are no unsaved marks.");
         return;
       }
-
-      const notifyEditStart = !editNotifiedRef.current;
-      const body = JSON.stringify({ records: recordsToSave, deletedResultIds, notifyEditStart });
-
-      const { data: sessionData } = await supabase.auth.getSession();
-      try {
-        const res = await fetch("/api/results/save", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session?.access_token || ""}` },
-          body,
-        });
-
-        const resJson = await res.json();
-        if (!res.ok) {
-          throw new Error(resJson.error || "Failed to save results.");
-        }
-
-        isDirtyRef.current = editVersionRef.current !== saveVersion;
-        editNotifiedRef.current = true;
-        setAutoSaveStatus(isDirtyRef.current ? "unsaved" : submit ? "idle" : "saved");
-        setStatusMsg(
-          isDirtyRef.current
-            ? "Earlier scores saved. Newer edits are still unsaved and will be saved next."
-            : submit
-            ? "Scores submitted to administration for review and approval!"
-            : "✓ Draft scores saved successfully! (Scores remain in draft and are NOT submitted to admin)"
-        );
-        if (!isDirtyRef.current) loadScores();
-      } catch (fetchErr: any) {
-        if (isNetworkFailure(fetchErr)) {
-          enqueue(sessionData.session?.user.id, { url: "/api/results/save", method: "POST", body, label: `Grade sheet — ${selectedTerm}` });
-          isDirtyRef.current = editVersionRef.current !== saveVersion;
-          editNotifiedRef.current = true;
-          setAutoSaveStatus(isDirtyRef.current ? "unsaved" : "pending");
-          setStatusMsg(
-            submit
-              ? "Submission pending sync on this device. It has not reached administration yet."
-              : "Draft pending sync on this device. It has not reached the server yet."
-          );
-        } else {
-          throw fetchErr;
-        }
-      }
+      const queued = await persistEdits(edits, submit);
+      isDirtyRef.current = editVersionRef.current !== saveVersion;
+      setAutoSaveStatus(isDirtyRef.current ? "unsaved" : queued ? "pending" : "saved");
+      setStatusMsg(queued ? "Saved on this device. Waiting to sync." :
+        submit ? "Scores submitted to administration for review." : "Draft scores saved.");
     } catch (err: any) {
       console.error("Save scores exception:", err);
       setStatusMsg(`Save failed: ${err.message}`);
@@ -738,12 +693,15 @@ export default function TeacherScoreEntryPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <OfflineQueueBanner />
+      {conflict && <div role="alert" className="rounded-xl bg-amber-50 p-3 text-sm">This sheet changed elsewhere. Your entries are still visible. <button type="button" className="font-semibold underline" onClick={() => { if (window.confirm("Discard these unsaved edits and load current scores?")) void loadScores(); }}>Reload saved scores</button></div>}
       {/* Top action header */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-            Master Continuous Assessment Mark Sheet
+            Enter scores
           </h2>
+          <a className="text-sm font-semibold underline" href={"/teacher/gradebook?" + new URLSearchParams({ class: selectedClass, subject: selectedSubject, term: selectedTerm, session: currentSession })}
+            onClick={e => { if (!canSwitchSheet()) e.preventDefault(); }}>Review gradebook</a>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             Enter each classwork/homework /10 and tests as marked (T1 /15, T2 /15, T3 /30). A week a student has no entry for yet is left out of their average, not counted as 0. Tick &ldquo;Not offering&rdquo; for a student who does not take this subject.
           </p>
@@ -779,7 +737,7 @@ export default function TeacherScoreEntryPage() {
 
           <button
             type="button"
-            disabled={saving || !isEditable || rows.length === 0}
+            disabled={saving || autoSaveStatus === "saving" || !isEditable || rows.length === 0}
             onClick={() => handleSave(false)}
             className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold rounded-xl text-xs shadow-2xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
             title="Save draft scores without submitting to admin"
@@ -789,7 +747,7 @@ export default function TeacherScoreEntryPage() {
           </button>
           <button
             type="button"
-            disabled={saving || !isEditable || rows.length === 0}
+            disabled={saving || autoSaveStatus === "saving" || !isEditable || rows.length === 0}
             onClick={() => {
               if (window.confirm("Submit scores to school administration for review and approval? Once submitted, the scores will be marked for admin review.")) {
                 handleSave(true);
@@ -804,7 +762,7 @@ export default function TeacherScoreEntryPage() {
       </div>
 
       {/* Lock status banner */}
-      {!isEditable && (
+      {selectedTermRecord && !selectedTermRecord.allow_edit && (
         <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="text-base" aria-hidden="true">Locked</span>
