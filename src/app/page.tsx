@@ -12,6 +12,7 @@ import {
   friendlyAuthError,
 } from "@/lib/auth";
 import { supabase } from "@/lib/supabase/client";
+import ChristmasTrim from "@/components/shared/ChristmasTrim";
 import PoweredBy from "@/components/shared/PoweredBy";
 import { markLoginPromptsPending } from "@/lib/loginPrompts";
 
@@ -172,6 +173,7 @@ export default function LoginPage() {
             boxShadow: "0 32px 80px rgba(7,17,32,0.6), 0 0 0 1px rgba(201,168,76,0.18)",
           }}
         >
+          <ChristmasTrim animated />
           {/* Logo & School Crest */}
           <div className="flex justify-center mb-4 sm:mb-5">
             <div

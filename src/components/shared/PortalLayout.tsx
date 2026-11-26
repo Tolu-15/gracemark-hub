@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "@/lib/auth";
+import ChristmasTrim from "./ChristmasTrim";
 import PoweredBy from "./PoweredBy";
 import NotificationBell from "./NotificationBell";
 import HelpButton from "./HelpButton";
@@ -388,6 +389,7 @@ export default function PortalLayout({
         )}
 
         <div className="portal-content flex-1 p-3.5 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+          <ChristmasTrim />
           {children}
         </div>
 

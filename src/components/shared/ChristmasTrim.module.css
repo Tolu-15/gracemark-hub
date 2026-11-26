@@ -1,0 +1,20 @@
+.login, .header {
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.login { margin-bottom: .5rem; }
+.header { margin-bottom: .25rem; }
+.art {
+  width: 3rem;
+  aspect-ratio: 1;
+  background: center / contain no-repeat url("https://assets-v2.lottiefiles.com/a/269ea848-1167-11ee-8be8-63a4f862f584/1ctSuOyJQi.png");
+}
+.login .art { width: clamp(5rem, 16vw, 7rem); }
+.player { display: block; width: 100%; height: 100%; border: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .player { display: none; }
+}
+@media print {
+  .login, .header { display: none; }
+}

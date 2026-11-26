@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Father Christmas waving</title>
+<!-- Santa Claus by ted, Lottie Simple License: https://lottiefiles.com/free-animation/santa-claus-FyJW7MAV8M -->
+<style>
+  html, body, dotlottie-player { display: block; width: 100%; height: 100%; margin: 0; overflow: hidden; }
+  dotlottie-player.ready { background: white; }
+</style>
+<dotlottie-player loop src="https://assets-v2.lottiefiles.com/a/269ea848-1167-11ee-8be8-63a4f862f584/SyYg6KZw5E.lottie" renderer="svg"></dotlottie-player>
+<script>
+  const player = document.querySelector("dotlottie-player");
+  const motion = matchMedia("(prefers-reduced-motion: reduce)");
+  function updatePlayback() {
+    if (motion.matches) player.stop();
+    else player.play();
+  }
+  player.addEventListener("ready", () => {
+    player.classList.add("ready");
+    updatePlayback();
+    motion.addEventListener("change", updatePlayback);
+  }, { once: true });
+</script>
+<script type="module" src="https://unpkg.com/@dotlottie/player-component@2.7.12/dist/dotlottie-player.mjs"></script>
+</html>
